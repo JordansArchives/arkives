@@ -111,9 +111,9 @@ try {
   if (typeof supabase !== 'undefined' && supabase.createClient) {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-        detectSessionInUrl: false
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
       }
     });
     console.log('Supabase client created successfully');
@@ -123,6 +123,159 @@ try {
 } catch (initErr) {
   console.error('Supabase client init error:', initErr);
   _sb = null;
+}
+
+/* ---- AUTH STATE ---- */
+let _authUser = null;
+
+async function checkSession() {
+  if (!_sb) return null;
+  try {
+    const { data: { session } } = await _sb.auth.getSession();
+    return session;
+  } catch (e) {
+    console.error('checkSession error:', e);
+    return null;
+  }
+}
+
+function showAuthScreen() {
+  var authEl = document.getElementById('authScreen');
+  var appEl = document.getElementById('appShell');
+  var loaderEl = document.getElementById('loaderOverlay');
+  if (authEl) authEl.style.display = 'flex';
+  if (appEl) appEl.style.display = 'none';
+  if (loaderEl) loaderEl.style.display = 'none';
+}
+
+function showApp() {
+  var authEl = document.getElementById('authScreen');
+  var appEl = document.getElementById('appShell');
+  if (authEl) authEl.style.display = 'none';
+  if (appEl) appEl.style.display = '';
+}
+
+function showLogin(e) {
+  if (e) e.preventDefault();
+  document.getElementById('loginForm').style.display = '';
+  document.getElementById('signupForm').style.display = 'none';
+  document.getElementById('authConfirmMsg').style.display = 'none';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('signupError').style.display = 'none';
+}
+
+function showSignUp(e) {
+  if (e) e.preventDefault();
+  document.getElementById('loginForm').style.display = 'none';
+  document.getElementById('signupForm').style.display = '';
+  document.getElementById('authConfirmMsg').style.display = 'none';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('signupError').style.display = 'none';
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  var email = document.getElementById('loginEmail').value.trim();
+  var password = document.getElementById('loginPassword').value;
+  var errEl = document.getElementById('loginError');
+  var btn = document.getElementById('loginBtn');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
+  try {
+    var { data, error } = await _sb.auth.signInWithPassword({ email: email, password: password });
+    if (error) {
+      errEl.textContent = error.message || 'Invalid credentials';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+      return;
+    }
+    _authUser = data.user;
+    updateSidebarUser();
+    showApp();
+    // Load data and navigate
+    await sbFetchAllData();
+    navigate(getHash());
+  } catch (err) {
+    errEl.textContent = 'Connection error. Please try again.';
+    errEl.style.display = 'block';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Sign In';
+}
+
+async function handleSignUp(e) {
+  e.preventDefault();
+  var email = document.getElementById('signupEmail').value.trim();
+  var password = document.getElementById('signupPassword').value;
+  var confirm = document.getElementById('signupConfirm').value;
+  var errEl = document.getElementById('signupError');
+  var btn = document.getElementById('signupBtn');
+  errEl.style.display = 'none';
+  if (password !== confirm) {
+    errEl.textContent = 'Passwords do not match';
+    errEl.style.display = 'block';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Creating account...';
+  try {
+    var { data, error } = await _sb.auth.signUp({ email: email, password: password });
+    if (error) {
+      errEl.textContent = error.message || 'Sign up failed';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Create Account';
+      return;
+    }
+    // If email confirmation is required
+    if (data.user && !data.session) {
+      document.getElementById('signupForm').style.display = 'none';
+      document.getElementById('authConfirmMsg').style.display = 'block';
+    } else if (data.session) {
+      // Auto-confirmed — go directly to app
+      _authUser = data.user;
+      updateSidebarUser();
+      showApp();
+      await sbFetchAllData();
+      navigate(getHash());
+    }
+  } catch (err) {
+    errEl.textContent = 'Connection error. Please try again.';
+    errEl.style.display = 'block';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Create Account';
+}
+
+async function handleLogout() {
+  if (!_sb) return;
+  await _sb.auth.signOut();
+  _authUser = null;
+  // Reset data
+  DEALS = []; FOLLOW_UPS = []; ACTION_ITEMS = [];
+  LATEST_UPDATES = []; CONTENT_DEADLINES = [];
+  WEEKLY_TASKS = []; PARKING_LOT = []; INBOX_ITEMS = [];
+  showAuthScreen();
+}
+
+function updateSidebarUser() {
+  var nameEl = document.getElementById('sidebarUserName');
+  var labelEl = document.getElementById('sidebarUserLabel');
+  var avatarEl = document.getElementById('sidebarAvatar');
+  if (!nameEl) return;
+  // Use profile name if loaded, otherwise email
+  if (CREATOR.name) {
+    nameEl.textContent = CREATOR.name;
+    labelEl.textContent = CREATOR.brand || '';
+    var initials = CREATOR.name.split(' ').map(function(w) { return w[0]; }).join('').toUpperCase().slice(0, 2);
+    avatarEl.textContent = initials || 'U';
+  } else if (_authUser) {
+    nameEl.textContent = _authUser.email.split('@')[0];
+    labelEl.textContent = _authUser.email;
+    avatarEl.textContent = _authUser.email[0].toUpperCase();
+  }
 }
 
 /* ---- TASK STATE (loaded from Supabase) ---- */
@@ -5726,18 +5879,28 @@ async function renderSharedScript(token, mode) {
 /* ---- INIT ---- */
 (async function init() {
   try {
-    // Load ALL data from Supabase (profile, deals, tasks, etc.)
-    await Promise.race([
-      sbFetchAllData(),
-      new Promise(function(r) { setTimeout(r, 8000); })
-    ]);
+    // Check for existing auth session
+    var session = await checkSession();
+    if (session && session.user) {
+      _authUser = session.user;
+      showApp();
+      // Load ALL data from Supabase
+      await Promise.race([
+        sbFetchAllData(),
+        new Promise(function(r) { setTimeout(r, 8000); })
+      ]);
+      updateSidebarUser();
+      navigate(getHash());
+    } else {
+      // No session — show login screen
+      showAuthScreen();
+    }
   } catch (e) {
-    console.error('Init Supabase load error:', e);
+    console.error('Init error:', e);
+    showAuthScreen();
   }
 
-  // Always navigate and dismiss loader, even if Supabase failed
-  navigate(getHash());
-
+  // Dismiss loader
   var overlay = document.getElementById('loaderOverlay');
   if (overlay) {
     setTimeout(function() {
