@@ -876,6 +876,8 @@ async function sbFetchAllData() {
     // Update sidebar with loaded profile data
     updateSidebarUser();
 
+    // Compute KPIs for debug
+    var _signedCheck = DEALS.filter(function(d) { return ["SIGNED", "ACTIVE - In Production", "ACTIVE \u2014 In Production"].includes(d.status); });
     console.log('All data loaded from Supabase:', {
       profile: CREATOR.name,
       deals: DEALS.length,
@@ -884,7 +886,11 @@ async function sbFetchAllData() {
       updates: LATEST_UPDATES.length,
       deadlines: CONTENT_DEADLINES.length,
       inbox: INBOX_ITEMS.length,
-      templates: Object.keys(OUTREACH_TEMPLATES).length
+      templates: Object.keys(OUTREACH_TEMPLATES).length,
+      signedDeals: _signedCheck.map(function(d) { return d.brand + ':' + d.status + ':$' + d.value; }),
+      rateCards: RATE_CARD.organic.length + '+' + RATE_CARD.ugc.length,
+      subs: PERSONAL_SUBS.monthly.length + '+' + BUSINESS_SUBS.monthly.length,
+      netIncome: NET_INCOME.months.length + ' months'
     });
 
   } catch (err) {
@@ -1156,7 +1162,10 @@ function navigate(view) {
   renderView(view);
 }
 
-window.addEventListener("hashchange", () => navigate(getHash()));
+window.addEventListener("hashchange", function() {
+  // Don't navigate until data is loaded
+  if (CREATOR.name || DEALS.length > 0) navigate(getHash());
+});
 
 /* ---- THEME ---- */
 document.getElementById("themeToggle").addEventListener("click", () => {
