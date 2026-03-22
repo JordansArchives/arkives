@@ -1,0 +1,701 @@
+{
+  "platforms": {
+    "instagram": {
+      "handle": "jordans.archivess",
+      "display_name": "Jordan Watkins",
+      "avatar": "https://scontent-lga3-2.xx.fbcdn.net/v/t51.2885-15/439638965_420319270926333_5252741892314046544_n.jpg?_nc_cat=100&ccb=1-7&_nc_sid=7d201b&_nc_ohc=qjL-eip0kkkQ7kNvwFRnCLY&_nc_oc=Adq-QGlsHqxwSdGRlkiYQUdph_OB308Tp1A9m_46JLxJYDGpKoPaDLv50UvQaio_pHZFsdJz6zcE9j7qyA4pdf0r&_nc_zt=23&_nc_ht=scontent-lga3-2.xx&edm=AL-3X8kEAAAA&oh=00_AfxPkKMZ2l8SfAh8P4dGP1Vnz7nAZJR3Ng-x24Hbv6ADCg&oe=69C30426",
+      "grade": "B+",
+      "followers": 243712,
+      "following": 525,
+      "media_count": 127,
+      "engagement_rate": 11.8,
+      "average_likes": 28013,
+      "average_comments": 497,
+      "ranks": {
+        "sb": 33733,
+        "followers": 256393,
+        "engagement_rate": 43990
+      }
+    },
+    "tiktok": {
+      "handle": "jordans.archives",
+      "display_name": "Jordan Watkins",
+      "avatar": "https://p16-common-sign.tiktokcdn-us.com/tos-useast5-avt-0068-tx/7315921475788079146~tplv-tiktokx-cropcenter:100:100.jpeg?dr=9640&refresh_token=42f9a9d1&x-expires=1774206000&x-signature=CexdpyYUZUY%2B%2FQ5UHhJSTIFD21g%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast8",
+      "grade": "A-",
+      "followers": 29000,
+      "following": 103,
+      "likes": 3800000,
+      "videos": 263
+    },
+    "youtube": {
+      "handle": "",
+      "display_name": "Jordan Watkins",
+      "avatar": "https://yt3.ggpht.com/OwA8SogwwvKfqhKe5bF5RO893sl4rp9rJMYrFpKsFxoug_FmyD5izxkk2vdpXqk2SMgl7QL7cw=s88-c-k-c0x00ffffff-no-rj",
+      "grade": "C-",
+      "subscribers": 548,
+      "videos": 9,
+      "views": 10494,
+      "country": "US",
+      "description": "If you\u2019re a nerd for branding, video editing, content creation, business, and science\u2026 welcome! You\u2019ll like it here!"
+    },
+    "twitter": {
+      "handle": "jordanarchivess",
+      "display_name": "Jordan Watkins",
+      "avatar": "",
+      "grade": "New",
+      "followers": 2,
+      "following": 0,
+      "tweets": 0
+    },
+    "linkedin": {
+      "handle": "jordanwatkinss",
+      "display_name": "Jordan Watkins",
+      "avatar": "",
+      "grade": "N/A",
+      "followers": 383,
+      "connections": 378
+    }
+  },
+  "snapshots": [
+    {
+      "date": "2026-03-14",
+      "platforms": {
+        "instagram": {
+          "followers": 240000,
+          "engagement": "10.4%",
+          "posts": 126
+        },
+        "tiktok": {
+          "followers": 24300,
+          "likes": "2.4M"
+        },
+        "youtube": {
+          "subscribers": 529,
+          "videos": 8
+        },
+        "twitter": {
+          "followers": 2
+        },
+        "linkedin": {
+          "followers": 383,
+          "connections": 378
+        }
+      }
+    },
+    {
+      "platform": "twitter",
+      "followers": 2,
+      "following": 12,
+      "tweets": 6,
+      "date": "2026-03-12"
+    },
+    {
+      "platform": "linkedin",
+      "followers": 382,
+      "connections": 377,
+      "date": "2026-03-12"
+    },
+    {
+      "date": "2026-03-13",
+      "platforms": {
+        "instagram": {
+          "followers": 240400,
+          "engagement": "10.4%",
+          "posts": 126
+        },
+        "tiktok": {
+          "followers": 24000,
+          "likes": "2.3M"
+        },
+        "youtube": {
+          "subscribers": 515,
+          "videos": 8
+        },
+        "twitter": {
+          "followers": 2
+        },
+        "linkedin": {
+          "followers": 382,
+          "connections": 377
+        }
+      }
+    },
+    {
+      "date": "2026-03-15",
+      "platforms": {
+        "instagram": {
+          "followers": 241865,
+          "engagement": "11.14%",
+          "posts": 127
+        },
+        "tiktok": {
+          "followers": 25200,
+          "likes": "2.6M"
+        },
+        "youtube": {
+          "subscribers": 541,
+          "videos": 8
+        },
+        "twitter": {
+          "followers": 2
+        },
+        "linkedin": {
+          "followers": 373,
+          "connections": 372
+        }
+      }
+    },
+    {
+      "platform": "twitter",
+      "followers": 2,
+      "following": 12,
+      "tweets": 6,
+      "date": "2026-03-15"
+    },
+    {
+      "platform": "linkedin",
+      "followers": 373,
+      "connections": 372,
+      "date": "2026-03-15"
+    },
+    {
+      "date": "2026-03-16",
+      "platforms": {
+        "instagram": {
+          "followers": 242337,
+          "engagement": "11.24%",
+          "posts": 127
+        },
+        "tiktok": {
+          "followers": 25600,
+          "likes": "2.6M"
+        },
+        "youtube": {
+          "subscribers": 547,
+          "videos": 9
+        },
+        "twitter": {
+          "followers": 2
+        },
+        "linkedin": {
+          "followers": 373,
+          "connections": 372
+        }
+      }
+    },
+    {
+      "date": "2026-03-17",
+      "platforms": {
+        "instagram": {
+          "followers": 242337,
+          "engagement": "11.24%",
+          "posts": 127
+        },
+        "tiktok": {
+          "followers": 26500,
+          "likes": "3M"
+        },
+        "youtube": {
+          "subscribers": 547,
+          "videos": 9
+        },
+        "twitter": {
+          "followers": 2
+        },
+        "linkedin": {
+          "followers": 385,
+          "connections": 380
+        }
+      }
+    },
+    {
+      "date": "2026-03-18",
+      "platforms": {
+        "instagram": {
+          "followers": 243000,
+          "engagement": "11.24%",
+          "posts": 127
+        },
+        "tiktok": {
+          "followers": 27600,
+          "likes": "3.3M"
+        },
+        "youtube": {
+          "subscribers": 548,
+          "videos": 9
+        },
+        "twitter": {
+          "followers": 2
+        },
+        "linkedin": {
+          "followers": 386,
+          "connections": 380
+        }
+      }
+    },
+    {
+      "date": "2026-03-19",
+      "platforms": {
+        "instagram": {
+          "followers": 243226,
+          "engagement": "11.62%",
+          "posts": 127
+        },
+        "tiktok": {
+          "followers": 28100,
+          "likes": "3.5M"
+        },
+        "youtube": {
+          "subscribers": 548,
+          "videos": 9
+        },
+        "twitter": {
+          "followers": 2
+        },
+        "linkedin": {
+          "followers": 386,
+          "connections": 380
+        }
+      }
+    },
+    {
+      "date": "2026-03-20",
+      "platforms": {
+        "instagram": {
+          "followers": 243489,
+          "engagement": "11.71%",
+          "posts": 127
+        },
+        "tiktok": {
+          "followers": 28600,
+          "likes": "3.6M"
+        },
+        "youtube": {
+          "subscribers": 548,
+          "videos": 9
+        },
+        "twitter": {
+          "followers": 2
+        },
+        "linkedin": {
+          "followers": 386,
+          "connections": 380
+        }
+      }
+    },
+    {
+      "platform": "instagram",
+      "followers": 234018,
+      "following": 501,
+      "media_count": 121,
+      "engagement_rate": 2.23,
+      "date": "2026-02-24"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234055,
+      "following": 503,
+      "media_count": 122,
+      "engagement_rate": 2.16,
+      "date": "2026-02-25"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234162,
+      "following": 504,
+      "media_count": 122,
+      "engagement_rate": 8.32,
+      "date": "2026-02-26"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234296,
+      "following": 504,
+      "media_count": 122,
+      "engagement_rate": 2.2,
+      "date": "2026-02-27"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234355,
+      "following": 508,
+      "media_count": 122,
+      "engagement_rate": 2.22,
+      "date": "2026-02-28"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234456,
+      "following": 509,
+      "media_count": 122,
+      "engagement_rate": 2.23,
+      "date": "2026-03-01"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234574,
+      "following": 509,
+      "media_count": 122,
+      "engagement_rate": 2.25,
+      "date": "2026-03-02"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234662,
+      "following": 510,
+      "media_count": 122,
+      "engagement_rate": 2.26,
+      "date": "2026-03-03"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234865,
+      "following": 509,
+      "media_count": 122,
+      "engagement_rate": 2.28,
+      "date": "2026-03-04"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234896,
+      "following": 511,
+      "media_count": 122,
+      "engagement_rate": 1.77,
+      "date": "2026-03-05"
+    },
+    {
+      "platform": "instagram",
+      "followers": 234991,
+      "following": 511,
+      "media_count": 123,
+      "engagement_rate": 1.62,
+      "date": "2026-03-06"
+    },
+    {
+      "platform": "instagram",
+      "followers": 235181,
+      "following": 511,
+      "media_count": 125,
+      "engagement_rate": 1.5,
+      "date": "2026-03-07"
+    },
+    {
+      "platform": "instagram",
+      "followers": 236432,
+      "following": 513,
+      "media_count": 125,
+      "engagement_rate": 4.97,
+      "date": "2026-03-08"
+    },
+    {
+      "platform": "instagram",
+      "followers": 238024,
+      "following": 512,
+      "media_count": 125,
+      "engagement_rate": 9.51,
+      "date": "2026-03-09"
+    },
+    {
+      "platform": "instagram",
+      "followers": 238878,
+      "following": 513,
+      "media_count": 126,
+      "engagement_rate": 9.82,
+      "date": "2026-03-10"
+    },
+    {
+      "platform": "instagram",
+      "followers": 239678,
+      "following": 514,
+      "media_count": 126,
+      "engagement_rate": 10.18,
+      "date": "2026-03-11"
+    },
+    {
+      "platform": "instagram",
+      "followers": 240206,
+      "following": 516,
+      "media_count": 126,
+      "engagement_rate": 10.42,
+      "date": "2026-03-12"
+    },
+    {
+      "platform": "instagram",
+      "followers": 240821,
+      "following": 518,
+      "media_count": 126,
+      "engagement_rate": 10.95,
+      "date": "2026-03-13"
+    },
+    {
+      "platform": "instagram",
+      "followers": 241345,
+      "following": 522,
+      "media_count": 126,
+      "engagement_rate": 11.17,
+      "date": "2026-03-14"
+    },
+    {
+      "platform": "instagram",
+      "followers": 241865,
+      "following": 522,
+      "media_count": 127,
+      "engagement_rate": 11.14,
+      "date": "2026-03-15"
+    },
+    {
+      "platform": "instagram",
+      "followers": 242337,
+      "following": 522,
+      "media_count": 127,
+      "engagement_rate": 11.24,
+      "date": "2026-03-16"
+    },
+    {
+      "platform": "instagram",
+      "followers": 242696,
+      "following": 522,
+      "media_count": 127,
+      "engagement_rate": 11.4,
+      "date": "2026-03-17"
+    },
+    {
+      "platform": "instagram",
+      "followers": 242986,
+      "following": 524,
+      "media_count": 127,
+      "engagement_rate": 11.53,
+      "date": "2026-03-18"
+    },
+    {
+      "platform": "instagram",
+      "followers": 243226,
+      "following": 525,
+      "media_count": 127,
+      "engagement_rate": 11.62,
+      "date": "2026-03-19"
+    },
+    {
+      "platform": "instagram",
+      "followers": 243489,
+      "following": 525,
+      "media_count": 127,
+      "engagement_rate": 11.71,
+      "date": "2026-03-20"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 22400,
+      "following": 132,
+      "likes": 1900000,
+      "videos": 263,
+      "date": "2026-03-10"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 23300,
+      "following": 132,
+      "likes": 2200000,
+      "videos": 263,
+      "date": "2026-03-11"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 23800,
+      "following": 132,
+      "likes": 2300000,
+      "videos": 264,
+      "date": "2026-03-12"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 24200,
+      "following": 132,
+      "likes": 2300000,
+      "videos": 264,
+      "date": "2026-03-13"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 25000,
+      "following": 132,
+      "likes": 2500000,
+      "videos": 264,
+      "date": "2026-03-14"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 25500,
+      "following": 132,
+      "likes": 2600000,
+      "videos": 264,
+      "date": "2026-03-15"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 25800,
+      "following": 103,
+      "likes": 2700000,
+      "videos": 266,
+      "date": "2026-03-16"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 26900,
+      "following": 103,
+      "likes": 3100000,
+      "videos": 266,
+      "date": "2026-03-17"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 27800,
+      "following": 103,
+      "likes": 3400000,
+      "videos": 266,
+      "date": "2026-03-18"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 28400,
+      "following": 103,
+      "likes": 3600000,
+      "videos": 267,
+      "date": "2026-03-19"
+    },
+    {
+      "platform": "tiktok",
+      "followers": 28800,
+      "following": 103,
+      "likes": 3700000,
+      "videos": 267,
+      "date": "2026-03-20"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 515,
+      "views": 10153,
+      "videos": 8,
+      "date": "2026-03-10"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 515,
+      "views": 10155,
+      "videos": 8,
+      "date": "2026-03-11"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 515,
+      "views": 10155,
+      "videos": 9,
+      "date": "2026-03-12"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 515,
+      "views": 10166,
+      "videos": 8,
+      "date": "2026-03-13"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 532,
+      "views": 10175,
+      "videos": 8,
+      "date": "2026-03-14"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 544,
+      "views": 10349,
+      "videos": 9,
+      "date": "2026-03-15"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 547,
+      "views": 10417,
+      "videos": 9,
+      "date": "2026-03-16"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 548,
+      "views": 10463,
+      "videos": 9,
+      "date": "2026-03-17"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 548,
+      "views": 10470,
+      "videos": 9,
+      "date": "2026-03-18"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 548,
+      "views": 10473,
+      "videos": 9,
+      "date": "2026-03-19"
+    },
+    {
+      "platform": "youtube",
+      "subscribers": 548,
+      "views": 10477,
+      "videos": 9,
+      "date": "2026-03-20"
+    },
+    {
+      "date": "2026-03-21",
+      "platforms": {
+        "instagram": {
+          "followers": 243712,
+          "engagement": "11.8%",
+          "posts": 127
+        },
+        "tiktok": {
+          "followers": 29000,
+          "likes": "3.8M"
+        },
+        "youtube": {
+          "subscribers": 548,
+          "videos": 9
+        },
+        "twitter": {
+          "followers": 2
+        },
+        "linkedin": {
+          "followers": 386,
+          "connections": 380
+        }
+      }
+    },
+    {
+      "platform": "instagram",
+      "date": "2026-03-21",
+      "followers": 243712,
+      "following": 525,
+      "media_count": 127,
+      "engagement_rate": 11.8
+    },
+    {
+      "platform": "tiktok",
+      "date": "2026-03-21",
+      "followers": 29000,
+      "following": 103,
+      "likes": 3800000,
+      "videos": 263
+    },
+    {
+      "platform": "youtube",
+      "date": "2026-03-21",
+      "subscribers": 548,
+      "views": 10494,
+      "videos": 9
+    }
+  ],
+  "last_fetch": "2026-03-21T13:07:00.000000+00:00"
+}

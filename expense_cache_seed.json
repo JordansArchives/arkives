@@ -1,0 +1,935 @@
+{
+  "entries": [
+    {
+      "date": "3/12/2026",
+      "dateISO": "2026-03-12",
+      "category": "LEASURE EXPENSES",
+      "amount": 100.0,
+      "notes": "Tattoo Deposit",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "3/10/2026",
+      "dateISO": "2026-03-10",
+      "category": "GROCERIES EXPENSES",
+      "amount": 96.99,
+      "notes": "King Soopers",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "3/10/2026",
+      "dateISO": "2026-03-10",
+      "category": "GROCERIES EXPENSES",
+      "amount": 155.55,
+      "notes": "Gas & Car rental in Costa Rica",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "3/9/2026",
+      "dateISO": "2026-03-09",
+      "category": "LIVING EXPENSES",
+      "amount": 26.0,
+      "notes": "Amazon: New Pens",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "3/7/2026",
+      "dateISO": "2026-03-07",
+      "category": "LEASURE EXPENSES",
+      "amount": 109.0,
+      "notes": "Dinner w/ Haley",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "3/7/2026",
+      "dateISO": "2026-03-07",
+      "category": "LEASURE EXPENSES",
+      "amount": 87.0,
+      "notes": "Drinks & Food after Show",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "3/5/2026",
+      "dateISO": "2026-03-05",
+      "category": "SOFTWARE EXPENSE",
+      "amount": 106.0,
+      "notes": "RSMB Pro License",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "3/2/2026",
+      "dateISO": "2026-03-02",
+      "category": "SOFTWARE EXPENSE",
+      "amount": 99.0,
+      "notes": "Depth Scanner 2",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "3/1/2026",
+      "dateISO": "2026-03-01",
+      "category": "LEASURE EXPENSES",
+      "amount": 126.61,
+      "notes": "Spending in CR",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/28/2026",
+      "dateISO": "2026-02-28",
+      "category": "LEASURE EXPENSES",
+      "amount": 206.22,
+      "notes": "CR Expenses 26th - 28th",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/28/2026",
+      "dateISO": "2026-02-28",
+      "category": "LIVING EXPENSES",
+      "amount": 286.0,
+      "notes": "Iphone Trade-In Cost",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/28/2026",
+      "dateISO": "2026-02-28",
+      "category": "OTHER EXPENSES",
+      "amount": 790.0,
+      "notes": "BALANCING CHECKBOOK - missing $790 from spending expense",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/28/2026",
+      "dateISO": "2026-02-28",
+      "category": "LEASURE EXPENSES",
+      "amount": 677.0,
+      "notes": "Plane Ticket Back Home",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/28/2026",
+      "dateISO": "2026-02-28",
+      "category": "OTHER REVENUE",
+      "amount": 3612.18,
+      "notes": "Stan Store Revenue",
+      "type": "personal",
+      "direction": "revenue",
+      "isRevenue": true
+    },
+    {
+      "date": "2/28/2026",
+      "dateISO": "2026-02-28",
+      "category": "WORK REVENUE",
+      "amount": 3500.0,
+      "notes": "Almave UGC Videos",
+      "type": "personal",
+      "direction": "revenue",
+      "isRevenue": true
+    },
+    {
+      "date": "2/28/2026",
+      "dateISO": "2026-02-28",
+      "category": "WORK REVENUE",
+      "amount": 2780.84,
+      "notes": "Stripe Revenue: Asterisk Create High Ticket",
+      "type": "business",
+      "direction": "revenue",
+      "isRevenue": true
+    },
+    {
+      "date": "2/28/2026",
+      "dateISO": "2026-02-28",
+      "category": "WORK REVENUE",
+      "amount": 2713.13,
+      "notes": "Skool: VM and Asterisk Create",
+      "type": "business",
+      "direction": "revenue",
+      "isRevenue": true
+    },
+    {
+      "date": "2/23/2026",
+      "dateISO": "2026-02-23",
+      "category": "LIVING EXPENSES",
+      "amount": 11.17,
+      "notes": "UCHealth Bill",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/22/2026",
+      "dateISO": "2026-02-22",
+      "category": "LEASURE EXPENSES",
+      "amount": 36.0,
+      "notes": "Call your Mother",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/22/2026",
+      "dateISO": "2026-02-22",
+      "category": "LEASURE EXPENSES",
+      "amount": 46.32,
+      "notes": "Printify Poster - Drool",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/22/2026",
+      "dateISO": "2026-02-22",
+      "category": "LIVING EXPENSES",
+      "amount": 54.92,
+      "notes": "Dish Soap and Poster Frame",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/22/2026",
+      "dateISO": "2026-02-22",
+      "category": "LEASURE EXPENSES",
+      "amount": 166.32,
+      "notes": "Pants - Navy Denim and Gray Slacks",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/22/2026",
+      "dateISO": "2026-02-22",
+      "category": "LIVING EXPENSES",
+      "amount": 32.0,
+      "notes": "Stainless Steel Mixing Bowls",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/21/2026",
+      "dateISO": "2026-02-21",
+      "category": "GROCERIES EXPENSES",
+      "amount": 122.0,
+      "notes": "King Soops",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/21/2026",
+      "dateISO": "2026-02-21",
+      "category": "THERAPY EXPENSE",
+      "amount": 50.0,
+      "notes": "No Show Fee -- oops",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/21/2026",
+      "dateISO": "2026-02-21",
+      "category": "GAS EXPENSES",
+      "amount": 26.0,
+      "notes": "Gas King Soops",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/20/2026",
+      "dateISO": "2026-02-20",
+      "category": "LEASURE EXPENSES",
+      "amount": 48.8,
+      "notes": "Cuba Cuba",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/17/2026",
+      "dateISO": "2026-02-17",
+      "category": "GROCERIES EXPENSES",
+      "amount": 10.96,
+      "notes": "Milk & Sourcrout",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/16/2026",
+      "dateISO": "2026-02-16",
+      "category": "LIVING EXPENSES",
+      "amount": 98.0,
+      "notes": "Inulin & Yogurt Maker from Amazon",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/16/2026",
+      "dateISO": "2026-02-16",
+      "category": "LEASURE EXPENSES",
+      "amount": 17.0,
+      "notes": "Silo: Wool, book series",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/15/2026",
+      "dateISO": "2026-02-15",
+      "category": "LIVING EXPENSES",
+      "amount": 35.0,
+      "notes": "Parking Ticket",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/15/2026",
+      "dateISO": "2026-02-15",
+      "category": "LEASURE EXPENSES",
+      "amount": 79.0,
+      "notes": "Glasses & Picture frames",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/14/2026",
+      "dateISO": "2026-02-14",
+      "category": "GROCERIES EXPENSES",
+      "amount": 90.0,
+      "notes": "King Soopers",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/14/2026",
+      "dateISO": "2026-02-14",
+      "category": "GROCERIES EXPENSES",
+      "amount": 45.0,
+      "notes": "Marajuanies",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/14/2026",
+      "dateISO": "2026-02-14",
+      "category": "GAS EXPENSES",
+      "amount": 20.0,
+      "notes": "7-Eleven Gas",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/10/2026",
+      "dateISO": "2026-02-10",
+      "category": "LEASURE EXPENSES",
+      "amount": 36.58,
+      "notes": "Pizza & Beer",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/10/2026",
+      "dateISO": "2026-02-10",
+      "category": "HARDWARE EXPENSE",
+      "amount": 213.0,
+      "notes": "New Monitor",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/9/2026",
+      "dateISO": "2026-02-09",
+      "category": "LIVING EXPENSES",
+      "amount": 116.89,
+      "notes": "Doctors Appointment",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/7/2026",
+      "dateISO": "2026-02-07",
+      "category": "LEASURE EXPENSES",
+      "amount": 15.0,
+      "notes": "Wine",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/7/2026",
+      "dateISO": "2026-02-07",
+      "category": "LEASURE EXPENSES",
+      "amount": 15.0,
+      "notes": "Zynz",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/6/2026",
+      "dateISO": "2026-02-06",
+      "category": "LIVING EXPENSES",
+      "amount": 75.0,
+      "notes": "Parking Ticket",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/6/2026",
+      "dateISO": "2026-02-06",
+      "category": "LEASURE EXPENSES",
+      "amount": 116.0,
+      "notes": "Dinner w/ Haley",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/5/2026",
+      "dateISO": "2026-02-05",
+      "category": "LEASURE EXPENSES",
+      "amount": 22.0,
+      "notes": "Pizza and Beer",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/4/2026",
+      "dateISO": "2026-02-04",
+      "category": "GROCERIES EXPENSES",
+      "amount": 44.0,
+      "notes": "Care Package for Haley",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/3/2026",
+      "dateISO": "2026-02-03",
+      "category": "SOFTWARE EXPENSE",
+      "amount": 219.0,
+      "notes": "Squarespace Website: Hand Drawn Animation",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/3/2026",
+      "dateISO": "2026-02-03",
+      "category": "SOFTWARE EXPENSE",
+      "amount": 15.0,
+      "notes": "Website domain: jordanwatkins.xyz",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/1/2026",
+      "dateISO": "2026-02-01",
+      "category": "LIVING EXPENSES",
+      "amount": 44.71,
+      "notes": "Phone Case, Moisturizer, & Laundry detergent",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/1/2026",
+      "dateISO": "2026-02-01",
+      "category": "LIVING EXPENSES",
+      "amount": 105.0,
+      "notes": "Parking Ticket",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "2/1/2026",
+      "dateISO": "2026-02-01",
+      "category": "THERAPY EXPENSE",
+      "amount": 100.0,
+      "notes": "Therapy - Taylor",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/31/2026",
+      "dateISO": "2026-01-31",
+      "category": "GROCERIES EXPENSES",
+      "amount": 95.66,
+      "notes": "King Supers",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/31/2026",
+      "dateISO": "2026-01-31",
+      "category": "OTHER REVENUE",
+      "amount": 2165.89,
+      "notes": "Stan: Editing Vault & Bundle",
+      "type": "personal",
+      "direction": "revenue",
+      "isRevenue": true
+    },
+    {
+      "date": "1/31/2026",
+      "dateISO": "2026-01-31",
+      "category": "LIVING EXPENSES",
+      "amount": 217.0,
+      "notes": "INSURANCE CHARGE BACK",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/31/2026",
+      "dateISO": "2026-01-31",
+      "category": "WORK REVENUE",
+      "amount": 4106.55,
+      "notes": "Stripe Revenue: Asterisk Create High Ticket",
+      "type": "business",
+      "direction": "revenue",
+      "isRevenue": true
+    },
+    {
+      "date": "1/31/2026",
+      "dateISO": "2026-01-31",
+      "category": "WORK REVENUE",
+      "amount": 1785.12,
+      "notes": "Skool: VM and Asterisk Create",
+      "type": "business",
+      "direction": "revenue",
+      "isRevenue": true
+    },
+    {
+      "date": "1/31/2026",
+      "dateISO": "2026-01-31",
+      "category": "AD EXPENSE",
+      "amount": 436.97,
+      "notes": "FB Advertising",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/31/2026",
+      "dateISO": "2026-01-31",
+      "category": "GENERAL EXPENSE",
+      "amount": 375.0,
+      "notes": "American Express Renewal Annual Fee",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/31/2026",
+      "dateISO": "2026-01-31",
+      "category": "SOFTWARE EXPENSE",
+      "amount": 119.0,
+      "notes": "Incfile Annual Fee",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/30/2026",
+      "dateISO": "2026-01-30",
+      "category": "LEASURE EXPENSES",
+      "amount": 28.0,
+      "notes": "Drinks w Cole",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/30/2026",
+      "dateISO": "2026-01-30",
+      "category": "LEASURE EXPENSES",
+      "amount": 24.0,
+      "notes": "Smash Burger",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/27/2026",
+      "dateISO": "2026-01-27",
+      "category": "LEASURE EXPENSES",
+      "amount": 28.0,
+      "notes": "Burger with Artem",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/26/2026",
+      "dateISO": "2026-01-26",
+      "category": "LEASURE EXPENSES",
+      "amount": 247.0,
+      "notes": "Macys - New Jackets & Belt",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/26/2026",
+      "dateISO": "2026-01-26",
+      "category": "LIVING EXPENSES",
+      "amount": 37.12,
+      "notes": "Foot Doctor",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/25/2026",
+      "dateISO": "2026-01-25",
+      "category": "GAS EXPENSES",
+      "amount": 29.0,
+      "notes": "King Soopers",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/24/2026",
+      "dateISO": "2026-01-24",
+      "category": "GROCERIES EXPENSES",
+      "amount": 97.0,
+      "notes": "King Soopers",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/24/2026",
+      "dateISO": "2026-01-24",
+      "category": "LEASURE EXPENSES",
+      "amount": 11.0,
+      "notes": "Drinks w/ Rod",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/21/2026",
+      "dateISO": "2026-01-21",
+      "category": "SOFTWARE EXPENSE",
+      "amount": 91.0,
+      "notes": "Claude Software Upgrade",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/19/2026",
+      "dateISO": "2026-01-19",
+      "category": "LEASURE EXPENSES",
+      "amount": 66.0,
+      "notes": "Jackets - Fashion Nova",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/19/2026",
+      "dateISO": "2026-01-19",
+      "category": "LEASURE EXPENSES",
+      "amount": 45.0,
+      "notes": "Burgendy Shoes",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/19/2026",
+      "dateISO": "2026-01-19",
+      "category": "LEASURE EXPENSES",
+      "amount": 42.46,
+      "notes": "Beserk Volume 14",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/18/2026",
+      "dateISO": "2026-01-18",
+      "category": "LIVING EXPENSES",
+      "amount": 34.0,
+      "notes": "Sweat Pants - Amazon",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/17/2026",
+      "dateISO": "2026-01-17",
+      "category": "THERAPY EXPENSE",
+      "amount": 100.0,
+      "notes": "Therapy - Taylor",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/16/2026",
+      "dateISO": "2026-01-16",
+      "category": "GROCERIES EXPENSES",
+      "amount": 212.27,
+      "notes": "King Soopers",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/16/2026",
+      "dateISO": "2026-01-16",
+      "category": "HARDWARE EXPENSE",
+      "amount": 144.0,
+      "notes": "wake up morning lamp",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/14/2026",
+      "dateISO": "2026-01-14",
+      "category": "HARDWARE EXPENSE",
+      "amount": 64.73,
+      "notes": "Chess aboard",
+      "type": "business",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/13/2026",
+      "dateISO": "2026-01-13",
+      "category": "LEASURE EXPENSES",
+      "amount": 36.0,
+      "notes": "Beserk Book Vo. 13",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/10/2026",
+      "dateISO": "2026-01-10",
+      "category": "GROCERIES EXPENSES",
+      "amount": 37.5,
+      "notes": "Cook Book",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/10/2026",
+      "dateISO": "2026-01-10",
+      "category": "GROCERIES EXPENSES",
+      "amount": 97.0,
+      "notes": "Grocery Haul",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/9/2026",
+      "dateISO": "2026-01-09",
+      "category": "LEASURE EXPENSES",
+      "amount": 75.49,
+      "notes": "Leather Jacket REALTAKI",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/8/2026",
+      "dateISO": "2026-01-08",
+      "category": "LEASURE EXPENSES",
+      "amount": 72.75,
+      "notes": "Brown Pleated Trousers REALTAKI",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/8/2026",
+      "dateISO": "2026-01-08",
+      "category": "LEASURE EXPENSES",
+      "amount": 22.2,
+      "notes": "Pizza and Beer",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/8/2026",
+      "dateISO": "2026-01-08",
+      "category": "LEASURE EXPENSES",
+      "amount": 49.0,
+      "notes": "Pleated Trousers COO Men's wearhouse",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/7/2026",
+      "dateISO": "2026-01-07",
+      "category": "LEASURE EXPENSES",
+      "amount": 33.2,
+      "notes": "New Loafs",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/7/2026",
+      "dateISO": "2026-01-07",
+      "category": "LEASURE EXPENSES",
+      "amount": 19.2,
+      "notes": "Wnedys with Artem",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/6/2026",
+      "dateISO": "2026-01-06",
+      "category": "LEASURE EXPENSES",
+      "amount": 59.0,
+      "notes": "refund calvin klein underwear",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/6/2026",
+      "dateISO": "2026-01-06",
+      "category": "LEASURE EXPENSES",
+      "amount": 36.0,
+      "notes": "trousers amazon",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/6/2026",
+      "dateISO": "2026-01-06",
+      "category": "LEASURE EXPENSES",
+      "amount": 18.85,
+      "notes": "marty supreme movie ticket",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/6/2026",
+      "dateISO": "2026-01-06",
+      "category": "LIVING EXPENSES",
+      "amount": 8.11,
+      "notes": "Mouth Wash",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/3/2026",
+      "dateISO": "2026-01-03",
+      "category": "LIVING EXPENSES",
+      "amount": 124.17,
+      "notes": "Flakes shampoo / conditioner, serums, beserk volume 12",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/3/2026",
+      "dateISO": "2026-01-03",
+      "category": "GAS EXPENSES",
+      "amount": 30.0,
+      "notes": "Conoco",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/2/2026",
+      "dateISO": "2026-01-02",
+      "category": "LEASURE EXPENSES",
+      "amount": 24.0,
+      "notes": "Cuba Cuba",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/1/2026",
+      "dateISO": "2026-01-01",
+      "category": "LEASURE EXPENSES",
+      "amount": 35.0,
+      "notes": "Park and Co",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/1/2026",
+      "dateISO": "2026-01-01",
+      "category": "LEASURE EXPENSES",
+      "amount": 59.0,
+      "notes": "Calvin Klein",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    },
+    {
+      "date": "1/1/2026",
+      "dateISO": "2026-01-01",
+      "category": "LEASURE EXPENSES",
+      "amount": 18.0,
+      "notes": "Atomic Cowboy",
+      "type": "personal",
+      "direction": "expense",
+      "isRevenue": false
+    }
+  ],
+  "lastFetch": "2026-03-12T23:00:00.000Z"
+}

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<!--
+   ______                            __
+  / ____/___  ____ ___  ____  __  __/ /____  _____
+ / /   / __ \/ __ `__ \/ __ \/ / / / __/ _ \/ ___/
+/ /___/ /_/ / / / / / / /_/ / /_/ / /_/  __/ /
+\____/\____/_/ /_/ /_/ .___/\__,_/\__/\___/_/
+                    /_/
+        Created with Perplexity Computer
+        https://www.perplexity.ai/computer
+-->
+
+<!-- Perplexity Computer Attribution — SEO Meta Tags -->
+<meta name="generator" content="Perplexity Computer">
+<meta name="author" content="Perplexity Computer">
+<meta property="og:see_also" content="https://www.perplexity.ai/computer">
+<link rel="author" href="https://www.perplexity.ai/computer">
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arkives — Creator Partnership CRM</title>
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&f[]=instrument-serif@400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<!-- Loading Animation Overlay -->
+<div class="loader-overlay" id="loaderOverlay">
+  <div class="loader-content">
+    <svg class="loader-box" viewBox="0 -30 120 130" aria-hidden="true">
+      <!-- Box body (bottom) -->
+      <rect class="box-body" x="15" y="48" width="90" height="46" rx="2" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- Box label/handle -->
+      <rect class="box-label" x="42" y="60" width="36" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <!-- Box lid (hinges from back edge) -->
+      <g class="box-lid">
+        <path d="M10 48 L22 28 h76 L110 48 Z" fill="var(--bg-0)" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Lid clasp -->
+        <path d="M52 48 v-5 h16 v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- Red "A" branding on lid -->
+        <path d="M54 40 L60 30 L66 40" fill="none" stroke="#C73539" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
+      <!-- Dust particles that fly out -->
+      <circle class="dust d1" cx="40" cy="46" r="1.5" fill="var(--text-muted)" opacity="0"/>
+      <circle class="dust d2" cx="60" cy="44" r="1.2" fill="var(--text-muted)" opacity="0"/>
+      <circle class="dust d3" cx="80" cy="46" r="1.8" fill="var(--text-muted)" opacity="0"/>
+      <circle class="dust d4" cx="50" cy="45" r="1" fill="var(--text-muted)" opacity="0"/>
+      <circle class="dust d5" cx="70" cy="44" r="1.4" fill="var(--text-muted)" opacity="0"/>
+    </svg>
+    <span class="loader-title">Arkives</span>
+  </div>
+</div>
+
+<div class="dashboard">
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <svg class="sidebar-logo" viewBox="0 0 32 32" width="32" height="32" aria-label="Arkives Logo">
+        <!-- Hand-drawn archive box with stylized "A" -->
+        <path d="M4.5 7.2c.1-.3.4-.5.8-.5h21.5c.4 0 .7.2.8.5l2.2 5.8c.1.2.1.4 0 .6-.2.3-.4.4-.7.4H3c-.3 0-.6-.2-.7-.4-.1-.2-.1-.4 0-.6L4.5 7.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M5.2 14v12.5c0 .5.3.9.8.9h20c.5 0 .8-.4.8-.9V14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M12.5 20.5h7c.4 0 .7.3.7.7v2.1c0 .4-.3.7-.7.7h-7c-.4 0-.7-.3-.7-.7v-2.1c0-.4.3-.7.7-.7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M13.8 7.5L16 3.5l2.2 4" fill="none" stroke="#C73539" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="sidebar-title">Arkives</span>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#dashboard" class="nav-item active" data-view="dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 3.5h7.3v7.1H3.2z"/><path d="M13.6 3.3h7.1v7.3h-7.1z"/><path d="M13.4 13.6h7.3v7.1h-7.3z"/><path d="M3.3 13.4h7.1v7.3H3.3z"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <div class="nav-divider"><span>Main</span></div>
+      <a href="#pipeline" class="nav-item" data-view="pipeline">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.2 6.1h12.5"/><path d="M8 12.2h13.1"/><path d="M8.3 18h12.4"/><circle cx="3.5" cy="6" r="1.2" fill="currentColor"/><circle cx="3.5" cy="12.1" r="1.2" fill="currentColor"/><circle cx="3.5" cy="18.1" r="1.2" fill="currentColor"/></svg>
+        <span>Pipeline</span>
+      </a>
+      <a href="#inbox" class="nav-item" data-view="inbox">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22.1 12.2l-6.1-.1-1.8 3.1h-4.3L8 12.1l-6.1-.1"/><path d="M5.5 5.2L2.1 12v5.9c0 1.2.9 2.1 2 2.1h15.8c1.1 0 2-.9 2-2.1V12L18.5 5.2c-.3-.7-1-.9-1.8-1.1H7.3c-.8.2-1.5.4-1.8 1.1z"/></svg>
+        <span>Inbox</span>
+      </a>
+      <div class="nav-divider"><span>Analytics</span></div>
+      <a href="#revenue" class="nav-item" data-view="revenue">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23.1 6.2l-9.6 9.3-4.8-5.1L1.1 17.8"/><path d="M17.2 6h5.8v5.9"/></svg>
+        <span>Revenue</span>
+      </a>
+      <a href="#mediakit" class="nav-item" data-view="mediakit">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.1 2.2H6.2c-1.2 0-2.1.9-2.1 2v15.8c0 1.1.9 2 2.1 2h11.6c1.2 0 2.1-.9 2.1-2V8.1z"/><path d="M14 2.2v5.9h5.9"/><path d="M15.8 13.1H8.2"/><path d="M15.8 17H8.2"/><path d="M10.1 9.2H8.2"/></svg>
+        <span>Media Kit</span>
+      </a>
+      <a href="#analytics" class="nav-item" data-view="analytics">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.1 20.2V10.1"/><path d="M12 20V4.1"/><path d="M6.1 20.1v-5.9"/></svg>
+        <span>Analytics</span>
+      </a>
+      <div class="nav-divider"><span>Tools</span></div>
+      <a href="#scripts" class="nav-item" data-view="scripts">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.1 3.2h11.8l4 4.1v13.5c0 .6-.5 1.1-1.1 1.1H4.1c-.6 0-1.1-.5-1.1-1.1V4.3c0-.6.5-1.1 1.1-1.1z"/><path d="M7.2 8.1h5.8"/><path d="M7.2 12h9.6"/><path d="M7.2 15.9h9.6"/><path d="M14.1 3.2v5h5"/></svg>
+        <span>Scripts</span>
+      </a>
+      <a href="#contentstudio" class="nav-item" data-view="contentstudio">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.1 19.2l6.8-7.1 3.1 3-7 7.1-2.9-3z"/><path d="M18.1 13L16.5 5.6 2.1 2.1l3.4 14.4 7.6 1.6 5-5.1z"/><path d="M2.1 2.1l7.5 7.6"/><circle cx="11.1" cy="11" r="2.1"/></svg>
+        <span>Content Studio</span>
+      </a>
+      <a href="#contracts" class="nav-item" data-view="contracts">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.1 2.2H6.2c-1.2 0-2.1.9-2.1 2v15.8c0 1.1.9 2 2.1 2h11.6c1.2 0 2.1-.9 2.1-2V8.1z"/><path d="M14 2.2v5.9h5.9"/><path d="M9.1 15.1l2 1.9 3.8-3.9"/></svg>
+        <span>Contracts</span>
+      </a>
+      <a href="#expenses" class="nav-item" data-view="expenses">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.1 4.2h15.8v15.6H4.1z"/><path d="M8.1 8.2h8"/><path d="M8.1 12.1h5.8"/><path d="M12 1.2v3"/><path d="M8 1.2v3"/><path d="M16 1.2v3"/></svg>
+        <span>Expenses</span>
+      </a>
+      <a href="#invoices" class="nav-item" data-view="invoices">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.8 8.1V4.2c0-1.1-.9-2-2-2H6.2c-1.1 0-2 .9-2 2v15.6c0 1.1.9 2 2 2h5.9"/><path d="M8.2 8.1h7.6"/><path d="M8.2 12h4"/><path d="M16.1 18.1l2 2.1 4-4.1"/></svg>
+        <span>Invoices</span>
+      </a>
+      <a href="#calendar" class="nav-item" data-view="calendar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 4.2h17.6c.6 0 1.1.5 1.1 1.1v14.5c0 .6-.5 1.1-1.1 1.1H3.2c-.6 0-1.1-.5-1.1-1.1V5.3c0-.6.5-1.1 1.1-1.1z"/><path d="M16.1 2.1v4.1"/><path d="M8 2.1v4.1"/><path d="M2.1 10.1h19.8"/></svg>
+        <span>Calendar</span>
+      </a>
+      <div class="nav-divider"><span>Settings</span></div>
+      <a href="#settings" class="nav-item" data-view="settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.1"/><path d="M19.5 15.1c.2.6.1 1.3-.3 1.8l.1.1c.8.8.8 2 0 2.8s-2 .8-2.8 0l-.1-.1c-.5.4-1.2.5-1.8.3-.6-.1-1.1-.6-1.2-1.2V18.6c0-1.1-.9-2-2-2h-.1c-1.1 0-2 .9-2 2v.2c-.1.6-.6 1.1-1.2 1.2-.6.2-1.3.1-1.8-.3l-.1.1c-.8.8-2 .8-2.8 0s-.8-2 0-2.8l.1-.1c-.4-.5-.5-1.2-.3-1.8.1-.6.6-1.1 1.2-1.2H4.5c1.1 0 2-.9 2-2v-.1c0-1.1-.9-2-2-2h-.2c-.6-.1-1.1-.6-1.2-1.2-.2-.6-.1-1.3.3-1.8L3.3 6.7c-.8-.8-.8-2 0-2.8s2-.8 2.8 0l.1.1c.5-.4 1.2-.5 1.8-.3.6.1 1.1.6 1.2 1.2v.2c0 1.1.9 2 2 2h.1c1.1 0 2-.9 2-2v-.2c.1-.6.6-1.1 1.2-1.2.6-.2 1.3-.1 1.8.3l.1-.1c.8-.8 2-.8 2.8 0s.8 2 0 2.8l-.1.1c.4.5.5 1.2.3 1.8-.1.6-.6 1.1-1.2 1.2h-.2c-1.1 0-2 .9-2 2v.1c0 1.1.9 2 2 2h.2c.6.1 1.1.6 1.2 1.2z"/></svg>
+        <span>Settings</span>
+      </a>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12.1" cy="12" r="4.8"/><path d="M12.1 1.2v2.1"/><path d="M12 20.8v2.2"/><path d="M4.3 4.3l1.5 1.4"/><path d="M18.2 18.3l1.6 1.5"/><path d="M1.1 12.1h2.2"/><path d="M20.8 12h2.1"/><path d="M4.3 19.8l1.5-1.5"/><path d="M18.3 5.7l1.5-1.4"/></svg>
+        <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.1 12.8A9.1 9.1 0 1 1 11.2 3.1a7.1 7.1 0 0 0 9.9 9.7z"/></svg>
+      </button>
+      <div class="sidebar-user">
+        <div class="avatar">JW</div>
+        <div class="user-info">
+          <span class="user-name">Jordan Watkins</span>
+          <span class="user-label">Jordan's Archives</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Mobile Header -->
+  <header class="mobile-header">
+    <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <span class="mobile-title">Arkives</span>
+  </header>
+
+  <!-- Main Content -->
+  <main class="main" id="mainContent">
+    <!-- Dashboard View -->
+    <section class="view" id="view-dashboard"></section>
+    <!-- Pipeline View -->
+    <section class="view" id="view-pipeline" style="display:none"></section>
+    <!-- Research View -->
+    <section class="view" id="view-research" style="display:none"></section>
+
+    <!-- Revenue View -->
+    <section class="view" id="view-revenue" style="display:none"></section>
+    <!-- Media Kit View -->
+    <section class="view" id="view-mediakit" style="display:none"></section>
+    <!-- Analytics View -->
+    <section class="view" id="view-analytics" style="display:none"></section>
+
+    <!-- Inbox View -->
+    <section class="view" id="view-inbox" style="display:none"></section>
+    <!-- Calendar View -->
+    <section class="view" id="view-calendar" style="display:none"></section>
+    <!-- Settings View -->
+    <section class="view" id="view-settings" style="display:none"></section>
+    <!-- Brand Voice View -->
+    <section class="view" id="view-voice" style="display:none"></section>
+    <!-- Content Studio View -->
+    <section class="view" id="view-scripts" style="display:none"></section>
+
+    <section class="view" id="view-script-editor" style="display:none"></section>
+
+    <section class="view" id="view-shared-script" style="display:none"></section>
+
+    <section class="view" id="view-contentstudio" style="display:none"></section>
+    <!-- Contract Builder View -->
+    <section class="view" id="view-contracts" style="display:none"></section>
+    <!-- Expenses View -->
+    <section class="view" id="view-expenses" style="display:none"></section>
+    <!-- Invoices View -->
+    <section class="view" id="view-invoices" style="display:none"></section>
+
+  </main>
+</div>
+
+<!-- Deal Detail Modal -->
+<div class="modal-overlay" id="dealModal">
+  <div class="modal-content" id="dealModalContent"></div>
+</div>
+
+<!-- Add Deal Modal -->
+<div class="modal-overlay" id="addDealModal">
+  <div class="modal-content modal-form" id="addDealForm"></div>
+</div>
+
+
+<script src="app.js"></script>
+<script src="toolkit-views.js"></script>
+
+</body>
+</html>

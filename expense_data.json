@@ -1,0 +1,88 @@
+{
+  "spreadsheet_id": "13laAHAH0ZoPvuFEoETVWj-y9AoZM33_goosc7qpPVqI",
+  "worksheets": {
+    "personal_journal": {"id": 0, "title": "(P) JOURNAL"},
+    "business_journal": {"id": 1647441220, "title": "(B) JOURNAL"},
+    "net_income": {"id": 1582402711, "title": "NET INCOME"},
+    "reports": {"id": 1845067127, "title": "REPORTS"},
+    "accounts": {"id": 1522000292, "title": "ACCOUNTS"},
+    "personal_subscriptions": {"id": 905270656, "title": "(P) SUBSCRIPTIONS & BILLS"},
+    "business_subscriptions": {"id": 51996994, "title": "(AC) SUBSCRIPTIONS & BILLS"}
+  },
+  "personal_categories": ["LEASURE EXPENSES", "LIVING EXPENSES", "GAS EXPENSES", "GROCERIES EXPENSES", "THERAPY EXPENSE", "OTHER EXPENSES", "OTHER REVENUE", "WORK REVENUE"],
+  "business_categories": ["HARDWARE EXPENSE", "SOFTWARE EXPENSE", "AD EXPENSE", "GENERAL EXPENSE", "WORK REVENUE", "PROGRAM REVENUE", "EMPLOYEE EXPENSE", "TRAVEL EXPENSE"],
+  "net_income_summary": {
+    "2026": {
+      "January":  {"personal_rev": 2165.89, "business_rev": 5891.67, "total_rev": 8057.56, "personal_exp": 4107.64, "business_exp": 1901.89, "total_exp": 6009.53, "personal_pl": -1941.75, "business_pl": 3989.78, "total_pl": 2048.03},
+      "February": {"personal_rev": 7112.18, "business_rev": 5493.97, "total_rev": 12606.15, "personal_exp": 6129.55, "business_exp": 1027.19, "total_exp": 7156.74, "personal_pl": 982.63, "business_pl": 4466.78, "total_pl": 5449.41},
+      "March":    {"personal_rev": 0, "business_rev": 0, "total_rev": 0, "personal_exp": 3162.81, "business_exp": 205.00, "total_exp": 3367.81, "personal_pl": -3162.81, "business_pl": -205.00, "total_pl": -3367.81}
+    },
+    "ytd_totals": {"personal_rev": 9278.07, "total_exp": 16534.08, "business_exp": 3134.08, "personal_pl": -4121.93, "business_pl": 8251.56, "total_pl": 4129.63}
+  },
+  "personal_subscriptions": {
+    "monthly": [
+      {"item": "Phone/Car Insurance", "cost": 200.00},
+      {"item": "Studio Rent & Utilities", "cost": 2000.00},
+      {"item": "Iphone Payment", "cost": 44.00},
+      {"item": "Apple Bill", "cost": 20.00},
+      {"item": "VASA Fitness", "cost": 27.50},
+      {"item": "Health Insurance", "cost": 56.00},
+      {"item": "Dental Insurance", "cost": 11.00},
+      {"item": "Renters Insurance - Lemonade", "cost": 15.17},
+      {"item": "Adobe Monthly Subscription", "cost": 31.00},
+      {"item": "Instagram Verified", "cost": 15.00},
+      {"item": "Crunchy Roll", "cost": 9.00},
+      {"item": "Google Storage", "cost": 3.00},
+      {"item": "Claude", "cost": 20.00},
+      {"item": "Netflix", "cost": 9.99}
+    ],
+    "monthly_total": 2461.66,
+    "yearly": [
+      {"item": "Sleep Cycle APP", "cost": 30.00, "renewal": "October"},
+      {"item": "GoDaddy Domain", "cost": 20.00, "renewal": "November"},
+      {"item": "Amazon Prime", "cost": 72.00, "renewal": "March"},
+      {"item": "Ground News", "cost": 12.00, "renewal": "May"},
+      {"item": "MaxRewards", "cost": 81.00, "renewal": "July"},
+      {"item": "Incogni", "cost": 104.00, "renewal": "July"},
+      {"item": "Wispr Flow", "cost": 144.00, "renewal": "August"}
+    ],
+    "yearly_total": 463.00,
+    "remaining_budget": 1538.34
+  },
+  "business_subscriptions": {
+    "monthly": [
+      {"item": "Quickbooks", "cost": 35.00, "renewal": "18th"},
+      {"item": "Skool (AC)", "cost": 99.00, "renewal": "5th"},
+      {"item": "Google Workspace x4", "cost": 67.20, "renewal": "5th"},
+      {"item": "Business Standard - Google", "cost": 23.00, "renewal": "23rd"},
+      {"item": "X Premium", "cost": 8.00, "renewal": "11th"},
+      {"item": "Google Workspace - jordanss.archives", "cost": 9.99, "renewal": "23rd"},
+      {"item": "GoHighLevel", "cost": 97.00, "renewal": "18th"},
+      {"item": "Eleven Labs", "cost": 5.00, "renewal": "22nd"},
+      {"item": "Skool (VMWJ)", "cost": 99.00},
+      {"item": "Manychat - jordansarchives", "cost": 45.00, "renewal": "19th"},
+      {"item": "Manychat - asteriskcreate", "cost": 25.00, "renewal": "19th"},
+      {"item": "HiggsField.ai", "cost": 49.00, "renewal": "27th"},
+      {"item": "Gusto x 3 contractors", "cost": 18.00}
+    ],
+    "monthly_total": 580.19,
+    "labor": [
+      {"name": "Ethan Chene - Video Editor", "role": "Contractor"},
+      {"name": "Jordan Watkins - Founder", "salary": 4000.00}
+    ],
+    "unexpected_budget": 500.00,
+    "total_monthly_cost": 5660.38,
+    "yearly": [
+      {"item": "CleanMyMac", "cost": 34.99, "renewal": "April"},
+      {"item": "Squarespace: AsteriskCreate", "cost": 273.00, "renewal": "March"},
+      {"item": "Squarespace: Hand Drawn Animator", "cost": 179.00, "renewal": "February"},
+      {"item": "Godaddy Domain - Asteriskcreate.com", "cost": 12.17, "renewal": "February"},
+      {"item": "Godaddy Domain - jordanwatkins.xyz", "cost": 11.00, "renewal": "February"},
+      {"item": "Ad Blocker - Paddle.com", "cost": 40.00, "renewal": "May"}
+    ],
+    "yearly_total": 550.16,
+    "mrr_revenue_minimum": 8708.28
+  },
+  "monthly_budget": 4000.00,
+  "yearly_budget": 48000.00
+}
