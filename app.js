@@ -1163,8 +1163,9 @@ function navigate(view) {
 }
 
 window.addEventListener("hashchange", function() {
-  // Don't navigate until data is loaded
-  if (CREATOR.name || DEALS.length > 0) navigate(getHash());
+  // Only navigate if the app shell is visible (user is authenticated)
+  var appEl = document.getElementById('appShell');
+  if (appEl && appEl.style.display !== 'none') navigate(getHash());
 });
 
 /* ---- THEME ---- */
