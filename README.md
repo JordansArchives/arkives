@@ -4,8 +4,8 @@ A self-contained, Supabase-backed web application for managing brand deals, invo
 
 **Owner:** Jordan Watkins ([@jordans.archivess](https://instagram.com/jordans.archivess))  
 **Entity:** Asterisk LLC  
-**Domain:** `arkives.creator` (planned)  
-**Status:** Active development — migrating to fully self-hosted on Cloudflare Pages
+**Domain:** [arkives.xyz](https://arkives.xyz)  
+**Status:** Live on Cloudflare Pages (auto-deploys from GitHub)
 
 ---
 
@@ -75,7 +75,7 @@ archiveboard/
 |---------|-------|
 | Project URL | `https://wqblmehsqcmsdstyweus.supabase.co` |
 | Anon Key | `sb_publishable_jYnmjabjsjkfnBvo1Eii0g_c3aKkCf2` |
-| Auth | Email/password, `persistSession: false` (iframe compat) |
+| Auth | Email/password, `persistSession: true` |
 | RLS | Enabled on all tables, anon policies for now |
 
 ### Database Tables (25+)
@@ -213,21 +213,13 @@ Every data type has Supabase-connected CRUD:
 ## Self-Hosting Plan (Cloudflare Pages)
 
 ### Prerequisites
-1. Register domain `arkives.creator` (or similar)
-2. Add domain to Cloudflare
-3. Create a new GitHub repo (e.g., `JordansArchives/arkives`)
-4. Push this project to the repo
+Domain `arkives.xyz` is live on Cloudflare Pages, auto-deploying from this repo.
 
-### Deploy Steps
-1. Cloudflare Dashboard → Workers & Pages → Create → Pages
-2. Connect to GitHub → select the repo
-3. Build settings: no build command, output directory = `/`
-4. Add custom domain: `arkives.creator`
-5. Enable `persistSession: true` in app.js once on own domain (no iframe restriction)
+### Supabase Auth Config
+Add `https://arkives.xyz` to the allowed redirect URLs in:
+[Supabase Auth Settings](https://supabase.com/dashboard/project/wqblmehsqcmsdstyweus/auth/url-configuration)
 
-### Post-Deploy
-- Sessions will persist across page reloads (re-enable in Supabase config)
-- Set up Supabase Auth redirect URL to `https://arkives.creator`
+### Remaining
 - Update RLS policies from anon → authenticated user-scoped
 
 ---
