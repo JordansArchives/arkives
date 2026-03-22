@@ -4,7 +4,7 @@ A self-contained, Supabase-backed web application for managing brand deals, invo
 
 **Owner:** Jordan Watkins ([@jordans.archivess](https://instagram.com/jordans.archivess))  
 **Entity:** Asterisk LLC  
-**Domain:** `arkives.creator` (planned) — currently deployed via Perplexity Computer  
+**Domain:** `arkives.creator` (planned)  
 **Status:** Active development — migrating to fully self-hosted on Cloudflare Pages
 
 ---
@@ -253,7 +253,6 @@ Every data type has Supabase-connected CRUD:
 - Don't add framework dependencies
 - Don't use `localStorage` directly — use `safeGet()`/`safeSet()`
 - Don't hardcode data — everything comes from Supabase
-- Don't remove the Perplexity Computer attribution (required)
 
 ### Key Areas for Future Work
 1. **Inline editing** — make every data section (deals, follow-ups, action items, etc.) editable in-place with Supabase persistence
