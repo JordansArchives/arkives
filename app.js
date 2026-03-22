@@ -111,9 +111,9 @@ try {
   if (typeof supabase !== 'undefined' && supabase.createClient) {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
       }
     });
     console.log('Supabase client created successfully');
