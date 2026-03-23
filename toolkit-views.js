@@ -629,9 +629,87 @@ function renderAnglesTab(el) {
 }
 
 /* ---- RENDER: CONTRACT BUILDER ---- */
+/* ---- CONTRACT DEFAULTS (persisted to Supabase user_settings) ---- */
+var CONTRACT_DEFAULTS = {
+  creatorEntity: 'Asterisk LLC',
+  creatorDBA: 'Asterisk LLC',
+  creatorTitle: 'Managing Member',
+  creatorState: 'Colorado',
+  revisionExtraCost: 500,
+  paidMediaFloor: 5000,
+  crossPostFee: 30,
+  nonDisparagement: 6,
+  mediationDays: 30,
+  contentExclusions: 'raw footage, outtakes, drafts, behind-the-scenes material, working files',
+  invoiceMethod: 'email',
+  paymentMethod: 'wire transfer or ACH',
+  approvalConsequence: 'approval of the Content as delivered',
+  forceMajeureDays: 30
+};
+
+/* Load contract defaults from Supabase on init */
+async function loadContractDefaults() {
+  if (typeof _sb === 'undefined' || !_sb || typeof CREATOR === 'undefined' || !CREATOR._sbId) return;
+  try {
+    var res = await _sb.from('user_settings').select('*').eq('user_id', CREATOR._sbId).eq('key', 'contract_defaults').maybeSingle();
+    if (res.data && res.data.value) {
+      try {
+        var saved = JSON.parse(res.data.value);
+        Object.assign(CONTRACT_DEFAULTS, saved);
+      } catch(e) { /* ignore parse errors */ }
+    }
+  } catch(e) { console.warn('loadContractDefaults:', e); }
+}
+
+async function saveContractDefaults() {
+  if (typeof _sb === 'undefined' || !_sb || typeof CREATOR === 'undefined' || !CREATOR._sbId) return;
+  // Read values from the settings form
+  var fields = {
+    creatorEntity: 'cdEntity', creatorDBA: 'cdDBA', creatorTitle: 'cdTitle',
+    creatorState: 'cdState', contentExclusions: 'cdExclusions',
+    invoiceMethod: 'cdInvoiceMethod', paymentMethod: 'cdPaymentMethod',
+    approvalConsequence: 'cdApprovalConsequence'
+  };
+  var numFields = {
+    revisionExtraCost: 'cdRevCost', paidMediaFloor: 'cdPaidFloor',
+    crossPostFee: 'cdCrossPost', nonDisparagement: 'cdNonDisp',
+    mediationDays: 'cdMedDays', forceMajeureDays: 'cdFMDays'
+  };
+  for (var k in fields) {
+    var el = document.getElementById(fields[k]);
+    if (el) CONTRACT_DEFAULTS[k] = el.value.trim();
+  }
+  for (var k2 in numFields) {
+    var el2 = document.getElementById(numFields[k2]);
+    if (el2) CONTRACT_DEFAULTS[k2] = Number(el2.value) || 0;
+  }
+  try {
+    await _sb.from('user_settings').upsert({
+      user_id: CREATOR._sbId, key: 'contract_defaults',
+      value: JSON.stringify(CONTRACT_DEFAULTS)
+    }, { onConflict: 'user_id,key' });
+    showToast('Contract defaults saved');
+  } catch(e) {
+    console.error('saveContractDefaults:', e);
+    showToast('Failed to save defaults');
+  }
+}
+
+function toggleContractDefaults() {
+  var panel = document.getElementById('contractDefaultsPanel');
+  var arrow = document.getElementById('contractDefaultsArrow');
+  if (!panel) return;
+  var isOpen = panel.style.display !== 'none';
+  panel.style.display = isOpen ? 'none' : 'block';
+  if (arrow) arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+}
+
 function renderContracts() {
   const container = document.getElementById("view-contracts");
   const today = new Date().toISOString().split('T')[0];
+
+  // Load defaults from Supabase (async, will be ready for next generate)
+  loadContractDefaults();
 
   // Build deliverable options from RATE_CARD if available
   const deliverableOptions = (() => {
@@ -669,6 +747,83 @@ function renderContracts() {
         <h1 class="view-title">Contract Builder</h1>
         <p class="view-subtitle">Generate professional partnership agreements from your template</p>
       </div>
+    </div>
+
+    <!-- Contract Defaults Settings (collapsible) -->
+    <div class="contract-defaults-toggle" onclick="toggleContractDefaults()">
+      <svg id="contractDefaultsArrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s;vertical-align:-1px;margin-right:6px;"><polyline points="6 9 12 15 18 9"/></svg>
+      Contract Defaults
+    </div>
+    <div id="contractDefaultsPanel" class="contract-defaults-panel" style="display:none;">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Creator Entity Name</label>
+          <input type="text" id="cdEntity" value="${CONTRACT_DEFAULTS.creatorEntity}" placeholder="Asterisk LLC">
+        </div>
+        <div class="form-group">
+          <label>Doing Business As (DBA)</label>
+          <input type="text" id="cdDBA" value="${CONTRACT_DEFAULTS.creatorDBA}" placeholder="Asterisk LLC">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Signing Title</label>
+          <input type="text" id="cdTitle" value="${CONTRACT_DEFAULTS.creatorTitle}" placeholder="Managing Member">
+        </div>
+        <div class="form-group">
+          <label>Home State</label>
+          <input type="text" id="cdState" value="${CONTRACT_DEFAULTS.creatorState}" placeholder="Colorado">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Extra Revision Cost ($)</label>
+          <input type="number" id="cdRevCost" value="${CONTRACT_DEFAULTS.revisionExtraCost}">
+        </div>
+        <div class="form-group">
+          <label>Paid Media Floor ($/mo)</label>
+          <input type="number" id="cdPaidFloor" value="${CONTRACT_DEFAULTS.paidMediaFloor}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Cross-Post Fee (%)</label>
+          <input type="number" id="cdCrossPost" value="${CONTRACT_DEFAULTS.crossPostFee}">
+        </div>
+        <div class="form-group">
+          <label>Non-Disparagement (months)</label>
+          <input type="number" id="cdNonDisp" value="${CONTRACT_DEFAULTS.nonDisparagement}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Mediation Period (days)</label>
+          <input type="number" id="cdMedDays" value="${CONTRACT_DEFAULTS.mediationDays}">
+        </div>
+        <div class="form-group">
+          <label>Force Majeure Termination (days)</label>
+          <input type="number" id="cdFMDays" value="${CONTRACT_DEFAULTS.forceMajeureDays}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Content Definition Exclusions</label>
+        <input type="text" id="cdExclusions" value="${CONTRACT_DEFAULTS.contentExclusions}" placeholder="raw footage, outtakes, drafts...">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Invoice Method</label>
+          <input type="text" id="cdInvoiceMethod" value="${CONTRACT_DEFAULTS.invoiceMethod}" placeholder="email">
+        </div>
+        <div class="form-group">
+          <label>Payment Method</label>
+          <input type="text" id="cdPaymentMethod" value="${CONTRACT_DEFAULTS.paymentMethod}" placeholder="wire transfer or ACH">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Approval Consequence (if client misses deadline)</label>
+        <input type="text" id="cdApprovalConsequence" value="${CONTRACT_DEFAULTS.approvalConsequence}" placeholder="approval of the Content as delivered">
+      </div>
+      <button class="btn btn-secondary" onclick="saveContractDefaults()" style="margin-top:8px;">Save Defaults</button>
     </div>
 
     <div class="contract-builder">
@@ -979,8 +1134,27 @@ function togglePerfFields() {
 /* ---- CONTRACT: Gather all form data ---- */
 function gatherContractData() {
   const v = (id, fallback) => (document.getElementById(id)?.value || '').trim() || fallback || '';
+  // Read latest values from the defaults panel (if open) before gathering
+  var cdEl = document.getElementById('cdEntity');
+  if (cdEl) {
+    CONTRACT_DEFAULTS.creatorEntity = cdEl.value.trim() || CONTRACT_DEFAULTS.creatorEntity;
+    CONTRACT_DEFAULTS.creatorDBA = (document.getElementById('cdDBA')?.value || '').trim() || CONTRACT_DEFAULTS.creatorDBA;
+    CONTRACT_DEFAULTS.creatorTitle = (document.getElementById('cdTitle')?.value || '').trim() || CONTRACT_DEFAULTS.creatorTitle;
+    CONTRACT_DEFAULTS.creatorState = (document.getElementById('cdState')?.value || '').trim() || CONTRACT_DEFAULTS.creatorState;
+    CONTRACT_DEFAULTS.revisionExtraCost = Number(document.getElementById('cdRevCost')?.value) || CONTRACT_DEFAULTS.revisionExtraCost;
+    CONTRACT_DEFAULTS.paidMediaFloor = Number(document.getElementById('cdPaidFloor')?.value) || CONTRACT_DEFAULTS.paidMediaFloor;
+    CONTRACT_DEFAULTS.crossPostFee = Number(document.getElementById('cdCrossPost')?.value) || CONTRACT_DEFAULTS.crossPostFee;
+    CONTRACT_DEFAULTS.nonDisparagement = Number(document.getElementById('cdNonDisp')?.value) || CONTRACT_DEFAULTS.nonDisparagement;
+    CONTRACT_DEFAULTS.mediationDays = Number(document.getElementById('cdMedDays')?.value) || CONTRACT_DEFAULTS.mediationDays;
+    CONTRACT_DEFAULTS.contentExclusions = (document.getElementById('cdExclusions')?.value || '').trim() || CONTRACT_DEFAULTS.contentExclusions;
+    CONTRACT_DEFAULTS.invoiceMethod = (document.getElementById('cdInvoiceMethod')?.value || '').trim() || CONTRACT_DEFAULTS.invoiceMethod;
+    CONTRACT_DEFAULTS.paymentMethod = (document.getElementById('cdPaymentMethod')?.value || '').trim() || CONTRACT_DEFAULTS.paymentMethod;
+    CONTRACT_DEFAULTS.approvalConsequence = (document.getElementById('cdApprovalConsequence')?.value || '').trim() || CONTRACT_DEFAULTS.approvalConsequence;
+    CONTRACT_DEFAULTS.forceMajeureDays = Number(document.getElementById('cdFMDays')?.value) || CONTRACT_DEFAULTS.forceMajeureDays;
+  }
+
   const creatorName = (typeof CREATOR !== 'undefined' && CREATOR.name) ? CREATOR.name : 'Jordan Watkins';
-  const creatorEntity = (typeof CREATOR !== 'undefined' && CREATOR.entity) ? CREATOR.entity : 'Asterisk LLC';
+  const creatorEntity = CONTRACT_DEFAULTS.creatorEntity;
   const creatorEmail = (typeof CREATOR !== 'undefined' && CREATOR.email) ? CREATOR.email : '';
 
   const platforms = Array.from(document.querySelectorAll('.cPlatformCheck:checked')).map(cb => cb.value);
@@ -1064,7 +1238,7 @@ function buildContractSections(d) {
   sections.push({
     num: null, title: 'CONTENT CREATOR PARTNERSHIP AGREEMENT', body:
     `This Content Creator Partnership Agreement ("Agreement") is entered into as of <strong>${dateFormatted}</strong> ("Effective Date"), by and between:\n\n` +
-    `<strong>${d.creatorEntity}</strong> ("Creator"), a Colorado limited liability company operated by ${d.creatorName}, doing business as @jordans.archives` +
+    `<strong>${d.creatorEntity}</strong> ("Creator"), a ${CONTRACT_DEFAULTS.creatorState} limited liability company operated by ${d.creatorName}, doing business as ${CONTRACT_DEFAULTS.creatorDBA}` +
     (d.creatorEmail ? `, email: ${d.creatorEmail}` : '') + `;\n\n` +
     `and\n\n` +
     `<strong>${d.brand}</strong> ("Client"), represented by ${d.contact}, ${d.contactTitle}` +
@@ -1083,7 +1257,7 @@ function buildContractSections(d) {
     `<strong>Quantity:</strong> ${d.numDeliverables} deliverable${d.numDeliverables > 1 ? 's' : ''}\n` +
     `<strong>Platform(s):</strong> ${platformList}\n` +
     `<strong>Campaign:</strong> "${d.campaign}"\n\n` +
-    `"Content" means the final, published ${d.deliverable} delivered by Creator under this Agreement, including the visual, audio, and textual elements as posted on Creator's channel(s). Content does not include raw footage, outtakes, drafts, behind-the-scenes material, or any other material not included in the final published deliverable.\n\n` +
+    `"Content" means the final, published ${d.deliverable} delivered by Creator under this Agreement, including the visual, audio, and textual elements as posted on Creator's channel(s). Content does not include ${CONTRACT_DEFAULTS.contentExclusions}, or any other material not included in the final published deliverable.\n\n` +
     `"Paid Media" means boosted posts, sponsored ads, dark posts, paid social campaigns, display advertising, and any distribution requiring media spend, regardless of the platform.`
   });
 
@@ -1103,24 +1277,24 @@ function buildContractSections(d) {
     `<strong>Performance Cap:</strong> ${fmt(d.perfCap)} per deliverable.`;
   }
   compBody += `\n\n<strong>Payment Terms:</strong> ${d.payTerms}.\n\n` +
-    `Creator shall submit invoices via email. Payment shall be made by wire transfer or ACH. Client shall be responsible for any applicable processing fees.\n\n` +
+    `Creator shall submit invoices via ${CONTRACT_DEFAULTS.invoiceMethod}. Payment shall be made by ${CONTRACT_DEFAULTS.paymentMethod}. Client shall be responsible for any applicable processing fees.\n\n` +
     `Creator is an independent contractor and is not entitled to any employee benefits, including but not limited to health insurance, retirement plans, or paid time off.`;
   sections.push({ num: 3, title: 'COMPENSATION', body: compBody });
 
   // 4. CONTENT LICENSING & USAGE RIGHTS
   let licBody = `Client receives a non-exclusive license to reshare and repost the Content organically for a period of <strong>${d.license.text}</strong> following initial publication, limited to the platform(s) specified herein.`;
   if (d.paidAd === 'none' || d.paidAd === 'separate') {
-    licBody += `\n\nPaid media rights (boosted posts, dark posts, paid social, display advertising) require a <strong>separate written agreement</strong> with a minimum floor of <strong>$5,000 per month</strong>. No paid media usage is authorized under this Agreement.`;
+    licBody += `\n\nPaid media rights (boosted posts, dark posts, paid social, display advertising) require a <strong>separate written agreement</strong> with a minimum floor of <strong>$${CONTRACT_DEFAULTS.paidMediaFloor.toLocaleString()} per month</strong>. No paid media usage is authorized under this Agreement.`;
   } else {
     licBody += `\n\nPaid media rights are included in the compensation above for the duration of the license period.`;
   }
-  licBody += `\n\nCross-posting fees: Any reuse of Content on platforms not originally specified shall incur an additional fee of 30% of the base rate per additional platform.`;
+  licBody += `\n\nCross-posting fees: Any reuse of Content on platforms not originally specified shall incur an additional fee of ${CONTRACT_DEFAULTS.crossPostFee}% of the base rate per additional platform.`;
   sections.push({ num: 4, title: 'CONTENT LICENSING & USAGE RIGHTS', body: licBody });
 
   // 5. INTELLECTUAL PROPERTY
   sections.push({ num: 5, title: 'INTELLECTUAL PROPERTY', body:
     `Creator retains full intellectual property rights and copyright to all Content created under this Agreement. This is not a work-for-hire arrangement, and no assignment of copyright is made.\n\n` +
-    `"Content" as defined herein explicitly excludes raw footage, outtakes, drafts, behind-the-scenes material, working files, and any material not included in the final published deliverable. Creator retains all rights to such excluded materials.\n\n` +
+    `"Content" as defined herein explicitly excludes ${CONTRACT_DEFAULTS.contentExclusions}, and any material not included in the final published deliverable. Creator retains all rights to such excluded materials.\n\n` +
     `Client receives only the specific license rights granted in Section 4 above. Any use beyond those rights requires prior written consent from Creator.`
   });
 
@@ -1138,8 +1312,8 @@ function buildContractSections(d) {
 
   // 7. REVISIONS & APPROVAL
   sections.push({ num: 7, title: 'REVISIONS & APPROVAL', body:
-    `Creator shall provide up to <strong>${d.revisions} (${numberToWord(d.revisions)})</strong> round${d.revisions > 1 ? 's' : ''} of revisions per deliverable at no additional cost. Additional revisions beyond this scope shall be billed at <strong>$500 per round</strong>.\n\n` +
-    `Client shall provide feedback or approval within <strong>${d.approvalHrs} hours</strong> of receiving Content for review. Failure to respond within this period shall constitute approval of the Content as delivered.\n\n` +
+    `Creator shall provide up to <strong>${d.revisions} (${numberToWord(d.revisions)})</strong> round${d.revisions > 1 ? 's' : ''} of revisions per deliverable at no additional cost. Additional revisions beyond this scope shall be billed at <strong>$${CONTRACT_DEFAULTS.revisionExtraCost.toLocaleString()} per round</strong>.\n\n` +
+    `Client shall provide feedback or approval within <strong>${d.approvalHrs} hours</strong> of receiving Content for review. Failure to respond within this period shall constitute ${CONTRACT_DEFAULTS.approvalConsequence}.\n\n` +
     `Revision requests must be specific, actionable, and consistent with the original brief. Requests that materially change the scope of the deliverable may be treated as new work and quoted separately.`
   });
 
@@ -1184,20 +1358,20 @@ function buildContractSections(d) {
 
   // 14. NON-DISPARAGEMENT
   sections.push({ num: 14, title: 'NON-DISPARAGEMENT', body:
-    `During the Term and for a period of six (6) months following termination or expiration of this Agreement, neither party shall make any public statements or communications that disparage, defame, or cast in a negative light the other party, its products, services, officers, directors, or employees.\n\n` +
-    `This obligation sunsets automatically six (6) months after the termination or expiration of this Agreement.`
+    `During the Term and for a period of ${CONTRACT_DEFAULTS.nonDisparagement} (${numberToWord(CONTRACT_DEFAULTS.nonDisparagement)}) months following termination or expiration of this Agreement, neither party shall make any public statements or communications that disparage, defame, or cast in a negative light the other party, its products, services, officers, directors, or employees.\n\n` +
+    `This obligation sunsets automatically ${CONTRACT_DEFAULTS.nonDisparagement} (${numberToWord(CONTRACT_DEFAULTS.nonDisparagement)}) months after the termination or expiration of this Agreement.`
   });
 
   // 15. DISPUTE RESOLUTION
   sections.push({ num: 15, title: 'DISPUTE RESOLUTION', body:
-    `Any dispute arising out of or relating to this Agreement shall first be submitted to good-faith mediation in ${d.govLaw}. If mediation fails to resolve the dispute within thirty (30) days, either party may pursue binding arbitration in ${d.govLaw} under the rules of the American Arbitration Association.\n\n` +
+    `Any dispute arising out of or relating to this Agreement shall first be submitted to good-faith mediation in ${d.govLaw}. If mediation fails to resolve the dispute within ${CONTRACT_DEFAULTS.mediationDays} (${numberToWord(CONTRACT_DEFAULTS.mediationDays)}) days, either party may pursue binding arbitration in ${d.govLaw} under the rules of the American Arbitration Association.\n\n` +
     `Each party shall bear its own costs of mediation and arbitration. The prevailing party in any arbitration shall be entitled to recover reasonable attorneys' fees from the non-prevailing party.`
   });
 
   // 16. FORCE MAJEURE
   sections.push({ num: 16, title: 'FORCE MAJEURE', body:
     `Neither party shall be liable for any failure or delay in performance under this Agreement due to causes beyond its reasonable control, including but not limited to natural disasters, pandemics, government actions, internet outages, platform policy changes, acts of war or terrorism, or other force majeure events.\n\n` +
-    `The affected party shall provide prompt written notice and make reasonable efforts to mitigate the impact. If a force majeure event continues for more than thirty (30) days, either party may terminate this Agreement without penalty.`
+    `The affected party shall provide prompt written notice and make reasonable efforts to mitigate the impact. If a force majeure event continues for more than ${CONTRACT_DEFAULTS.forceMajeureDays} (${numberToWord(CONTRACT_DEFAULTS.forceMajeureDays)}) days, either party may terminate this Agreement without penalty.`
   });
 
   // 17. GOVERNING LAW
@@ -1244,7 +1418,7 @@ function generateContract() {
             <div class="contract-sig-party">
               <p class="contract-sig-entity">${s.creatorEntity}</p>
               <div class="contract-sig-line"></div>
-              <p class="contract-sig-label">By: ${s.creatorName}, Managing Member</p>
+              <p class="contract-sig-label">By: ${s.creatorName}, ${CONTRACT_DEFAULTS.creatorTitle}</p>
               <div class="contract-sig-line"></div>
               <p class="contract-sig-label">Date</p>
             </div>

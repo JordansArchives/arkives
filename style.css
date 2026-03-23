@@ -4992,3 +4992,80 @@ a.mk-platform-link:hover {
   align-items: center;
   gap: 10px;
 }
+
+/* ---- Contract Defaults Settings Panel ---- */
+.contract-defaults-toggle {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-1);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 0;
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.contract-defaults-toggle:hover {
+  background: var(--bg-2);
+}
+
+.contract-defaults-panel {
+  background: var(--bg-1);
+  border: 1.5px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.contract-defaults-panel .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.contract-defaults-panel .form-group {
+  margin-bottom: 8px;
+}
+
+.contract-defaults-panel label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 4px;
+  display: block;
+}
+
+.contract-defaults-panel input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
+.contract-defaults-panel input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(199,53,57,0.08);
+}
+
+@media (max-width: 640px) {
+  .contract-defaults-panel .form-row {
+    grid-template-columns: 1fr;
+  }
+}
