@@ -749,85 +749,85 @@ function renderContracts() {
       </div>
     </div>
 
-    <!-- Contract Defaults Settings (collapsible) -->
-    <div class="contract-defaults-toggle" onclick="toggleContractDefaults()">
-      <svg id="contractDefaultsArrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s;vertical-align:-1px;margin-right:6px;"><polyline points="6 9 12 15 18 9"/></svg>
-      Contract Defaults
-    </div>
-    <div id="contractDefaultsPanel" class="contract-defaults-panel" style="display:none;">
-      <div class="form-row">
-        <div class="form-group">
-          <label>Creator Entity Name</label>
-          <input type="text" id="cdEntity" value="${CONTRACT_DEFAULTS.creatorEntity}" placeholder="Asterisk LLC">
-        </div>
-        <div class="form-group">
-          <label>Doing Business As (DBA)</label>
-          <input type="text" id="cdDBA" value="${CONTRACT_DEFAULTS.creatorDBA}" placeholder="Asterisk LLC">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Signing Title</label>
-          <input type="text" id="cdTitle" value="${CONTRACT_DEFAULTS.creatorTitle}" placeholder="Managing Member">
-        </div>
-        <div class="form-group">
-          <label>Home State</label>
-          <input type="text" id="cdState" value="${CONTRACT_DEFAULTS.creatorState}" placeholder="Colorado">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Extra Revision Cost ($)</label>
-          <input type="number" id="cdRevCost" value="${CONTRACT_DEFAULTS.revisionExtraCost}">
-        </div>
-        <div class="form-group">
-          <label>Paid Media Floor ($/mo)</label>
-          <input type="number" id="cdPaidFloor" value="${CONTRACT_DEFAULTS.paidMediaFloor}">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Cross-Post Fee (%)</label>
-          <input type="number" id="cdCrossPost" value="${CONTRACT_DEFAULTS.crossPostFee}">
-        </div>
-        <div class="form-group">
-          <label>Non-Disparagement (months)</label>
-          <input type="number" id="cdNonDisp" value="${CONTRACT_DEFAULTS.nonDisparagement}">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Mediation Period (days)</label>
-          <input type="number" id="cdMedDays" value="${CONTRACT_DEFAULTS.mediationDays}">
-        </div>
-        <div class="form-group">
-          <label>Force Majeure Termination (days)</label>
-          <input type="number" id="cdFMDays" value="${CONTRACT_DEFAULTS.forceMajeureDays}">
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Content Definition Exclusions</label>
-        <input type="text" id="cdExclusions" value="${CONTRACT_DEFAULTS.contentExclusions}" placeholder="raw footage, outtakes, drafts...">
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Invoice Method</label>
-          <input type="text" id="cdInvoiceMethod" value="${CONTRACT_DEFAULTS.invoiceMethod}" placeholder="email">
-        </div>
-        <div class="form-group">
-          <label>Payment Method</label>
-          <input type="text" id="cdPaymentMethod" value="${CONTRACT_DEFAULTS.paymentMethod}" placeholder="wire transfer or ACH">
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Approval Consequence (if client misses deadline)</label>
-        <input type="text" id="cdApprovalConsequence" value="${CONTRACT_DEFAULTS.approvalConsequence}" placeholder="approval of the Content as delivered">
-      </div>
-      <button class="btn btn-secondary" onclick="saveContractDefaults()" style="margin-top:8px;">Save Defaults</button>
-    </div>
-
     <div class="contract-builder">
       <div class="contract-form">
+
+        <!-- Contract Settings (collapsible, inside form column only) -->
+        <div class="contract-defaults-toggle" onclick="toggleContractDefaults()">
+          <svg id="contractDefaultsArrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s;vertical-align:-1px;margin-right:6px;"><polyline points="6 9 12 15 18 9"/></svg>
+          Contract Settings
+        </div>
+        <div id="contractDefaultsPanel" class="contract-defaults-panel" style="display:none;">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Creator Entity Name</label>
+              <input type="text" id="cdEntity" value="${CONTRACT_DEFAULTS.creatorEntity}" placeholder="Asterisk LLC">
+            </div>
+            <div class="form-group">
+              <label>Doing Business As (DBA)</label>
+              <input type="text" id="cdDBA" value="${CONTRACT_DEFAULTS.creatorDBA}" placeholder="Asterisk LLC">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Signing Title</label>
+              <input type="text" id="cdTitle" value="${CONTRACT_DEFAULTS.creatorTitle}" placeholder="Managing Member">
+            </div>
+            <div class="form-group">
+              <label>Home State</label>
+              <input type="text" id="cdState" value="${CONTRACT_DEFAULTS.creatorState}" placeholder="Colorado">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Extra Revision Cost ($)</label>
+              <input type="number" id="cdRevCost" value="${CONTRACT_DEFAULTS.revisionExtraCost}">
+            </div>
+            <div class="form-group">
+              <label>Paid Media Floor ($/mo)</label>
+              <input type="number" id="cdPaidFloor" value="${CONTRACT_DEFAULTS.paidMediaFloor}">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Cross-Post Fee (%)</label>
+              <input type="number" id="cdCrossPost" value="${CONTRACT_DEFAULTS.crossPostFee}">
+            </div>
+            <div class="form-group">
+              <label>Non-Disparagement (months)</label>
+              <input type="number" id="cdNonDisp" value="${CONTRACT_DEFAULTS.nonDisparagement}">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Mediation Period (days)</label>
+              <input type="number" id="cdMedDays" value="${CONTRACT_DEFAULTS.mediationDays}">
+            </div>
+            <div class="form-group">
+              <label>Force Majeure Termination (days)</label>
+              <input type="number" id="cdFMDays" value="${CONTRACT_DEFAULTS.forceMajeureDays}">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Content Definition Exclusions</label>
+            <input type="text" id="cdExclusions" value="${CONTRACT_DEFAULTS.contentExclusions}" placeholder="raw footage, outtakes, drafts...">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Invoice Method</label>
+              <input type="text" id="cdInvoiceMethod" value="${CONTRACT_DEFAULTS.invoiceMethod}" placeholder="email">
+            </div>
+            <div class="form-group">
+              <label>Payment Method</label>
+              <input type="text" id="cdPaymentMethod" value="${CONTRACT_DEFAULTS.paymentMethod}" placeholder="wire transfer or ACH">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Approval Consequence (if client misses deadline)</label>
+            <input type="text" id="cdApprovalConsequence" value="${CONTRACT_DEFAULTS.approvalConsequence}" placeholder="approval of the Content as delivered">
+          </div>
+          <button class="btn btn-secondary" onclick="saveContractDefaults()" style="margin-top:8px;">Save Defaults</button>
+        </div>
 
         ${dealOpts ? `
         <div class="form-group contract-form-section">
@@ -1049,43 +1049,7 @@ function renderContracts() {
       </div>
     </div>
 
-    <div class="card mt-3">
-      <div class="card-header"><span class="card-title">Negotiation Checklist</span></div>
-      <div class="card-body">
-        <div class="checklist-grid">
-          ${typeof CONTRACT_RULES !== 'undefined' && CONTRACT_RULES.length ? `
-          <div class="check-group">
-            <h4>Contract Rules</h4>
-            ${CONTRACT_RULES.map(r => `<div class="checklist-item">${r.rule}</div>`).join('')}
-          </div>
-          ` : `
-          <div class="check-group">
-            <h4>Must-Haves</h4>
-            <div class="checklist-item">Sign as Asterisk LLC (not Jordan individually)</div>
-            <div class="checklist-item">"Content" defined explicitly — excludes raw footage, outtakes</div>
-            <div class="checklist-item">Creator retains full IP/copyright</div>
-            <div class="checklist-item">2 revision rounds max</div>
-            <div class="checklist-item">Kill fee: 50% standard, 100% on breach</div>
-          </div>
-          <div class="check-group">
-            <h4>Protect</h4>
-            <div class="checklist-item">Paid media = separate agreement + $5K floor</div>
-            <div class="checklist-item">Organic reshare expires 90 days post-term</div>
-            <div class="checklist-item">Non-disparagement sunset: 6 months max</div>
-            <div class="checklist-item">Dispute resolution: Mediation in Colorado</div>
-            <div class="checklist-item">FTC disclosure required on all content</div>
-          </div>
-          <div class="check-group">
-            <h4>Negotiate Up</h4>
-            <div class="checklist-item">Performance bonus structure ($/1K views above threshold)</div>
-            <div class="checklist-item">Multi-month retainer for recurring deals</div>
-            <div class="checklist-item">Cross-posting fees (+30% per additional platform)</div>
-            <div class="checklist-item">Rush delivery surcharge (+25-50%)</div>
-          </div>
-          `}
-        </div>
-      </div>
-    </div>
+
   `;
 }
 
