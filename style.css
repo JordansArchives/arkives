@@ -2337,29 +2337,147 @@ a.mk-platform-link:hover {
 }
 .contract-form .form-group { margin-bottom: 14px; }
 .contract-form .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.contract-form-heading {
+  font-family: var(--font-display, 'Instrument Serif', Georgia, serif);
+  font-size: 18px;
+  font-weight: 700;
+  margin: 8px 0 16px;
+  color: var(--text-primary);
+}
+.contract-divider {
+  border: none;
+  border-top: 2px solid var(--border);
+  margin: 20px 0;
+}
+.contract-platform-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.contract-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.contract-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
 .contract-preview {
   background: var(--bg-2);
   border: 2px solid var(--border);
   padding: 20px;
   position: sticky;
   top: 0;
+  max-height: 90vh;
+  overflow-y: auto;
 }
-.contract-preview h4 {
-  font-family: var(--font-display);
-  font-size: 16px;
+.contract-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 14px;
   padding-bottom: 8px;
   border-bottom: 2px solid var(--border);
 }
+.contract-preview-header h4 {
+  font-family: var(--font-display, 'Instrument Serif', Georgia, serif);
+  font-size: 16px;
+  margin: 0;
+}
 .contract-preview-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 16px;
+  gap: 6px;
 }
 .contract-actions {
   display: flex;
   gap: 8px;
+  margin-top: 20px;
+}
+
+/* --- Contract Document (styled preview) --- */
+.contract-document {
+  background: var(--bg-0);
+  border: 2px solid var(--border);
+  padding: 32px 28px;
+  font-family: var(--font-body, 'DM Sans', sans-serif);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+.contract-doc-title {
+  font-family: var(--font-display, 'Instrument Serif', Georgia, serif);
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--text-primary);
+  margin: 0 0 24px;
+  padding-bottom: 16px;
+  border-bottom: 3px solid var(--border);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.contract-section {
+  margin-bottom: 20px;
+}
+.contract-section-heading {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.contract-section-num {
+  color: var(--accent, #c73539);
+  margin-right: 4px;
+}
+.contract-section-body {
+  color: var(--text-secondary);
+}
+.contract-section-body p {
+  margin: 0 0 10px;
+}
+.contract-section-body p:last-child { margin-bottom: 0; }
+.contract-section-body strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* Signature block */
+.contract-sig-block {
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 3px solid var(--border);
+}
+.contract-sig-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 40px;
   margin-top: 16px;
+}
+.contract-sig-party { }
+.contract-sig-entity {
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+}
+.contract-sig-line {
+  border-bottom: 1px solid var(--text-muted);
+  margin-bottom: 6px;
+  min-height: 28px;
+}
+.contract-sig-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
 }
 
 /* --- Proposal --- */
@@ -4055,6 +4173,10 @@ a.mk-platform-link:hover {
   .detail-grid { grid-template-columns: 1fr; }
   .expense-modal { padding: 20px; margin: 10px; }
   .txn-row { grid-template-columns: 60px 1fr auto; gap: 8px; }
+  .contract-document { padding: 20px 16px; font-size: 12px; }
+  .contract-sig-row { grid-template-columns: 1fr; gap: 24px; }
+  .contract-preview { max-height: none; position: static; }
+  .contract-form .form-row { grid-template-columns: 1fr; gap: 10px; }
   .weekly-board {
     grid-template-columns: repeat(7, minmax(90px, 1fr));
     overflow-x: auto;

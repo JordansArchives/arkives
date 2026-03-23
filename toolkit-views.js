@@ -631,15 +631,61 @@ function renderAnglesTab(el) {
 /* ---- RENDER: CONTRACT BUILDER ---- */
 function renderContracts() {
   const container = document.getElementById("view-contracts");
+  const today = new Date().toISOString().split('T')[0];
+
+  // Build deliverable options from RATE_CARD if available
+  const deliverableOptions = (() => {
+    const items = [];
+    if (typeof RATE_CARD !== 'undefined') {
+      ['organic', 'ugc', 'tiktok', 'youtube'].forEach(cat => {
+        if (RATE_CARD[cat]) RATE_CARD[cat].forEach(r => {
+          if (r.name && !items.find(i => i.name === r.name)) items.push({ name: r.name, rate: r.rate || 0 });
+        });
+      });
+    }
+    if (!items.length) {
+      return [
+        { name: 'Instagram Reels', rate: 15000 }, { name: 'Instagram Static / Carousel', rate: 8000 },
+        { name: 'Instagram Stories', rate: 5000 }, { name: 'UGC Video (30s)', rate: 3000 },
+        { name: 'UGC Video (60s)', rate: 5000 }, { name: 'YouTube Integration', rate: 20000 },
+        { name: 'YouTube Dedicated Video', rate: 35000 }, { name: 'TikTok Video', rate: 12000 }
+      ];
+    }
+    return items;
+  })();
+
+  // Build deal options for pre-fill dropdown
+  const dealOpts = (typeof DEALS !== 'undefined' && DEALS.length)
+    ? DEALS.map((d, i) => `<option value="${i}">${d.brand || 'Untitled'} — ${d.campaign || d.scope || 'No campaign'}</option>`).join('')
+    : '';
+
+  const platformCheckboxes = ['Instagram', 'TikTok', 'YouTube', 'X (Twitter)', 'LinkedIn'].map(p =>
+    `<label class="contract-checkbox"><input type="checkbox" value="${p}" class="cPlatformCheck"${p === 'Instagram' ? ' checked' : ''}> ${p}</label>`
+  ).join('');
+
   container.innerHTML = `
     <div class="view-header">
       <div>
         <h1 class="view-title">Contract Builder</h1>
-        <p class="view-subtitle">Generate partnership contracts from your template</p>
+        <p class="view-subtitle">Generate professional partnership agreements from your template</p>
       </div>
     </div>
+
     <div class="contract-builder">
       <div class="contract-form">
+
+        ${dealOpts ? `
+        <div class="form-group contract-form-section">
+          <label>Load from Existing Deal</label>
+          <select id="cLoadDeal" onchange="prefillContractFromDeal()">
+            <option value="">— Select a deal to pre-fill —</option>
+            ${dealOpts}
+          </select>
+        </div>
+        <hr class="contract-divider">
+        ` : ''}
+
+        <h3 class="contract-form-heading">Parties</h3>
         <div class="form-row">
           <div class="form-group">
             <label>Brand Legal Name</label>
@@ -656,36 +702,64 @@ function renderContracts() {
             <input type="text" id="cContact" placeholder="e.g., Sarah Johnson">
           </div>
           <div class="form-group">
-            <label>Agreement Date</label>
-            <input type="date" id="cDate" value="${new Date().toISOString().split('T')[0]}">
+            <label>Contact Title</label>
+            <input type="text" id="cContactTitle" placeholder="e.g., VP of Marketing">
           </div>
         </div>
         <div class="form-group">
-          <label>Brand Description</label>
-          <input type="text" id="cBrandDesc" placeholder="e.g., a leading AI-powered creative tool platform">
+          <label>Contact Email</label>
+          <input type="email" id="cContactEmail" placeholder="e.g., sarah@acme.com">
         </div>
+        <div class="form-group">
+          <label>Brand Address (Street)</label>
+          <input type="text" id="cBrandStreet" placeholder="e.g., 123 Market St, Suite 400">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>City</label>
+            <input type="text" id="cBrandCity" placeholder="e.g., San Francisco">
+          </div>
+          <div class="form-group">
+            <label>State</label>
+            <input type="text" id="cBrandState" placeholder="e.g., CA">
+          </div>
+        </div>
+        <div class="form-group" style="max-width:200px;">
+          <label>Zip Code</label>
+          <input type="text" id="cBrandZip" placeholder="e.g., 94105">
+        </div>
+        <div class="form-group">
+          <label>Agreement Date</label>
+          <input type="date" id="cDate" value="${today}">
+        </div>
+
+        <hr class="contract-divider">
+        <h3 class="contract-form-heading">Deal</h3>
         <div class="form-group">
           <label>Campaign Name</label>
           <input type="text" id="cCampaign" placeholder="e.g., AI Sustainability for Creatives">
         </div>
         <div class="form-group">
-          <label>Campaign Context (optional Whereas clause)</label>
-          <textarea id="cContext" rows="2" placeholder="e.g., both parties agree that the campaign will position tools as instruments that support the creative process"></textarea>
+          <label>Campaign Description / Context</label>
+          <textarea id="cContext" rows="3" placeholder="Describe the campaign goals, context, and any special terms…"></textarea>
         </div>
         <div class="form-row">
           <div class="form-group">
             <label>Deliverable Type</label>
-            <select id="cDeliverable">
-              <option value="Instagram Reels">Instagram Reels</option>
-              <option value="Instagram Static / Carousel">Instagram Static / Carousel</option>
-              <option value="Instagram Stories">Instagram Stories</option>
-              <option value="UGC Video (30s)">UGC Video (30s)</option>
-              <option value="UGC Video (60s)">UGC Video (60s)</option>
-              <option value="YouTube Integration">YouTube Integration</option>
-              <option value="YouTube Dedicated Video">YouTube Dedicated Video</option>
-              <option value="TikTok Video">TikTok Video</option>
+            <select id="cDeliverable" onchange="contractDeliverableChanged()">
+              ${deliverableOptions.map(d => `<option value="${d.name}" data-rate="${d.rate}">${d.name}</option>`).join('')}
             </select>
           </div>
+          <div class="form-group">
+            <label>Number of Deliverables</label>
+            <input type="number" id="cNumDeliverables" value="1" min="1">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Platform(s)</label>
+          <div class="contract-platform-checks">${platformCheckboxes}</div>
+        </div>
+        <div class="form-row">
           <div class="form-group">
             <label>Compensation Model</label>
             <select id="cCompModel" onchange="togglePerfFields()">
@@ -693,20 +767,19 @@ function renderContracts() {
               <option value="performance">Performance-Based</option>
             </select>
           </div>
-        </div>
-        <div class="form-row">
           <div class="form-group">
             <label>Base Amount ($)</label>
             <input type="number" id="cAmount" placeholder="15000" value="15000">
           </div>
-          <div class="form-group">
-            <label>Payment Terms</label>
-            <select id="cPayTerms">
-              <option value="50% on brief approval, 50% on delivery">50/50 Split</option>
-              <option value="NET 30 from delivery">NET 30</option>
-              <option value="100% upfront before production begins">100% Upfront</option>
-            </select>
-          </div>
+        </div>
+        <div class="form-group">
+          <label>Payment Terms</label>
+          <select id="cPayTerms">
+            <option value="50/50">50% on brief approval, 50% on delivery</option>
+            <option value="NET30">NET 30 from delivery</option>
+            <option value="100UP">100% upfront before production begins</option>
+            <option value="custom">Custom (specify in notes)</option>
+          </select>
         </div>
         <div id="perfFields" style="display:none">
           <div class="form-row">
@@ -730,42 +803,93 @@ function renderContracts() {
             </div>
           </div>
         </div>
+
+        <hr class="contract-divider">
+        <h3 class="contract-form-heading">Rights & Terms</h3>
         <div class="form-row">
           <div class="form-group">
             <label>Content License Duration</label>
             <select id="cLicense">
-              <option value="30 days organic (2 platforms)">30 days organic (included)</option>
-              <option value="90 days organic (+25% base rate)">90 days (+25%)</option>
-              <option value="6 months organic (+50% base rate)">6 months (+50%)</option>
-              <option value="Perpetual (minimum 3x base)">Perpetual (3x base)</option>
+              <option value="30">30 days organic</option>
+              <option value="90">90 days organic (+25%)</option>
+              <option value="180">6 months organic (+50%)</option>
+              <option value="perpetual">Perpetual (3x base)</option>
             </select>
           </div>
+          <div class="form-group">
+            <label>Paid Ad Rights</label>
+            <select id="cPaidAd">
+              <option value="none">None — separate agreement required</option>
+              <option value="included">Included in fee</option>
+              <option value="separate">Separate agreement ($5K/mo floor)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
           <div class="form-group">
             <label>Exclusivity</label>
             <select id="cExcl">
               <option value="none">None</option>
-              <option value="30 days (+20% base rate)">30 days (+20%)</option>
-              <option value="60 days (+35% base rate)">60 days (+35%)</option>
-              <option value="90 days (+50% base rate)">90 days (+50%)</option>
+              <option value="30">30 days (+20%)</option>
+              <option value="60">60 days (+35%)</option>
+              <option value="90">90 days (+50%)</option>
             </select>
           </div>
+          <div class="form-group">
+            <label>Term / Duration</label>
+            <input type="text" id="cTerm" placeholder="e.g., 3 months from first content publish">
+          </div>
         </div>
-        <div class="form-group">
-          <label>Term / Duration</label>
-          <input type="text" id="cTerm" placeholder="e.g., 3 months from first content publish">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Governing Law State</label>
+            <input type="text" id="cGovLaw" value="Colorado">
+          </div>
+          <div class="form-group">
+            <label>Revision Rounds</label>
+            <input type="number" id="cRevisions" value="2" min="1">
+          </div>
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Approval Timeline (hours)</label>
+            <input type="number" id="cApprovalHrs" value="48" min="24" step="24">
+          </div>
+          <div class="form-group">
+            <label>Kill Fee — Standard (%)</label>
+            <input type="number" id="cKillStd" value="50" min="0" max="100">
+          </div>
+        </div>
+        <div class="form-group" style="max-width:200px;">
+          <label>Kill Fee — Breach (%)</label>
+          <input type="number" id="cKillBreach" value="100" min="0" max="100">
+        </div>
+
         <div class="contract-actions">
-          <button class="btn btn-primary" onclick="generateContract()">Generate Contract</button>
+          <button class="btn btn-primary" onclick="generateContract()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            Generate Contract
+          </button>
           <button class="btn btn-secondary" onclick="generateNegotiationNotes()">AI Negotiation Notes</button>
         </div>
       </div>
+
       <div class="contract-preview">
-        <h4>Contract Preview</h4>
-        <div id="contractPreviewContent" class="preview-content">
-          <p class="text-muted">Fill in the form and click "Generate Contract" to preview</p>
+        <div class="contract-preview-header">
+          <h4>Contract Preview</h4>
+          <div class="contract-preview-actions">
+            <button class="btn btn-sm btn-secondary" onclick="copyContractPreview()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><rect x="9" y="9" width="13" height="13" rx="1"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+            <button class="btn btn-sm btn-primary" onclick="downloadContractPDF()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              PDF
+            </button>
+          </div>
         </div>
-        <div class="contract-preview-actions mt-2">
-          <button class="btn btn-secondary" onclick="copyContractPreview()">Copy to Clipboard</button>
+        <div id="contractPreviewContent" class="preview-content">
+          <p class="text-muted" style="text-align:center;padding:40px 20px;">Fill in the form and click "Generate Contract" to preview your agreement</p>
         </div>
       </div>
     </div>
@@ -774,6 +898,12 @@ function renderContracts() {
       <div class="card-header"><span class="card-title">Negotiation Checklist</span></div>
       <div class="card-body">
         <div class="checklist-grid">
+          ${typeof CONTRACT_RULES !== 'undefined' && CONTRACT_RULES.length ? `
+          <div class="check-group">
+            <h4>Contract Rules</h4>
+            ${CONTRACT_RULES.map(r => `<div class="checklist-item">${r.rule}</div>`).join('')}
+          </div>
+          ` : `
           <div class="check-group">
             <h4>Must-Haves</h4>
             <div class="checklist-item">Sign as Asterisk LLC (not Jordan individually)</div>
@@ -797,196 +927,635 @@ function renderContracts() {
             <div class="checklist-item">Cross-posting fees (+30% per additional platform)</div>
             <div class="checklist-item">Rush delivery surcharge (+25-50%)</div>
           </div>
+          `}
         </div>
       </div>
     </div>
   `;
 }
 
+/* ---- CONTRACT: Pre-fill from Deal ---- */
+function prefillContractFromDeal() {
+  const sel = document.getElementById('cLoadDeal');
+  const idx = parseInt(sel.value, 10);
+  if (isNaN(idx) || !DEALS[idx]) return;
+  const d = DEALS[idx];
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+  setVal('cBrandName', d.brand);
+  setVal('cBrandShort', d.brand);
+  setVal('cContact', d.contact);
+  setVal('cContactEmail', d.email);
+  setVal('cCampaign', d.campaign || d.scope);
+  setVal('cContext', d.notes);
+  setVal('cTerm', d.term);
+  if (d.value) setVal('cAmount', d.value);
+  if (d.deliverables) {
+    const delSel = document.getElementById('cDeliverable');
+    for (let i = 0; i < delSel.options.length; i++) {
+      if (d.deliverables.toLowerCase().includes(delSel.options[i].value.toLowerCase())) {
+        delSel.selectedIndex = i; break;
+      }
+    }
+  }
+  showToast('Deal loaded: ' + d.brand);
+}
+
+/* ---- CONTRACT: Update amount hint when deliverable changes ---- */
+function contractDeliverableChanged() {
+  const sel = document.getElementById('cDeliverable');
+  const opt = sel.options[sel.selectedIndex];
+  const rate = opt.getAttribute('data-rate');
+  if (rate && Number(rate) > 0) {
+    document.getElementById('cAmount').placeholder = Number(rate).toLocaleString();
+  }
+}
+
+/* ---- CONTRACT: Toggle performance fields ---- */
 function togglePerfFields() {
   document.getElementById("perfFields").style.display =
     document.getElementById("cCompModel").value === "performance" ? "block" : "none";
 }
 
-function generateContract() {
-  const brand = document.getElementById("cBrandName").value || "[BRAND LEGAL NAME]";
-  const brandShort = document.getElementById("cBrandShort").value || "[BRAND]";
-  const contact = document.getElementById("cContact").value || "[CONTACT NAME]";
-  const date = document.getElementById("cDate").value || "[DATE]";
-  const brandDesc = document.getElementById("cBrandDesc").value || "[BRAND DESCRIPTION]";
-  const campaign = document.getElementById("cCampaign").value || "[CAMPAIGN NAME]";
-  const context = document.getElementById("cContext").value;
-  const deliverable = document.getElementById("cDeliverable").value;
-  const compModel = document.getElementById("cCompModel").value;
-  const amount = document.getElementById("cAmount").value || "[AMOUNT]";
-  const payTerms = document.getElementById("cPayTerms").value;
-  const license = document.getElementById("cLicense").value;
-  const excl = document.getElementById("cExcl").value;
-  const term = document.getElementById("cTerm").value || "[TERM]";
+/* ---- CONTRACT: Gather all form data ---- */
+function gatherContractData() {
+  const v = (id, fallback) => (document.getElementById(id)?.value || '').trim() || fallback || '';
+  const creatorName = (typeof CREATOR !== 'undefined' && CREATOR.name) ? CREATOR.name : 'Jordan Watkins';
+  const creatorEntity = (typeof CREATOR !== 'undefined' && CREATOR.entity) ? CREATOR.entity : 'Asterisk LLC';
+  const creatorEmail = (typeof CREATOR !== 'undefined' && CREATOR.email) ? CREATOR.email : '';
 
-  let compSection = "";
-  if (compModel === "flat") {
-    compSection = `Compensation: $${Number(amount).toLocaleString()} USD per deliverable, provided that all agreed deliverables are completed in full and on time.\n\nPayment terms: ${payTerms}.`;
-  } else {
-    const metric = document.getElementById("cPerfMetric").value || "Instagram Reel Plays";
-    const rate = document.getElementById("cPerfRate").value || "30";
-    const threshold = document.getElementById("cPerfThreshold").value || "500,000";
-    const cap = document.getElementById("cPerfCap").value || "35,000";
-    compSection = `Base Rate: $${Number(amount).toLocaleString()} USD per deliverable.\n\nPerformance Bonus: $${rate} per 1,000 ${metric} above ${Number(threshold).toLocaleString()}, measured 14 days after publication.\n\nPerformance cap: $${Number(cap).toLocaleString()} per deliverable.\n\nPayment terms: ${payTerms}.`;
-  }
+  const platforms = Array.from(document.querySelectorAll('.cPlatformCheck:checked')).map(cb => cb.value);
 
-  const whereasContext = context ? `\nWhereas, ${context};\n` : "";
+  const payTermsMap = {
+    '50/50': '50% upon brief approval and 50% upon final delivery of all Content',
+    'NET30': 'NET 30 days from delivery of final Content',
+    '100UP': '100% upfront before production begins',
+    'custom': 'As mutually agreed upon in writing'
+  };
 
-  const contract = `CONTENT CREATOR PARTNERSHIP AGREEMENT
+  const licenseMap = {
+    '30': { text: 'thirty (30) days', label: '30 days' },
+    '90': { text: 'ninety (90) days', label: '90 days' },
+    '180': { text: 'six (6) months', label: '6 months' },
+    'perpetual': { text: 'perpetuity', label: 'Perpetual' }
+  };
 
-This Agreement is entered into as of ${date}, by and between:
+  const exclMap = {
+    'none': null,
+    '30': { text: 'thirty (30) days', label: '30 days' },
+    '60': { text: 'sixty (60) days', label: '60 days' },
+    '90': { text: 'ninety (90) days', label: '90 days' }
+  };
 
-Asterisk LLC ("Creator"), a Colorado limited liability company operated by
-Jordan Watkins, doing business as @jordans.archives;
+  const licenseVal = v('cLicense', '30');
+  const exclVal = v('cExcl', 'none');
 
-and
-
-${brand} ("${brandShort}"), represented by ${contact}.
-
-Whereas, Creator is a content production company with an established audience
-and expertise in visual storytelling, video production, and creative education;
-
-Whereas, ${brandShort} is ${brandDesc};
-${whereasContext}
-Now, therefore, in consideration of the mutual promises and obligations set
-forth herein, and for other good and valuable consideration, the receipt and
-sufficiency of which are hereby acknowledged, the parties agree as follows:
-
-
-1. OVERVIEW
-
-The parties agree to collaborate on "${campaign}".
-
-1.1 Definitions
-
-"Content" means the final, published ${deliverable} delivered by Creator under
-this Agreement, including the visual, audio, and textual elements as posted on
-Creator's channel(s). Content does not include raw footage, outtakes, drafts,
-behind-the-scenes material, or any other material not included in the final
-published deliverable.
-
-"Paid Media" means boosted posts, sponsored ads, dark posts, paid social
-campaigns, display advertising, and any distribution requiring media spend,
-regardless of the platform.
-
-"Term" means the period beginning on the date the first Content is published
-and continuing for ${term}.
-
-
-2. COMPENSATION
-
-${compSection}
-
-
-3. CONTENT LICENSING
-
-${license}.
-
-Paid ad rights require a separate written agreement with a minimum floor of
-$5,000 per month.
-
-
-4. EXCLUSIVITY
-
-${excl === "none" ? "No exclusivity period applies to this Agreement." : `Exclusivity period: ${excl}. During this period, Creator will not publish organic content promoting a direct competitor of ${brandShort} on the same platform(s).`}
-
-
-5. INTELLECTUAL PROPERTY
-
-Creator retains full intellectual property rights and copyright to all Content.
-${brandShort} receives a license to reshare Content organically for 90 days
-following the end of the Term.
-
-
-6. REVISIONS AND APPROVAL
-
-Creator will provide up to two (2) rounds of revisions per deliverable.
-Additional revisions beyond this scope will be billed at $500 per round.
-
-
-7. CANCELLATION AND KILL FEE
-
-If ${brandShort} cancels this Agreement after Creator has begun production:
-- Standard cancellation: 50% of the total Agreement value is due.
-- Cancellation due to ${brandShort}'s breach: 100% of the total Agreement value.
-
-
-8. FTC DISCLOSURE
-
-All Content will include appropriate FTC-compliant disclosures as required by
-the Federal Trade Commission, including but not limited to "ad", "sponsored",
-or "paid partnership" designations.
-
-
-9. DISPUTE RESOLUTION
-
-Any disputes arising from this Agreement will first be submitted to mediation
-in Colorado before either party may pursue litigation.
-
-
-10. NON-DISPARAGEMENT
-
-The non-disparagement obligation shall sunset six (6) months after the
-termination or expiration of this Agreement.
-
-
-AGREED AND ACCEPTED:
-
-Asterisk LLC
-By: Jordan Watkins, Managing Member
-Date: _______________
-
-
-${brand}
-By: ${contact}
-Title: _______________
-Date: _______________`;
-
-  document.getElementById("contractPreviewContent").innerHTML = `<pre class="contract-text">${contract}</pre>`;
+  return {
+    brand: v('cBrandName', '[BRAND LEGAL NAME]'),
+    brandShort: v('cBrandShort', '[BRAND]'),
+    contact: v('cContact', '[CONTACT NAME]'),
+    contactTitle: v('cContactTitle', '[TITLE]'),
+    contactEmail: v('cContactEmail', ''),
+    brandStreet: v('cBrandStreet', '[ADDRESS]'),
+    brandCity: v('cBrandCity', '[CITY]'),
+    brandState: v('cBrandState', '[STATE]'),
+    brandZip: v('cBrandZip', '[ZIP]'),
+    date: v('cDate', '[DATE]'),
+    campaign: v('cCampaign', '[CAMPAIGN NAME]'),
+    context: v('cContext', ''),
+    deliverable: v('cDeliverable', 'Instagram Reels'),
+    numDeliverables: parseInt(v('cNumDeliverables', '1'), 10) || 1,
+    platforms: platforms.length ? platforms : ['Instagram'],
+    compModel: v('cCompModel', 'flat'),
+    amount: Number(v('cAmount', '15000')) || 15000,
+    payTermsKey: v('cPayTerms', '50/50'),
+    payTerms: payTermsMap[v('cPayTerms', '50/50')] || payTermsMap['50/50'],
+    perfMetric: v('cPerfMetric', 'Instagram Reel Plays'),
+    perfRate: Number(v('cPerfRate', '30')) || 30,
+    perfThreshold: Number(v('cPerfThreshold', '500000')) || 500000,
+    perfCap: Number(v('cPerfCap', '35000')) || 35000,
+    license: licenseMap[licenseVal] || licenseMap['30'],
+    licenseKey: licenseVal,
+    paidAd: v('cPaidAd', 'none'),
+    excl: exclMap[exclVal],
+    exclKey: exclVal,
+    term: v('cTerm', '[TERM]'),
+    govLaw: v('cGovLaw', 'Colorado'),
+    revisions: parseInt(v('cRevisions', '2'), 10) || 2,
+    approvalHrs: parseInt(v('cApprovalHrs', '48'), 10) || 48,
+    killStd: parseInt(v('cKillStd', '50'), 10),
+    killBreach: parseInt(v('cKillBreach', '100'), 10),
+    creatorName,
+    creatorEntity,
+    creatorEmail
+  };
 }
 
+/* ---- CONTRACT: Build all 20 sections as array ---- */
+function buildContractSections(d) {
+  const fmt = n => '$' + Number(n).toLocaleString();
+  const totalComp = d.amount * d.numDeliverables;
+  const platformList = d.platforms.join(', ');
+  const brandAddr = [d.brandStreet, d.brandCity, d.brandState, d.brandZip].filter(Boolean).join(', ');
+  const dateFormatted = d.date !== '[DATE]' ? new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '[DATE]';
+
+  const sections = [];
+
+  // PREAMBLE
+  sections.push({
+    num: null, title: 'CONTENT CREATOR PARTNERSHIP AGREEMENT', body:
+    `This Content Creator Partnership Agreement ("Agreement") is entered into as of <strong>${dateFormatted}</strong> ("Effective Date"), by and between:\n\n` +
+    `<strong>${d.creatorEntity}</strong> ("Creator"), a Colorado limited liability company operated by ${d.creatorName}, doing business as @jordans.archives` +
+    (d.creatorEmail ? `, email: ${d.creatorEmail}` : '') + `;\n\n` +
+    `and\n\n` +
+    `<strong>${d.brand}</strong> ("Client"), represented by ${d.contact}, ${d.contactTitle}` +
+    (d.contactEmail ? `, email: ${d.contactEmail}` : '') +
+    (brandAddr && brandAddr !== '[ADDRESS], [CITY], [STATE], [ZIP]' ? `, address: ${brandAddr}` : '') + `.\n\n` +
+    `Whereas, Creator is a content production company with an established audience and expertise in visual storytelling, video production, and creative education;\n\n` +
+    `Whereas, ${d.brandShort} desires to engage Creator for the creation of original content promoting ${d.brandShort}'s products and services;` +
+    (d.context ? `\n\nWhereas, ${d.context};` : '') +
+    `\n\nNow, therefore, in consideration of the mutual promises and obligations set forth herein, and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the parties agree as follows:`
+  });
+
+  // 1. SCOPE OF WORK
+  sections.push({ num: 1, title: 'SCOPE OF WORK', body:
+    `Creator shall produce and deliver the following content as further described in Exhibit A:\n\n` +
+    `<strong>Deliverable:</strong> ${d.deliverable}\n` +
+    `<strong>Quantity:</strong> ${d.numDeliverables} deliverable${d.numDeliverables > 1 ? 's' : ''}\n` +
+    `<strong>Platform(s):</strong> ${platformList}\n` +
+    `<strong>Campaign:</strong> "${d.campaign}"\n\n` +
+    `"Content" means the final, published ${d.deliverable} delivered by Creator under this Agreement, including the visual, audio, and textual elements as posted on Creator's channel(s). Content does not include raw footage, outtakes, drafts, behind-the-scenes material, or any other material not included in the final published deliverable.\n\n` +
+    `"Paid Media" means boosted posts, sponsored ads, dark posts, paid social campaigns, display advertising, and any distribution requiring media spend, regardless of the platform.`
+  });
+
+  // 2. TERM
+  sections.push({ num: 2, title: 'TERM', body:
+    `This Agreement shall commence on the Effective Date and continue for <strong>${d.term}</strong> ("Term"), unless terminated earlier in accordance with the provisions herein.\n\n` +
+    `The Term begins on the date the first Content is published and continues for the specified duration. Either party may terminate this Agreement at the end of the Term by providing written notice at least fifteen (15) days prior to expiration.`
+  });
+
+  // 3. COMPENSATION
+  let compBody = '';
+  if (d.compModel === 'flat') {
+    compBody = `Client shall pay Creator a flat rate of <strong>${fmt(d.amount)} USD</strong> per deliverable, for a total of <strong>${fmt(totalComp)} USD</strong> for all ${d.numDeliverables} deliverable${d.numDeliverables > 1 ? 's' : ''}, provided that all agreed deliverables are completed in full and on time.`;
+  } else {
+    compBody = `<strong>Base Rate:</strong> ${fmt(d.amount)} USD per deliverable (${fmt(totalComp)} total for ${d.numDeliverables} deliverable${d.numDeliverables > 1 ? 's' : ''}).\n\n` +
+    `<strong>Performance Bonus:</strong> ${fmt(d.perfRate)} per 1,000 ${d.perfMetric} above ${d.perfThreshold.toLocaleString()}, measured fourteen (14) days after publication.\n\n` +
+    `<strong>Performance Cap:</strong> ${fmt(d.perfCap)} per deliverable.`;
+  }
+  compBody += `\n\n<strong>Payment Terms:</strong> ${d.payTerms}.\n\n` +
+    `Creator shall submit invoices via email. Payment shall be made by wire transfer or ACH. Client shall be responsible for any applicable processing fees.\n\n` +
+    `Creator is an independent contractor and is not entitled to any employee benefits, including but not limited to health insurance, retirement plans, or paid time off.`;
+  sections.push({ num: 3, title: 'COMPENSATION', body: compBody });
+
+  // 4. CONTENT LICENSING & USAGE RIGHTS
+  let licBody = `Client receives a non-exclusive license to reshare and repost the Content organically for a period of <strong>${d.license.text}</strong> following initial publication, limited to the platform(s) specified herein.`;
+  if (d.paidAd === 'none' || d.paidAd === 'separate') {
+    licBody += `\n\nPaid media rights (boosted posts, dark posts, paid social, display advertising) require a <strong>separate written agreement</strong> with a minimum floor of <strong>$5,000 per month</strong>. No paid media usage is authorized under this Agreement.`;
+  } else {
+    licBody += `\n\nPaid media rights are included in the compensation above for the duration of the license period.`;
+  }
+  licBody += `\n\nCross-posting fees: Any reuse of Content on platforms not originally specified shall incur an additional fee of 30% of the base rate per additional platform.`;
+  sections.push({ num: 4, title: 'CONTENT LICENSING & USAGE RIGHTS', body: licBody });
+
+  // 5. INTELLECTUAL PROPERTY
+  sections.push({ num: 5, title: 'INTELLECTUAL PROPERTY', body:
+    `Creator retains full intellectual property rights and copyright to all Content created under this Agreement. This is not a work-for-hire arrangement, and no assignment of copyright is made.\n\n` +
+    `"Content" as defined herein explicitly excludes raw footage, outtakes, drafts, behind-the-scenes material, working files, and any material not included in the final published deliverable. Creator retains all rights to such excluded materials.\n\n` +
+    `Client receives only the specific license rights granted in Section 4 above. Any use beyond those rights requires prior written consent from Creator.`
+  });
+
+  // 6. EXCLUSIVITY
+  if (d.excl) {
+    sections.push({ num: 6, title: 'EXCLUSIVITY', body:
+      `During the Term and for a period of <strong>${d.excl.text}</strong> following publication of the final Content, Creator agrees not to publish organic content promoting a direct competitor of Client on the same platform(s) specified in this Agreement.\n\n` +
+      `"Direct competitor" is limited to companies offering substantially similar products or services in the same market category. This exclusivity does not restrict Creator from general content creation, other brand partnerships in unrelated categories, or personal content.`
+    });
+  } else {
+    sections.push({ num: 6, title: 'EXCLUSIVITY', body:
+      `No exclusivity period applies to this Agreement. Creator is free to engage with other brands, including competitors of Client, at any time during and after the Term.`
+    });
+  }
+
+  // 7. REVISIONS & APPROVAL
+  sections.push({ num: 7, title: 'REVISIONS & APPROVAL', body:
+    `Creator shall provide up to <strong>${d.revisions} (${numberToWord(d.revisions)})</strong> round${d.revisions > 1 ? 's' : ''} of revisions per deliverable at no additional cost. Additional revisions beyond this scope shall be billed at <strong>$500 per round</strong>.\n\n` +
+    `Client shall provide feedback or approval within <strong>${d.approvalHrs} hours</strong> of receiving Content for review. Failure to respond within this period shall constitute approval of the Content as delivered.\n\n` +
+    `Revision requests must be specific, actionable, and consistent with the original brief. Requests that materially change the scope of the deliverable may be treated as new work and quoted separately.`
+  });
+
+  // 8. CANCELLATION & KILL FEE
+  sections.push({ num: 8, title: 'CANCELLATION & KILL FEE', body:
+    `If Client cancels this Agreement after Creator has begun production:\n\n` +
+    `<strong>Standard cancellation:</strong> ${d.killStd}% of the total Agreement value (${fmt(totalComp * d.killStd / 100)}) is due within fifteen (15) days of cancellation notice.\n\n` +
+    `<strong>Cancellation due to Client's breach:</strong> ${d.killBreach}% of the total Agreement value (${fmt(totalComp * d.killBreach / 100)}) is due immediately.\n\n` +
+    `In either case, Creator retains all rights to any completed or in-progress work, and Client's license to use such work is revoked.`
+  });
+
+  // 9. FTC DISCLOSURE
+  sections.push({ num: 9, title: 'FTC DISCLOSURE', body:
+    `All Content shall include appropriate FTC-compliant disclosures as required by the Federal Trade Commission Endorsement Guides, including but not limited to clear and conspicuous use of "#ad", "sponsored", "paid partnership", or equivalent designations.\n\n` +
+    `For video Content, disclosures must be stated verbally within the first thirty (30) seconds and displayed on-screen. Disclosures must be visible without requiring the viewer to click "more" or expand any truncated text.\n\n` +
+    `Client shall not request, encourage, or require Creator to omit, obscure, or minimize any FTC-required disclosure.`
+  });
+
+  // 10. CONFIDENTIALITY
+  sections.push({ num: 10, title: 'CONFIDENTIALITY', body:
+    `Each party agrees to keep confidential all non-public information shared by the other party in connection with this Agreement, including but not limited to campaign strategy, pricing, creative briefs, performance data, and business terms.\n\n` +
+    `This obligation does not apply to information that: (a) is or becomes publicly available through no fault of the receiving party; (b) was known to the receiving party prior to disclosure; (c) is independently developed by the receiving party; or (d) is required to be disclosed by law or legal process.`
+  });
+
+  // 11. LIMITATION OF LIABILITY
+  sections.push({ num: 11, title: 'LIMITATION OF LIABILITY', body:
+    `Neither party shall be liable to the other for any indirect, incidental, special, consequential, or punitive damages arising out of or related to this Agreement, regardless of the cause of action or theory of liability.\n\n` +
+    `Each party's total aggregate liability under this Agreement shall not exceed the total compensation payable hereunder.`
+  });
+
+  // 12. INDEMNIFICATION
+  sections.push({ num: 12, title: 'INDEMNIFICATION', body:
+    `Each party shall indemnify, defend, and hold harmless the other party from and against any third-party claims, damages, losses, and expenses (including reasonable attorneys' fees) arising from: (a) the indemnifying party's breach of this Agreement; (b) the indemnifying party's negligence or willful misconduct; or (c) any violation of applicable law by the indemnifying party.\n\n` +
+    `Creator represents that all Content is original work and does not infringe upon any third-party intellectual property rights. Client represents that any materials or products provided to Creator for the campaign are lawfully distributed and comply with all applicable regulations.`
+  });
+
+  // 13. INDEPENDENT CONTRACTOR
+  sections.push({ num: 13, title: 'INDEPENDENT CONTRACTOR', body:
+    `Creator is an independent contractor and not an employee, agent, or partner of Client. Creator shall use their own equipment, set their own schedule, and maintain full creative discretion in producing the Content, subject to the brief and revision process.\n\n` +
+    `Creator is solely responsible for all applicable federal, state, and local taxes, including self-employment tax. Client shall not withhold any taxes from payments to Creator. If payments exceed applicable IRS thresholds, Client shall issue a Form 1099.`
+  });
+
+  // 14. NON-DISPARAGEMENT
+  sections.push({ num: 14, title: 'NON-DISPARAGEMENT', body:
+    `During the Term and for a period of six (6) months following termination or expiration of this Agreement, neither party shall make any public statements or communications that disparage, defame, or cast in a negative light the other party, its products, services, officers, directors, or employees.\n\n` +
+    `This obligation sunsets automatically six (6) months after the termination or expiration of this Agreement.`
+  });
+
+  // 15. DISPUTE RESOLUTION
+  sections.push({ num: 15, title: 'DISPUTE RESOLUTION', body:
+    `Any dispute arising out of or relating to this Agreement shall first be submitted to good-faith mediation in ${d.govLaw}. If mediation fails to resolve the dispute within thirty (30) days, either party may pursue binding arbitration in ${d.govLaw} under the rules of the American Arbitration Association.\n\n` +
+    `Each party shall bear its own costs of mediation and arbitration. The prevailing party in any arbitration shall be entitled to recover reasonable attorneys' fees from the non-prevailing party.`
+  });
+
+  // 16. FORCE MAJEURE
+  sections.push({ num: 16, title: 'FORCE MAJEURE', body:
+    `Neither party shall be liable for any failure or delay in performance under this Agreement due to causes beyond its reasonable control, including but not limited to natural disasters, pandemics, government actions, internet outages, platform policy changes, acts of war or terrorism, or other force majeure events.\n\n` +
+    `The affected party shall provide prompt written notice and make reasonable efforts to mitigate the impact. If a force majeure event continues for more than thirty (30) days, either party may terminate this Agreement without penalty.`
+  });
+
+  // 17. GOVERNING LAW
+  sections.push({ num: 17, title: 'GOVERNING LAW', body:
+    `This Agreement shall be governed by and construed in accordance with the laws of the State of ${d.govLaw}, without regard to its conflict of laws provisions.`
+  });
+
+  // 18. GENERAL PROVISIONS
+  sections.push({ num: 18, title: 'GENERAL PROVISIONS', body:
+    `<strong>Entire Agreement:</strong> This Agreement, together with any exhibits attached hereto, constitutes the entire agreement between the parties and supersedes all prior negotiations, representations, or agreements relating to the subject matter herein.\n\n` +
+    `<strong>Assignment:</strong> Neither party may assign or transfer this Agreement without the prior written consent of the other party, except that Creator may assign this Agreement to a successor entity.\n\n` +
+    `<strong>Amendments:</strong> This Agreement may be amended only by a written instrument signed by both parties.\n\n` +
+    `<strong>Severability:</strong> If any provision of this Agreement is held to be invalid or unenforceable, the remaining provisions shall remain in full force and effect.\n\n` +
+    `<strong>Notices:</strong> All notices under this Agreement shall be in writing and sent to the email addresses listed above, or such other address as a party may designate in writing.\n\n` +
+    `<strong>Counterparts:</strong> This Agreement may be executed in counterparts, each of which shall be deemed an original, and all of which together shall constitute one and the same instrument. Electronic signatures shall be deemed valid and binding.`
+  });
+
+  // 19. SIGNATURE BLOCK
+  sections.push({ num: null, title: 'SIGNATURES', body: 'SIGNATURES_BLOCK', isSigBlock: true, sigData: d });
+
+  return sections;
+}
+
+function numberToWord(n) {
+  const words = ['zero','one','two','three','four','five','six','seven','eight','nine','ten'];
+  return words[n] || String(n);
+}
+
+/* ---- CONTRACT: Generate styled HTML preview ---- */
+function generateContract() {
+  const d = gatherContractData();
+  const sections = buildContractSections(d);
+  const previewEl = document.getElementById('contractPreviewContent');
+
+  let html = '<div class="contract-document">';
+
+  sections.forEach(sec => {
+    if (sec.isSigBlock) {
+      const s = sec.sigData;
+      html += `
+        <div class="contract-sig-block">
+          <p style="margin-bottom:24px;font-weight:700;">IN WITNESS WHEREOF, the parties have executed this Agreement as of the Effective Date.</p>
+          <div class="contract-sig-row">
+            <div class="contract-sig-party">
+              <p class="contract-sig-entity">${s.creatorEntity}</p>
+              <div class="contract-sig-line"></div>
+              <p class="contract-sig-label">By: ${s.creatorName}, Managing Member</p>
+              <div class="contract-sig-line"></div>
+              <p class="contract-sig-label">Date</p>
+            </div>
+            <div class="contract-sig-party">
+              <p class="contract-sig-entity">${s.brand}</p>
+              <div class="contract-sig-line"></div>
+              <p class="contract-sig-label">By: ${s.contact}, ${s.contactTitle}</p>
+              <div class="contract-sig-line"></div>
+              <p class="contract-sig-label">Date</p>
+            </div>
+          </div>
+        </div>`;
+      return;
+    }
+
+    if (sec.num === null) {
+      // Preamble / title section
+      html += `<h2 class="contract-doc-title">${sec.title}</h2>`;
+      html += `<div class="contract-section-body">${formatContractBody(sec.body)}</div>`;
+    } else {
+      html += `<div class="contract-section">`;
+      html += `<h3 class="contract-section-heading"><span class="contract-section-num">${sec.num}.</span> ${sec.title}</h3>`;
+      html += `<div class="contract-section-body">${formatContractBody(sec.body)}</div>`;
+      html += `</div>`;
+    }
+  });
+
+  html += '</div>';
+  previewEl.innerHTML = html;
+  showToast('Contract generated');
+}
+
+function formatContractBody(text) {
+  return text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>').replace(/^/, '<p>').replace(/$/, '</p>');
+}
+
+/* ---- CONTRACT: Copy to clipboard ---- */
 function copyContractPreview() {
-  const text = document.getElementById("contractPreviewContent").innerText;
+  const el = document.getElementById("contractPreviewContent");
+  const text = el.innerText;
   if (!text || text.includes("Fill in the form")) {
     showToast("Generate a contract first");
     return;
   }
-  navigator.clipboard.writeText(text);
-  showToast("Contract copied");
+  navigator.clipboard.writeText(text).then(() => showToast("Contract copied to clipboard"));
 }
 
+/* ---- CONTRACT: Download PDF ---- */
+function downloadContractPDF() {
+  const previewEl = document.getElementById('contractPreviewContent');
+  if (!previewEl.querySelector('.contract-document')) {
+    showToast('Generate a contract first');
+    return;
+  }
+
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    showToast('PDF library still loading — try again in a moment');
+    return;
+  }
+
+  const d = gatherContractData();
+  const sections = buildContractSections(d);
+  var jsPDF = window.jspdf.jsPDF;
+  var doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+  var W = doc.internal.pageSize.getWidth();
+  var H = doc.internal.pageSize.getHeight();
+  var M = 72; // 1 inch margins
+  var CW = W - M * 2;
+
+  var TEXT_C = [30, 28, 25];
+  var MUTED_C = [110, 108, 105];
+  var ACCENT = [199, 53, 57];
+  var RULE_C = [200, 198, 193];
+
+  function setColor(c) { doc.setTextColor(c[0], c[1], c[2]); }
+  function setDraw(c) { doc.setDrawColor(c[0], c[1], c[2]); }
+
+  function checkPage(y, needed) {
+    if (y + needed > H - M) {
+      doc.addPage();
+      drawFooter();
+      return M + 10;
+    }
+    return y;
+  }
+
+  var pageNum = 0;
+  function drawFooter() {
+    pageNum++;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    setColor(MUTED_C);
+    doc.text(d.creatorEntity + ' — ' + d.brand + ' Partnership Agreement', M, H - 30);
+    doc.text('Page ' + pageNum, W - M, H - 30, { align: 'right' });
+    setDraw(RULE_C);
+    doc.setLineWidth(0.5);
+    doc.line(M, H - 42, W - M, H - 42);
+  }
+
+  function writeWrapped(text, x, y, maxW, lineH) {
+    // Strip HTML tags for PDF
+    text = text.replace(/<strong>/g, '').replace(/<\/strong>/g, '').replace(/<br>/g, '\n').replace(/<\/?p>/g, '\n');
+    var lines = doc.splitTextToSize(text, maxW);
+    for (var i = 0; i < lines.length; i++) {
+      y = checkPage(y, lineH);
+      doc.text(lines[i], x, y);
+      y += lineH;
+    }
+    return y;
+  }
+
+  function writeBoldWrapped(text, x, y, maxW, lineH) {
+    // Handle text with **bold** markers (converted from <strong>)
+    text = text.replace(/<\/?p>/g, '\n').replace(/<br>/g, '\n');
+    var segments = text.split(/<\/?strong>/g);
+    var isBold = false;
+    var currentText = '';
+
+    // Flatten: just render as plain with manual bold segments
+    segments.forEach(function(seg) {
+      if (isBold) {
+        currentText += seg; // We'll render it all, but track bold sections
+      } else {
+        currentText += seg;
+      }
+      isBold = !isBold;
+    });
+
+    // For simplicity in PDF, render with bold inline detection
+    var paragraphs = text.split(/\n\n+/);
+    paragraphs.forEach(function(para) {
+      if (!para.trim()) { y += lineH * 0.5; return; }
+      // Check for bold segments
+      var parts = para.split(/<strong>/);
+      parts.forEach(function(part) {
+        var boldSplit = part.split(/<\/strong>/);
+        if (boldSplit.length > 1) {
+          // First part is bold
+          doc.setFont('helvetica', 'bold');
+          var boldLines = doc.splitTextToSize(boldSplit[0], maxW);
+          for (var i = 0; i < boldLines.length; i++) {
+            y = checkPage(y, lineH);
+            doc.text(boldLines[i], x, y);
+            y += lineH;
+          }
+          // Rest is normal
+          if (boldSplit[1].trim()) {
+            doc.setFont('helvetica', 'normal');
+            var normLines = doc.splitTextToSize(boldSplit[1], maxW);
+            for (var j = 0; j < normLines.length; j++) {
+              y = checkPage(y, lineH);
+              doc.text(normLines[j], x, y);
+              y += lineH;
+            }
+          }
+        } else {
+          // No bold in this segment
+          doc.setFont('helvetica', 'normal');
+          if (part.trim()) {
+            var pLines = doc.splitTextToSize(part, maxW);
+            for (var k = 0; k < pLines.length; k++) {
+              y = checkPage(y, lineH);
+              doc.text(pLines[k], x, y);
+              y += lineH;
+            }
+          }
+        }
+      });
+      y += lineH * 0.4;
+    });
+    doc.setFont('helvetica', 'normal');
+    return y;
+  }
+
+  // --- PAGE 1: Title ---
+  drawFooter();
+  var y = M;
+
+  // Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(18);
+  setColor(TEXT_C);
+  var titleLines = doc.splitTextToSize('CONTENT CREATOR PARTNERSHIP AGREEMENT', CW);
+  titleLines.forEach(function(line) {
+    doc.text(line, W / 2, y, { align: 'center' });
+    y += 24;
+  });
+
+  y += 8;
+  setDraw(ACCENT);
+  doc.setLineWidth(2);
+  doc.line(M + CW * 0.3, y, M + CW * 0.7, y);
+  y += 24;
+
+  // Preamble body
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  setColor(TEXT_C);
+  var preamble = sections[0];
+  y = writeBoldWrapped(preamble.body, M, y, CW, 14);
+  y += 10;
+
+  // Numbered sections
+  for (var s = 1; s < sections.length; s++) {
+    var sec = sections[s];
+    if (sec.isSigBlock) {
+      // Signature block
+      y = checkPage(y, 180);
+      y += 10;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      setColor(TEXT_C);
+      doc.text('IN WITNESS WHEREOF, the parties have executed this Agreement as of the Effective Date.', M, y);
+      y += 30;
+
+      // Creator sig
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(d.creatorEntity, M, y);
+      y += 30;
+      setDraw(TEXT_C);
+      doc.setLineWidth(0.5);
+      doc.line(M, y, M + CW * 0.4, y);
+      y += 14;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      setColor(MUTED_C);
+      doc.text('By: ' + d.creatorName + ', Managing Member', M, y);
+      y += 20;
+      doc.line(M, y, M + CW * 0.25, y);
+      y += 14;
+      doc.text('Date', M, y);
+      y += 30;
+
+      // Client sig
+      setColor(TEXT_C);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(d.brand, M, y);
+      y += 30;
+      setDraw(TEXT_C);
+      doc.line(M, y, M + CW * 0.4, y);
+      y += 14;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      setColor(MUTED_C);
+      doc.text('By: ' + d.contact + ', ' + d.contactTitle, M, y);
+      y += 20;
+      doc.line(M, y, M + CW * 0.25, y);
+      y += 14;
+      doc.text('Date', M, y);
+      continue;
+    }
+
+    if (sec.num === null) continue; // Skip preamble (already rendered)
+
+    y = checkPage(y, 50);
+
+    // Section heading
+    setDraw(RULE_C);
+    doc.setLineWidth(0.5);
+    doc.line(M, y, M + CW, y);
+    y += 16;
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    setColor(TEXT_C);
+    doc.text(sec.num + '. ' + sec.title, M, y);
+    y += 18;
+
+    // Section body
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    setColor(TEXT_C);
+    y = writeBoldWrapped(sec.body, M, y, CW, 13.5);
+    y += 8;
+  }
+
+  var filename = (d.brandShort !== '[BRAND]' ? d.brandShort.replace(/[^a-zA-Z0-9]/g, '_') : 'Brand') + '_Contract_' + d.date + '.pdf';
+  doc.save(filename);
+  showToast('PDF downloaded');
+}
+
+/* ---- CONTRACT: AI Negotiation Notes ---- */
 async function generateNegotiationNotes() {
-  const brand = document.getElementById("cBrandShort").value || document.getElementById("cBrandName").value;
-  const amount = document.getElementById("cAmount").value;
-  const deliverable = document.getElementById("cDeliverable").value;
+  const brand = document.getElementById("cBrandShort")?.value || document.getElementById("cBrandName")?.value;
+  const amount = document.getElementById("cAmount")?.value;
+  const deliverable = document.getElementById("cDeliverable")?.value;
 
   if (!brand) { showToast("Enter a brand name first"); return; }
 
   const previewEl = document.getElementById("contractPreviewContent");
-  previewEl.innerHTML = `<div class="loading-pulse">Generating negotiation notes...</div>`;
+  previewEl.innerHTML = '<div class="loading-pulse">Generating negotiation notes...</div>';
 
   try {
-    const res = await fetch(`${API_BASE}/api/generate-content`, {
+    const res = await fetch((typeof API_BASE !== 'undefined' ? API_BASE : '') + '/api/generate-content', {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         content_type: "negotiation",
-        topic: `${brand} partnership — ${deliverable} at $${amount}`,
-        context: `Brand: ${brand}, Deliverable: ${deliverable}, Current quote: $${amount}. Generate negotiation talking points, value justification, and counter-offer strategies.`
+        topic: brand + ' partnership — ' + deliverable + ' at $' + amount,
+        context: 'Brand: ' + brand + ', Deliverable: ' + deliverable + ', Current quote: $' + amount + '. Generate negotiation talking points, value justification, and counter-offer strategies.'
       })
     });
     const data = await res.json();
     if (data.success) {
-      previewEl.innerHTML = `<pre class="contract-text">${data.data.content}</pre>`;
+      previewEl.innerHTML = '<div class="contract-document" style="padding:24px"><div class="contract-section-body">' + data.data.content.replace(/\n/g, '<br>') + '</div></div>';
     } else {
-      previewEl.innerHTML = `<p class="text-error">Failed: ${data.error}</p>`;
+      previewEl.innerHTML = '<p class="text-error">Failed: ' + data.error + '</p>';
     }
   } catch (e) {
-    previewEl.innerHTML = `<p class="text-error">Error: ${e.message}</p>`;
+    previewEl.innerHTML = '<p class="text-error">Error: ' + e.message + '</p>';
   }
 }
