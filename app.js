@@ -1412,8 +1412,10 @@ function renderAnalytics() {
   const igER = p.instagram ? p.instagram.engagement_rate : 0;
   const sbGrade = p.instagram ? p.instagram.grade : "--";
 
-  // Compute follower growth from history for the selected period
-  const igHistory = analyticsData ? filterHistoryByPeriod(analyticsData.history.instagram || [], analyticsTimePeriod) : [];
+  // Compute follower growth from history for the selected period (guard for no data)
+  const igHistory = (analyticsData && analyticsData.history && analyticsData.history.instagram)
+    ? filterHistoryByPeriod(analyticsData.history.instagram, analyticsTimePeriod)
+    : [];
   const igGrowth = calcGrowth(igHistory, "followers");
 
   const lastFetchDisplay = analyticsLastFetch ? new Date(analyticsLastFetch).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Never";
@@ -1541,8 +1543,8 @@ function renderAnalyticsContent() {
 function renderAnalyticsPlatform(platform) {
   if (!analyticsData) return '<div class="card"><p class="text-muted" style="padding:20px">No data loaded yet. Click Refresh Data.</p></div>';
 
-  const p = analyticsData.platforms[platform];
-  const history = filterHistoryByPeriod(analyticsData.history[platform] || [], analyticsTimePeriod);
+  const p = (analyticsData && analyticsData.platforms) ? analyticsData.platforms[platform] : null;
+  const history = filterHistoryByPeriod((analyticsData && analyticsData.history && analyticsData.history[platform]) || [], analyticsTimePeriod);
   const periodLabel = analyticsTimePeriod === "3m" ? "3 Months" : analyticsTimePeriod === "6m" ? "6 Months" : "12 Months";
 
   if (platform === "instagram" && p) {
@@ -1748,7 +1750,7 @@ function renderAnalyticsPlatform(platform) {
 
 function renderGrowthChart(platform) {
   if (!analyticsData) return;
-  let history = filterHistoryByPeriod(analyticsData.history[platform] || [], analyticsTimePeriod);
+  let history = filterHistoryByPeriod((analyticsData && analyticsData.history && analyticsData.history[platform]) || [], analyticsTimePeriod);
   if (!history.length) return;
 
   // Downsample if too many points (keep first, last, and evenly spaced points)
@@ -1840,7 +1842,7 @@ function renderGrowthChart(platform) {
 
 function renderEngagementChart() {
   if (!analyticsData) return;
-  const history = filterHistoryByPeriod(analyticsData.history.instagram || [], analyticsTimePeriod);
+  const history = filterHistoryByPeriod((analyticsData && analyticsData.history && analyticsData.history.instagram) || [], analyticsTimePeriod);
   let erHistory = history.filter(h => h.engagement_rate != null);
   if (!erHistory.length) return;
 
