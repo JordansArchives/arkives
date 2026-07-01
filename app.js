@@ -1360,7 +1360,25 @@ async function fetchAnalyticsData(refresh = false) {
     const resp = await fetch('analytics_cache.json', { cache: refresh ? 'reload' : 'default' });
     if (resp.ok) {
       const cache = await resp.json();
-      analyticsData = cache;
+      // Transform: snapshots grouped by date -> history grouped by platform
+      const history = { instagram: [], tiktok: [], youtube: [], twitter: [], linkedin: [] };
+      (cache.snapshots || []).forEach(snap => {
+        if (snap.platform && snap.date) {
+          // Old flat format: { platform: 'instagram', date, followers }
+          if (history[snap.platform]) history[snap.platform].push(snap);
+        } else if (snap.platforms && snap.date) {
+          // Unified format: { date, platforms: { instagram: {...}, ...} }
+          Object.entries(snap.platforms).forEach(([plat, pdata]) => {
+            if (history[plat]) {
+              const followers = pdata.followers || pdata.subscribers || pdata.connections || 0;
+              history[plat].push({ date: snap.date, followers });
+            }
+          });
+        }
+      });
+      // Sort each platform's history by date
+      Object.keys(history).forEach(p => history[p].sort((a,b) => (a.date||'').localeCompare(b.date||'')));
+      analyticsData = { ...cache, history };
       analyticsLastFetch = cache.last_fetch;
     }
   } catch (e) {
