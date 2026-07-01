@@ -711,8 +711,10 @@ function navigate(view) {
     return;
   }
   if (view.startsWith('shared/')) {
-    var shareToken = view.split('/')[1];
-    var shareMode = (view.split('/')[2]) || 'view';
+    // Strip any query string that may have gotten into the hash
+    var cleanView = view.split('?')[0];
+    var shareToken = cleanView.split('/')[1];
+    var shareMode = (cleanView.split('/')[2]) || 'view';
     document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
     var shEl = document.getElementById('view-shared-script');
     if (shEl) { shEl.style.display = 'block'; shEl.classList.add('active'); }
@@ -3575,12 +3577,15 @@ async function sbReorderScenes(scenes) {
 }
 
 async function sbFetchScriptByToken(token) {
-  if (!_sb) return null;
+  if (!_sb || !token) return null;
+  // Strip any query string that may have leaked in from URL parsing
+  var cleanToken = String(token).split('?')[0].split('&')[0].trim();
+  if (!cleanToken) return null;
   try {
-    var res = await _sb.from('scripts').select('*').eq('share_token', token).single();
-    if (res.error) return null;
-    return res.data;
-  } catch (e) { return null; }
+    var res = await _sb.from('scripts').select('*').eq('share_token', cleanToken).maybeSingle();
+    if (res.error) { console.error('sbFetchScriptByToken error:', res.error); return null; }
+    return res.data || null;
+  } catch (e) { console.error('sbFetchScriptByToken exception:', e); return null; }
 }
 
 /* ---- SCRIPTS LIST VIEW ---- */
