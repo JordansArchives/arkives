@@ -1356,17 +1356,12 @@ async function fetchAnalyticsData(refresh = false) {
   analyticsLoading = true;
   if (refresh) renderAnalyticsLoading();
   try {
-    const url = `${API_BASE}/api/analytics${refresh ? "?refresh=true" : ""}`;
-    const resp = await fetch(url);
-    const json = await resp.json();
-    if (json.success) {
-      analyticsData = json.data;
-      analyticsLastFetch = json.data.last_fetch;
-      // If we loaded from cache but there's no data, auto-refresh
-      if (!refresh && (!analyticsData.last_fetch || Object.keys(analyticsData.platforms).length === 0)) {
-        analyticsLoading = false;
-        return fetchAnalyticsData(true);
-      }
+    // Load from local static analytics_cache.json (no backend required)
+    const resp = await fetch('analytics_cache.json', { cache: refresh ? 'reload' : 'default' });
+    if (resp.ok) {
+      const cache = await resp.json();
+      analyticsData = cache;
+      analyticsLastFetch = cache.last_fetch;
     }
   } catch (e) {
     console.error("Analytics fetch error:", e);
