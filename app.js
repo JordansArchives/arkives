@@ -73,6 +73,31 @@ function todayStr() {
   return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
+// Alias used by simplified dashboard
+function formatDate(d) {
+  if (!d) return '';
+  d = (d instanceof Date) ? d : new Date(d);
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+}
+
+// Toast helper (used by Settings + Contracts)
+function showToast(msg, type) {
+  if (type === 'error') return _showSaveError(msg);
+  var el = document.getElementById('sb-save-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'sb-save-toast';
+    el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#2A6B5A;color:#fff;padding:10px 20px;border-radius:8px;font-size:13px;font-family:var(--font-body,sans-serif);z-index:10000;opacity:0;transition:opacity 0.3s;pointer-events:none;max-width:90vw;text-align:center;';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.background = '#2A6B5A';
+  el.style.opacity = '1';
+  clearTimeout(el._timer);
+  el._timer = setTimeout(function() { el.style.opacity = '0'; }, 2000);
+}
+
 function todayISO() {
   const d = new Date();
   return d.toISOString().split("T")[0];
@@ -527,9 +552,6 @@ async function sbFetchAllData() {
     if (ctRes.data) {
       CONTRACT_RULES = ctRes.data.map(r => ({ _sbId: r.id, rule: r.rule }));
     }
-
-    // Also fetch tasks (existing function)
-    await sbFetchTasks();
 
     // Update sidebar with loaded profile data
     updateSidebarUser();
