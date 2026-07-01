@@ -198,6 +198,16 @@ Every data type has Supabase-connected CRUD:
 
 | Phase | Status | Description |
 |-------|--------|-------------|
+| 1 | ✅ Complete | Schema design (17 tables after simplification) |
+| 2 | ✅ Complete | Seed data (profile, deals, subs, etc.) |
+| 3 | ✅ Complete | app.js loads ALL data from Supabase |
+| 4 | ✅ Complete | Auth login/signup UI |
+| 5 | ✅ Complete | Self-hosted on Cloudflare Pages at arkives.xyz |
+| 6 | ✅ Complete | **Simplification pass (Jul 2026): cut Pipeline/Expenses/Content Studio/Voice/Research/Brand Match/Pricing/Proposals. Rewrote Settings as fully interactive. Rewrote Dashboard as clean KPI view. Rewrote Calendar as real month grid.** |
+| 7 | ⬜ Future | User-scoped RLS (replace anon policies) |
+| 8 | ⬜ Future | Additional features as workflow demands |
+
+-------|--------|-------------|
 | 1 | ✅ Complete | Schema design (25 tables) |
 | 2 | ✅ Complete | Seed data (profile, deals, subs, etc.) |
 | 3 | ✅ Complete | app.js loads ALL data from Supabase |
