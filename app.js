@@ -4013,25 +4013,39 @@ async function renderSharedScript(token, mode) {
 /* ---- INIT ---- */
 (async function init() {
   try {
-    // Check for existing auth session
-    var session = await checkSession();
-    if (session && session.user) {
-      _authUser = session.user;
+    // Public shared-link route — skip auth entirely
+    var hash = getHash();
+    if (hash.startsWith('shared/')) {
       showApp();
-      // Load ALL data from Supabase
-      await Promise.race([
-        sbFetchAllData(),
-        new Promise(function(r) { setTimeout(r, 8000); })
-      ]);
-      updateSidebarUser();
-      navigate(getHash());
+      navigate(hash);
     } else {
-      // No session — show login screen
-      showAuthScreen();
+      // Check for existing auth session
+      var session = await checkSession();
+      if (session && session.user) {
+        _authUser = session.user;
+        showApp();
+        // Load ALL data from Supabase
+        await Promise.race([
+          sbFetchAllData(),
+          new Promise(function(r) { setTimeout(r, 8000); })
+        ]);
+        updateSidebarUser();
+        navigate(getHash());
+      } else {
+        // No session — show login screen
+        showAuthScreen();
+      }
     }
   } catch (e) {
     console.error('Init error:', e);
-    showAuthScreen();
+    // If we were on a shared route, still try to render it
+    var h = getHash();
+    if (h.startsWith('shared/')) {
+      showApp();
+      try { navigate(h); } catch (_) {}
+    } else {
+      showAuthScreen();
+    }
   }
 
   // Dismiss loader
