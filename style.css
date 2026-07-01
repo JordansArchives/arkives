@@ -5597,12 +5597,8 @@ a.mk-platform-link:hover {
   gap: 6px;
 }
 
-/* Modal overlay for adding calendar events */
+/* Modal overlay for adding calendar events — inherits display:none from earlier rule, .open shows it */
 .modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-  display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
