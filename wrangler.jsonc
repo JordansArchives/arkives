@@ -1,0 +1,17 @@
+// Cloudflare Workers deploy config.
+// The build runs `npx wrangler deploy`, which reads this file.
+// assets.directory = ONLY public/ ships to arkives.xyz. Migrations
+// (which contain private business data in the seed files) and legacy
+// files at the repo root are never served.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "arkives",
+  "compatibility_date": "2026-07-13",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "single-page-application"
+  }
+}

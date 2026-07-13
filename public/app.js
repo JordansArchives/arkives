@@ -366,31 +366,28 @@ async function sbFetchAllData() {
     const loadingEl = document.getElementById('sb-loading-overlay');
     if (loadingEl) loadingEl.style.display = 'flex';
 
-    // Fetch profile — first try by auth_user_id, then fallback to first profile
+    // Fetch profile — strictly by auth_user_id; create a fresh one if missing.
+    // Never claim an existing unlinked profile: that allowed a new signup to
+    // inherit another tenant's account.
     var profileRes;
     if (_authUser && _authUser.id) {
       profileRes = await _sb.from('profiles').select('*').eq('auth_user_id', _authUser.id).limit(1).maybeSingle();
-      // If no profile linked to this auth user, try linking the first unlinked profile
       if (!profileRes.data) {
-        var unlinked = await _sb.from('profiles').select('*').is('auth_user_id', null).limit(1).maybeSingle();
-        if (unlinked.data) {
-          // Link this profile to the auth user
-          await _sb.from('profiles').update({ auth_user_id: _authUser.id }).eq('id', unlinked.data.id);
-          profileRes = { data: unlinked.data };
-          console.log('Linked profile', unlinked.data.id, 'to auth user', _authUser.id);
-        } else {
-          // No profile at all — create one
-          var newProfile = await _sb.from('profiles').insert({
-            name: _authUser.email.split('@')[0],
-            email: _authUser.email,
-            auth_user_id: _authUser.id
-          }).select().single();
-          profileRes = { data: newProfile.data };
-          console.log('Created new profile for auth user', _authUser.id);
+        var newProfile = await _sb.from('profiles').insert({
+          name: _authUser.email.split('@')[0],
+          email: _authUser.email,
+          auth_user_id: _authUser.id
+        }).select().single();
+        if (newProfile.error) {
+          console.error('Profile creation failed:', newProfile.error);
+          _showSaveError('Could not set up your account. Please refresh and try again.');
+          return;
         }
+        profileRes = { data: newProfile.data };
       }
     } else {
-      profileRes = await _sb.from('profiles').select('*').limit(1).maybeSingle();
+      // No authenticated user: nothing to load (RLS blocks all reads anyway)
+      profileRes = { data: null };
     }
     if (profileRes.data) {
       CREATOR.name = profileRes.data.name || '';

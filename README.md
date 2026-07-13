@@ -5,7 +5,7 @@ A self-contained, Supabase-backed web application for managing brand deals, invo
 **Owner:** Jordan Watkins ([@jordans.archivess](https://instagram.com/jordans.archivess))  
 **Entity:** Asterisk LLC  
 **Domain:** [arkives.xyz](https://arkives.xyz)  
-**Status:** Live on Cloudflare Pages (auto-deploys from GitHub)
+**Status:** Live on Cloudflare Workers (auto-deploys from GitHub via `npx wrangler deploy`, serves `public/` only)
 
 ---
 
@@ -42,21 +42,29 @@ Jordan wants maximum portability and zero build overhead. The app is a single-pa
 ## File Structure
 
 ```
-archiveboard/
-├── index.html              # SPA shell — auth screen, sidebar, view containers
-├── app.js                  # ~5900 lines — data layer, auth, CRUD, all view renderers
-├── style.css               # ~4900 lines — full design system, all component styles
-├── toolkit-views.js        # Content Studio + Contracts views (separate file for size)
-├── analytics_cache.json    # Historical platform analytics snapshots (read by chart)
-├── paper-bg.png            # Light theme background texture
-├── paper-bg-dark.png       # Dark theme background texture
-├── migrations/             # Supabase SQL migrations (run in order)
-│   ├── full_migration_v2.sql   # COMPLETE schema + seed (run this for fresh setup)
-│   ├── 001_full_schema.sql     # Tables only
-│   ├── 002_anon_access_policies.sql
-│   ├── 003_seed_data.sql       # Jordan's profile, platforms, rate cards, etc.
-│   ├── 004_seed_deals.sql      # All 26 deals with negotiation history
-│   └── 005_link_auth.sql       # auth_user_id column for profile linking
+arkives/
+├── public/                 # DEPLOYED SURFACE — the only folder that ships to arkives.xyz
+│   ├── index.html          # SPA shell — auth screen, sidebar, view containers
+│   ├── app.js              # data layer, auth, CRUD, all view renderers
+│   ├── style.css           # full design system, all component styles
+│   ├── toolkit-views.js    # Contracts view (Content Studio/Brand Voice cut July 2026)
+│   ├── analytics_cache.json # platform analytics snapshots (read by charts; P3.2 moves to Supabase)
+│   ├── paper-bg.png        # Light theme background texture
+│   └── paper-bg-dark.png   # Dark theme background texture
+├── wrangler.jsonc          # Cloudflare Workers deploy config (assets = ./public)
+├── V1-AUDIT.md             # Productization punch list (P0-P4)
+├── migrations/             # Supabase SQL migrations — NEVER deployed (private data in seeds)
+│   ├── 001_full_schema.sql     # Original tables
+│   ├── 002_anon_access_policies.sql  # DEPRECATED — superseded by 008
+│   ├── 003_seed_data.sql       # Jordan's seed — PRIVATE, never run on fresh installs
+│   ├── 004_seed_deals.sql      # Jordan's deals — PRIVATE, never run on fresh installs
+│   ├── 005_link_auth.sql       # auth_user_id column for profile linking
+│   ├── 006_simplification_cleanup.sql  # July-1 simplification: drops unused tables
+│   ├── 007_missing_tables.sql  # scripts/scenes + task tables written down (ran as "006" on live)
+│   ├── 008_user_scoped_rls.sql # user-scoped RLS, multi-tenancy (ran as "007" on live)
+│   ├── 009_redrop_unused_tables.sql  # re-drop shells recreated during drift repair
+│   ├── full_migration.sql      # LEGACY — do not use
+│   └── full_migration_v2.sql   # LEGACY — contains Jordan seed; do not use
 ├── api_server.py           # FastAPI backend (unused in static deploy)
 ├── command-center.js       # Deprecated (command center removed per Jordan)
 ├── google-apps-script.js   # Google Sheets expense sync (legacy, being replaced)
@@ -76,7 +84,7 @@ archiveboard/
 | Project URL | `https://wqblmehsqcmsdstyweus.supabase.co` |
 | Anon Key | `sb_publishable_jYnmjabjsjkfnBvo1Eii0g_c3aKkCf2` |
 | Auth | Email/password, `persistSession: true` |
-| RLS | Enabled on all tables, anon policies for now |
+| RLS | User-scoped policies on every table (008). Anon key reads/writes nothing. |
 
 ### Database Tables (25+)
 
@@ -182,7 +190,7 @@ Every data type has Supabase-connected CRUD:
 ## Critical Rules (MUST follow)
 
 1. **No `localStorage` literal in app.js** — use the `safeGet()`/`safeSet()` wrapper pattern
-2. **`persistSession: false`** in Supabase config (required for iframe/cross-origin contexts)
+2. **`persistSession: true`** in Supabase config (matches the code; the old "false required" note was wrong)
 3. **AI tool partnerships reserved exclusively for Higgsfield** — decline all other AI organic deals
 4. **Only flat-rate cash deals** — no rev-share models
 5. **Minimum rate: $15,000** for organic Instagram Reel
@@ -262,3 +270,16 @@ Add `https://arkives.xyz` to the allowed redirect URLs in:
 3. **User-scoped RLS** — update policies from `anon` to `auth.uid() = user_id`
 4. **Real-time updates** — use Supabase Realtime for live data sync
 5. **Multi-user support** — the schema already supports it (user_id FK on all tables)
+
+---
+
+## Fresh Install (schema only, no personal data)
+
+Run in the Supabase SQL Editor, in this order: `001` → `006` → `007` → `008` → `009`.
+Never run `003`, `004`, or the `full_migration` files on a fresh install: they contain Jordan's personal business data.
+
+## Multi-Tenancy Rules (added 2026-07-13)
+
+- Every table is user-scoped via RLS (`008`). Never write queries or policies that assume a single user.
+- RLS does the scoping, DB defaults do the stamping: `user_id` columns default to `current_profile_id()`. Inserts should not pass it manually.
+- Jordan's PERSONAL business rules (Higgsfield exclusivity, $15K minimum, flat-rate NET 30, no rev-share) are per-tenant DATA in his own rows, not app logic. Do not hardcode them into the product.
