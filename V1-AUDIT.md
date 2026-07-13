@@ -130,6 +130,32 @@ Empty states: `empty-state` appears zero times in app.js. Effectively none exist
 - DONE repo-side, pending dashboard flip: 0.3 deploy restructure (site now in public/; Jordan sets Pages build output dir to `public`, then push deploys)
 - Post-deploy checks: login works with own data; arkives.xyz/migrations/004_seed_deals.sql returns 404; anon-policy count query returns 0
 
+**2026-07-13 (P0 DEPLOYED + VERIFIED):**
+- Migrations applied to live DB (as "006"/"007"; repo names 007/008). Anon key verified locked: reads return [], writes return 42501
+- Jordan's profile relinked to his real login after the migration exposed a broken auth link (profile pointed at its own id); empty duplicate profile deleted; his 4 scripts + 26 deals confirmed visible
+- Deploy live on Cloudflare Workers via wrangler.jsonc: only public/ ships. /migrations/*, /README.md now serve the SPA shell (not_found_handling), zero private data. New app.js (signup fix) confirmed live
+- Remaining follow-ups: Jordan runs 009 (re-drop empty shells), deletes alisher@higgsfield.ai auth user, verifies GitHub repo is private
+- P0 COMPLETE. Next session: reconciliation re-audit of the simplified codebase, then P1
+
+## V1 Feature Bar (set by Jordan 2026-07-13)
+
+Definition of done criterion 6 added: each feature must be connected to
+its real data source. Per feature, on top of the multi-user work:
+
+| Feature | Fully working means |
+|---|---|
+| Inbox | Connects to real inboxes: Gmail first, Outlook later. OAuth + ingest via the Worker; /brand-deals skill logic is the blueprint |
+| Revenue | Expenses tracking rebuilt INSIDE Revenue (old standalone Expenses view stays cut; `expenses` table survives). Monthly P&L: revenue vs expenses |
+| Media Kit | Metrics auto-update from the analytics pipeline; live shareable web version alongside PDF |
+| Analytics | Real platform data on a schedule into per-user snapshots. Phased: YouTube API (easy), IG Graph (needs Meta review), manual entry fallback always available |
+| Invoices | QuickBooks integration DROPPED (remove the button). Self-contained lifecycle: create, edit, mark paid, overdue surfacing |
+| Calendar | Outbound sync: per-user private ICS feed first (no OAuth, works with Google/Outlook/Apple), full Google Calendar OAuth later |
+| Contracts / Deals / Scripts / Settings / Dashboard | Multi-user DoD as audited; exact gaps confirmed by the reconciliation re-audit |
+
+Architecture note: the Cloudflare Worker deployed for P0 is assets-only
+today but is the natural home for integration endpoints (OAuth
+callbacks, cron pollers, ICS generation). No new infrastructure needed.
+
 ## Suggested Build Order
 
 1. **P1.1 + P1.2** (one session): Expenses uncrashed, invoices readable... immediate wins Jordan feels
