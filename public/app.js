@@ -277,6 +277,8 @@ async function handleLogout() {
   // Reset data
   DEALS = []; INBOX_ITEMS = []; CALENDAR_EVENTS = []; INVOICE_DATA = [];
   MONTHLY_REVENUE = []; CAMPAIGN_RESULTS = []; OUTREACH_TEMPLATES = {};
+  TASKS = []; _tasksTableMissing = false;
+  _taskComposerOpen = false; _tasksCompletedOpen = false; _editingTaskId = null;
   showAuthScreen();
 }
 
@@ -300,6 +302,8 @@ function updateSidebarUser() {
 
 /* ---- TASK STATE (loaded from Supabase) ---- */
 let CONTRACT_RULES = [];
+let TASKS = [];
+let _tasksTableMissing = false;
 
 let _sbReady = false;
 
@@ -550,6 +554,23 @@ async function sbFetchAllData() {
       CONTRACT_RULES = ctRes.data.map(r => ({ _sbId: r.id, rule: r.rule }));
     }
 
+    // Fetch tasks — table added in migration 010; tolerate a missing
+    // table so the Tasks view can show setup instructions instead of erroring
+    const tkRes = await _sb.from('tasks').select('*').eq('user_id', CREATOR._sbId).order('created_at', { ascending: false });
+    if (tkRes.error) {
+      // 42P01 = Postgres undefined_table, PGRST205 = PostgREST table not in schema cache
+      _tasksTableMissing = (tkRes.error.code === '42P01' || tkRes.error.code === 'PGRST205');
+      if (!_tasksTableMissing) console.error('tasks fetch error:', tkRes.error);
+      TASKS = [];
+    } else {
+      _tasksTableMissing = false;
+      TASKS = (tkRes.data || []).map(t => ({
+        _sbId: t.id, title: t.title || '', details: t.details || '',
+        dueDate: t.due_date || '', starred: !!t.starred, completed: !!t.completed,
+        completedAt: t.completed_at || '', createdAt: t.created_at || ''
+      }));
+    }
+
     // Update sidebar with loaded profile data
     updateSidebarUser();
 
@@ -644,6 +665,35 @@ async function sbDeleteCalendarEvent(sbId) {
   if (!_sb) return;
   await _sb.from('calendar_events').delete().eq('id', sbId);
   _showSaveSuccess();
+}
+
+/* ---- SUPABASE CRUD: TASKS ---- */
+async function sbAddTask(data) {
+  if (!_sb || !CREATOR._sbId) return null;
+  // user_id is stamped by the DB default (current_profile_id) per the
+  // multi-tenancy rules — inserts must not pass it manually
+  const { data: row, error } = await _sb.from('tasks').insert({
+    title: data.title, details: data.details || '', due_date: data.dueDate || null
+  }).select().single();
+  if (error) { _showSaveError('Failed to add task'); console.error(error); return null; }
+  _showSaveSuccess();
+  return row;
+}
+
+async function sbUpdateTask(sbId, updates) {
+  if (!_sb || !sbId) return false;
+  const { error } = await _sb.from('tasks').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to update task'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbDeleteTasks(sbIds) {
+  if (!_sb || !sbIds.length) return false;
+  const { error } = await _sb.from('tasks').delete().in('id', sbIds);
+  if (error) { _showSaveError('Failed to delete'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
 }
 
 /* ---- SUPABASE CRUD: INVOICES ---- */
@@ -794,6 +844,7 @@ function renderView(view) {
     case "scripts": renderScripts(); break;
     case "contracts": renderContracts(); break;
     case "invoices": renderInvoices(); break;
+    case "tasks": renderTasks(); break;
   }
 }
 
@@ -2380,6 +2431,362 @@ async function deleteCalendarEvent(sbId) {
   CALENDAR_EVENTS = CALENDAR_EVENTS.filter(e => e._sbId !== sbId);
   renderCalendar();
   _showSaveSuccess();
+}
+
+/* ---- TASKS ---- */
+let _tasksCompletedOpen = false;
+let _taskComposerOpen = false;
+let _editingTaskId = null;
+let _taskSaving = false;
+let _taskBusyIds = {};
+let _taskComposerFocusPending = false;
+
+// Local-calendar date, unlike todayISO() which is UTC — due dates come
+// from <input type="date"> in the user's local calendar, so "Today"/
+// overdue must compare in local time or they flip early every evening
+function _localISODate(d) {
+  d = d || new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function _taskDueLabel(iso) {
+  if (!iso) return '';
+  const today = _localISODate();
+  const t = new Date();
+  t.setDate(t.getDate() + 1);
+  const tomorrow = _localISODate(t);
+  if (iso === today) return 'Today';
+  if (iso === tomorrow) return 'Tomorrow';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return iso;
+  if (d.getFullYear() === new Date().getFullYear()) return fmtDate(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function _taskRowHTML(t) {
+  const dueLabel = _taskDueLabel(t.dueDate);
+  const overdue = t.dueDate && !t.completed && t.dueDate < _localISODate();
+  const starSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="' + (t.starred ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.2l3 6.1 6.8 1-4.9 4.8 1.2 6.7-6.1-3.2-6.1 3.2 1.2-6.7-4.9-4.8 6.8-1z"/></svg>';
+  const checkSvg = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 12.3l5 5.2 10.6-11"/></svg>';
+  const dueSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 4.2h17.6c.6 0 1.1.5 1.1 1.1v14.5c0 .6-.5 1.1-1.1 1.1H3.2c-.6 0-1.1-.5-1.1-1.1V5.3c0-.6.5-1.1 1.1-1.1z"/><path d="M16.1 2.1v4.1"/><path d="M8 2.1v4.1"/><path d="M2.1 10.1h19.8"/></svg>';
+  return `
+    <div class="task-item ${t.completed ? 'completed' : ''}" data-id="${t._sbId}">
+      <button class="task-check" onclick="toggleTaskComplete('${t._sbId}')" title="${t.completed ? 'Mark incomplete' : 'Mark complete'}" aria-label="${t.completed ? 'Mark incomplete' : 'Mark complete'}">${checkSvg}</button>
+      <div class="task-body" role="button" tabindex="0" onclick="openEditTaskModal('${t._sbId}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditTaskModal('${t._sbId}');}">
+        <div class="task-title">${_esc(t.title)}</div>
+        ${t.details ? `<div class="task-details">${_esc(t.details)}</div>` : ''}
+        ${dueLabel ? `<span class="task-due ${overdue ? 'overdue' : ''}">${dueSvg} ${dueLabel}</span>` : ''}
+      </div>
+      <div class="task-item-actions">
+        <button class="task-star ${t.starred ? 'active' : ''}" onclick="toggleTaskStar('${t._sbId}')" title="${t.starred ? 'Unstar' : 'Star'}" aria-label="${t.starred ? 'Unstar' : 'Star'}">${starSvg}</button>
+        <button class="task-delete" onclick="deleteTask('${t._sbId}')" title="Delete" aria-label="Delete task">&times;</button>
+      </div>
+    </div>`;
+}
+
+function renderTasks() {
+  const container = document.getElementById('view-tasks');
+
+  // Preserve unsaved composer/modal input across re-renders — every task
+  // mutation rebuilds this view's innerHTML, and typed text must survive
+  const prevFocusId = document.activeElement ? document.activeElement.id : '';
+  let prevComposer = null;
+  if (_taskComposerOpen && document.getElementById('taskNewTitle')) {
+    prevComposer = {
+      title: document.getElementById('taskNewTitle').value,
+      details: document.getElementById('taskNewDetails').value,
+      due: document.getElementById('taskNewDue').value
+    };
+  }
+  let prevModal = null;
+  const prevModalEl = document.getElementById('editTaskModal');
+  if (_editingTaskId && prevModalEl && prevModalEl.style.display !== 'none') {
+    prevModal = {
+      title: document.getElementById('etTitle').value,
+      details: document.getElementById('etDetails').value,
+      due: document.getElementById('etDue').value
+    };
+  }
+
+  const header = `
+    <div class="view-header">
+      <div>
+        <h1 class="view-title">Tasks</h1>
+        <p class="view-subtitle">Quick to-dos. Add it, check it off, move on.</p>
+      </div>
+      <div class="view-header-actions">
+        <button class="btn btn-primary" onclick="openTaskComposer()">+ Add Task</button>
+      </div>
+    </div>`;
+
+  if (_tasksTableMissing) {
+    container.innerHTML = header + `
+      <div class="tasks-container">
+        <div class="tasks-setup-card">
+          <h3>One-time setup needed</h3>
+          <p>The tasks table doesn't exist in Supabase yet. Run <code>migrations/010_tasks.sql</code> in the Supabase SQL editor, then refresh this page.</p>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const active = TASKS.filter(t => !t.completed).sort((a, b) =>
+    (b.starred - a.starred) ||
+    ((a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31')) ||
+    (b.createdAt || '').localeCompare(a.createdAt || '')
+  );
+  const done = TASKS.filter(t => t.completed).sort((a, b) =>
+    (b.completedAt || '').localeCompare(a.completedAt || '')
+  );
+
+  container.innerHTML = header + `
+    <div class="tasks-container">
+      <div class="tasks-card">
+        <div class="task-composer" id="taskComposer" style="display:${_taskComposerOpen ? 'block' : 'none'}">
+          <div class="form-group">
+            <label for="taskNewTitle">Task</label>
+            <input type="text" id="taskNewTitle" placeholder="What needs doing?" maxlength="500" onkeydown="if(event.key==='Enter'){event.preventDefault();saveNewTask();}">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="taskNewDetails">Details (optional)</label>
+              <input type="text" id="taskNewDetails" placeholder="Any extra context" maxlength="2000" onkeydown="if(event.key==='Enter'){event.preventDefault();saveNewTask();}">
+            </div>
+            <div class="form-group">
+              <label for="taskNewDue">Due date (optional)</label>
+              <input type="date" id="taskNewDue" min="1900-01-01" max="9999-12-31">
+            </div>
+          </div>
+          <div class="task-composer-actions">
+            <button class="btn btn-secondary btn-sm" onclick="closeTaskComposer()">Cancel</button>
+            <button class="btn btn-primary btn-sm" onclick="saveNewTask()">Add Task</button>
+          </div>
+        </div>
+
+        ${active.length === 0 && done.length === 0 ? `
+          <div class="dashboard-empty tasks-empty">
+            <p>No tasks yet. Hit "+ Add Task" and get the first one down.</p>
+          </div>
+        ` : ''}
+
+        <div class="task-list">
+          ${active.map(_taskRowHTML).join('')}
+        </div>
+
+        ${done.length > 0 ? `
+          <div class="tasks-completed">
+            <button class="tasks-completed-toggle" onclick="toggleCompletedTasks()" aria-expanded="${_tasksCompletedOpen}">
+              <span class="tasks-completed-chevron ${_tasksCompletedOpen ? 'open' : ''}">&#8250;</span>
+              Completed (${done.length})
+            </button>
+            ${_tasksCompletedOpen ? `
+              <button class="btn btn-ghost btn-sm tasks-clear-btn" onclick="clearCompletedTasks()">Clear all</button>
+              <div class="task-list task-list-completed">
+                ${done.map(_taskRowHTML).join('')}
+              </div>
+            ` : ''}
+          </div>
+        ` : ''}
+      </div>
+    </div>
+
+    <!-- Edit Task modal -->
+    <div class="modal-overlay" id="editTaskModal" style="display:none;" onclick="closeEditTaskModal(event)">
+      <div class="modal-card" onclick="event.stopPropagation()">
+        <h3>Edit Task</h3>
+        <div class="form-group">
+          <label for="etTitle">Task</label>
+          <input type="text" id="etTitle" maxlength="500" onkeydown="if(event.key==='Enter'){event.preventDefault();saveTaskEdits();}">
+        </div>
+        <div class="form-group">
+          <label for="etDetails">Details</label>
+          <textarea id="etDetails" rows="3" maxlength="2000" placeholder="Any extra context"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="etDue">Due date</label>
+          <input type="date" id="etDue" min="1900-01-01" max="9999-12-31">
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" onclick="closeEditTaskModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveTaskEdits()">Save</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Restore preserved input state after the rebuild
+  if (prevComposer && _taskComposerOpen && document.getElementById('taskNewTitle')) {
+    document.getElementById('taskNewTitle').value = prevComposer.title;
+    document.getElementById('taskNewDetails').value = prevComposer.details;
+    document.getElementById('taskNewDue').value = prevComposer.due;
+  }
+  if (_editingTaskId && !TASKS.some(t => t._sbId === _editingTaskId)) _editingTaskId = null;
+  if (prevModal && _editingTaskId) {
+    document.getElementById('etTitle').value = prevModal.title;
+    document.getElementById('etDetails').value = prevModal.details;
+    document.getElementById('etDue').value = prevModal.due;
+    document.getElementById('editTaskModal').style.display = 'flex';
+  }
+  if (_taskComposerFocusPending) {
+    _taskComposerFocusPending = false;
+    const titleEl = document.getElementById('taskNewTitle');
+    if (titleEl) titleEl.focus();
+  } else if (['taskNewTitle', 'taskNewDetails', 'taskNewDue', 'etTitle', 'etDetails', 'etDue'].indexOf(prevFocusId) !== -1) {
+    const el = document.getElementById(prevFocusId);
+    if (el) el.focus();
+  }
+}
+
+function openTaskComposer() {
+  if (_tasksTableMissing) { _showSaveError('Run migrations/010_tasks.sql in Supabase first'); return; }
+  _taskComposerOpen = true;
+  _taskComposerFocusPending = true;
+  renderTasks();
+}
+
+function closeTaskComposer() {
+  _taskComposerOpen = false;
+  renderTasks();
+}
+
+async function saveNewTask() {
+  if (_taskSaving) return; // in-flight guard: double Enter / double click must not duplicate
+  if (!_sb || !CREATOR?._sbId) { _showSaveError('Not connected'); return; }
+  const title = document.getElementById('taskNewTitle').value.trim();
+  const details = document.getElementById('taskNewDetails').value.trim();
+  const dueDate = document.getElementById('taskNewDue').value;
+  if (!title) { _showSaveError('Task needs a title'); return; }
+
+  _taskSaving = true;
+  try {
+    const row = await sbAddTask({ title, details, dueDate });
+    if (!row) return;
+    TASKS.unshift({
+      _sbId: row.id, title: row.title || title, details: row.details || '',
+      dueDate: row.due_date || '', starred: !!row.starred, completed: !!row.completed,
+      completedAt: row.completed_at || '',
+      createdAt: row.created_at || new Date().toISOString()
+    });
+    // Clear inputs before re-render (the preserve-state logic would
+    // otherwise carry them over), then keep the composer open for
+    // rapid entry, Google Tasks style
+    document.getElementById('taskNewTitle').value = '';
+    document.getElementById('taskNewDetails').value = '';
+    document.getElementById('taskNewDue').value = '';
+    _taskComposerFocusPending = true;
+    renderTasks();
+  } finally {
+    _taskSaving = false;
+  }
+}
+
+async function toggleTaskComplete(sbId) {
+  const t = TASKS.find(x => x._sbId === sbId);
+  if (!t || _taskBusyIds[sbId]) return;
+  _taskBusyIds[sbId] = true;
+  try {
+    const completed = !t.completed;
+    const completedAt = completed ? new Date().toISOString() : null;
+    const ok = await sbUpdateTask(sbId, { completed: completed, completed_at: completedAt });
+    if (!ok) return;
+    t.completed = completed;
+    t.completedAt = completedAt || '';
+    renderTasks();
+  } finally {
+    delete _taskBusyIds[sbId];
+  }
+}
+
+async function toggleTaskStar(sbId) {
+  const t = TASKS.find(x => x._sbId === sbId);
+  if (!t || _taskBusyIds[sbId]) return;
+  _taskBusyIds[sbId] = true;
+  try {
+    const starred = !t.starred;
+    const ok = await sbUpdateTask(sbId, { starred: starred });
+    if (!ok) return;
+    t.starred = starred;
+    renderTasks();
+  } finally {
+    delete _taskBusyIds[sbId];
+  }
+}
+
+async function deleteTask(sbId) {
+  if (_taskBusyIds[sbId]) return;
+  _taskBusyIds[sbId] = true;
+  try {
+    if (!confirm('Delete this task?')) return;
+    const ok = await sbDeleteTasks([sbId]);
+    if (!ok) return;
+    TASKS = TASKS.filter(x => x._sbId !== sbId);
+    renderTasks();
+  } finally {
+    delete _taskBusyIds[sbId];
+  }
+}
+
+function toggleCompletedTasks() {
+  _tasksCompletedOpen = !_tasksCompletedOpen;
+  renderTasks();
+}
+
+async function clearCompletedTasks() {
+  if (_taskSaving) return;
+  const ids = TASKS.filter(t => t.completed).map(t => t._sbId);
+  if (!ids.length) return;
+  if (!confirm('Delete all ' + ids.length + ' completed task' + (ids.length === 1 ? '' : 's') + '?')) return;
+  _taskSaving = true;
+  try {
+    const ok = await sbDeleteTasks(ids);
+    if (!ok) return;
+    // Prune by the ids actually deleted, not by completed-flag — a task
+    // checked off while the delete was in flight must stay
+    TASKS = TASKS.filter(t => ids.indexOf(t._sbId) === -1);
+    renderTasks();
+  } finally {
+    _taskSaving = false;
+  }
+}
+
+function openEditTaskModal(sbId) {
+  const t = TASKS.find(x => x._sbId === sbId);
+  if (!t) return;
+  _editingTaskId = sbId;
+  document.getElementById('etTitle').value = t.title;
+  document.getElementById('etDetails').value = t.details;
+  document.getElementById('etDue').value = t.dueDate || '';
+  document.getElementById('editTaskModal').style.display = 'flex';
+}
+
+function closeEditTaskModal(event) {
+  if (event && event.target !== event.currentTarget) return;
+  _editingTaskId = null;
+  const m = document.getElementById('editTaskModal');
+  if (m) m.style.display = 'none';
+}
+
+async function saveTaskEdits() {
+  const t = TASKS.find(x => x._sbId === _editingTaskId);
+  if (!t) { closeEditTaskModal(); return; }
+  if (_taskBusyIds[t._sbId]) return;
+  const title = document.getElementById('etTitle').value.trim();
+  const details = document.getElementById('etDetails').value.trim();
+  const dueDate = document.getElementById('etDue').value;
+  if (!title) { _showSaveError('Task needs a title'); return; }
+
+  _taskBusyIds[t._sbId] = true;
+  try {
+    const ok = await sbUpdateTask(t._sbId, { title: title, details: details, due_date: dueDate || null });
+    if (!ok) return;
+    t.title = title;
+    t.details = details;
+    t.dueDate = dueDate || '';
+    _editingTaskId = null;
+    renderTasks();
+  } finally {
+    delete _taskBusyIds[t._sbId];
+  }
 }
 
 /* ---- SETTINGS (Interactive, all-editable) ---- */
