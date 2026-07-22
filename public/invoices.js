@@ -97,7 +97,7 @@ function invDisplayStatus(inv) {
 
 /* ---- INVOICE NUMBERING ----
    per_client: prefix from the client's book entry (auto-suggested
-   from their name), counter scoped to that prefix → SKYMOGRAPHY-0001.
+   from their name), counter scoped to that prefix → ACME-0001.
    global: one running sequence under the profile prefix → INV-2025002.
    Both suggestions are editable on the invoice before saving. */
 function invSuggestPrefix(name) {
@@ -987,12 +987,12 @@ function renderInvoicingSettings() {
   return `
     <div class="settings-card">
       <h3>Invoice Numbering</h3>
-      <p class="settings-help">Per client gives each client its own sequence (SKYMOGRAPHY-0001). Global runs one sequence for everything (INV-2025001). Numbers are always editable before saving an invoice.</p>
+      <p class="settings-help">Per client gives each client its own sequence (ACME-0001). Global runs one sequence for everything (INV-2025001). Numbers are always editable before saving an invoice.</p>
       <div class="form-row">
         <div class="form-group">
           <label>Numbering Style</label>
           <select id="setInvNumbering">
-            <option value="per_client" ${c.invoiceNumbering !== 'global' ? 'selected' : ''}>Per client (SKYMOGRAPHY-0001)</option>
+            <option value="per_client" ${c.invoiceNumbering !== 'global' ? 'selected' : ''}>Per client (ACME-0001)</option>
             <option value="global" ${c.invoiceNumbering === 'global' ? 'selected' : ''}>Global sequence (INV-2025001)</option>
           </select>
         </div>

@@ -5919,14 +5919,19 @@ a.mk-platform-link:hover {
   gap: 2px;
 }
 .inv-doc-party strong { font-weight: 700; }
-.inv-doc-dates div {
-  display: flex;
-  justify-content: flex-end;
-  gap: 20px;
-  margin-bottom: 6px;
+/* Two-column grid: labels share one left-aligned column so Date /
+   Terms / Due always line up regardless of value width */
+.inv-doc-dates {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: 20px;
+  row-gap: 6px;
+  align-content: start;
+  flex-shrink: 0;
 }
+.inv-doc-dates div { display: contents; }
 .inv-doc-dates span:first-child { color: #8A8580; }
-.inv-doc-dates span:last-child { font-variant-numeric: tabular-nums; }
+.inv-doc-dates span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .inv-doc-items { margin-top: 40px; }
 .inv-doc-items-head {
   display: flex;
@@ -6013,7 +6018,6 @@ a.mk-platform-link:hover {
 @media (max-width: 640px) {
   .inv-doc { padding: 32px 24px 28px; min-height: 0; }
   .inv-doc-meta, .inv-doc-bottom { flex-direction: column; gap: 24px; }
-  .inv-doc-dates div { justify-content: flex-start; }
 }
 
 /* --- Print / PDF export --- */
