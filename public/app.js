@@ -279,6 +279,8 @@ async function handleLogout() {
   MONTHLY_REVENUE = []; CAMPAIGN_RESULTS = []; OUTREACH_TEMPLATES = {};
   TASKS = []; _tasksTableMissing = false;
   _taskComposerOpen = false; _tasksCompletedOpen = false; _editingTaskId = null;
+  CLIENTS = []; _invoicingMigrationMissing = false;
+  if (typeof resetInvoiceViewState === 'function') resetInvoiceViewState();
   showAuthScreen();
 }
 
@@ -399,6 +401,15 @@ async function sbFetchAllData() {
       CREATOR.entity = profileRes.data.entity || '';
       CREATOR.email = profileRes.data.email || '';
       CREATOR.niche = profileRes.data.niche || '';
+      // Invoicing fields (migration 011) — undefined pre-migration, defaults cover it
+      CREATOR.businessAddress = profileRes.data.business_address || '';
+      CREATOR.bankName = profileRes.data.bank_name || '';
+      CREATOR.bankAccountHolder = profileRes.data.bank_account_holder || '';
+      CREATOR.bankAccountNumber = profileRes.data.bank_account_number || '';
+      CREATOR.bankRoutingNumber = profileRes.data.bank_routing_number || '';
+      CREATOR.bankAccountType = profileRes.data.bank_account_type || '';
+      CREATOR.invoiceNumbering = profileRes.data.invoice_numbering || 'per_client';
+      CREATOR.invoicePrefix = profileRes.data.invoice_prefix || 'INV';
       CREATOR._sbId = profileRes.data.id;
     }
 
@@ -571,6 +582,32 @@ async function sbFetchAllData() {
       }));
     }
 
+    // Fetch clients — table added in migration 011; a missing table means
+    // the invoicing migration hasn't run, so the Invoices editor shows
+    // setup instructions instead of erroring
+    const clRes = await _sb.from('clients').select('*').eq('user_id', CREATOR._sbId).order('name');
+    if (clRes.error) {
+      _invoicingMigrationMissing = (clRes.error.code === '42P01' || clRes.error.code === 'PGRST205');
+      if (!_invoicingMigrationMissing) console.error('clients fetch error:', clRes.error);
+      CLIENTS = [];
+    } else {
+      _invoicingMigrationMissing = false;
+      CLIENTS = (clRes.data || []).map(c => ({
+        _sbId: c.id, name: c.name || '', company: c.company || '', email: c.email || '',
+        billingAddress: c.billing_address || '', invoicePrefix: c.invoice_prefix || ''
+      }));
+    }
+
+    // Fetch invoices (table exists since 001; new 011 columns are simply
+    // absent pre-migration and the mapper defaults them)
+    const invRes = await _sb.from('invoices').select('*').eq('user_id', CREATOR._sbId).order('date', { ascending: false });
+    if (invRes.error) {
+      console.error('invoices fetch error:', invRes.error);
+      INVOICE_DATA = [];
+    } else {
+      INVOICE_DATA = (invRes.data || []).map(_mapInvoiceRow);
+    }
+
     // Update sidebar with loaded profile data
     updateSidebarUser();
 
@@ -697,17 +734,58 @@ async function sbDeleteTasks(sbIds) {
 }
 
 /* ---- SUPABASE CRUD: INVOICES ---- */
-async function sbAddInvoice(data) {
+// user_id is stamped by the DB default (current_profile_id) per the
+// multi-tenancy rules — inserts must not pass it manually
+async function sbAddInvoice(payload) {
   if (!_sb || !CREATOR._sbId) return null;
-  const { data: row, error } = await _sb.from('invoices').insert({
-    user_id: CREATOR._sbId, invoice_number: data.invoiceNumber || '',
-    brand: data.brand || '', amount: data.amount || 0, date: data.date || todayISO(),
-    due_date: data.dueDate || null, status: data.status || 'draft',
-    description: data.description || '', payment_terms: data.paymentTerms || 'net30'
-  }).select().single();
-  if (error) { _showSaveError('Failed to add invoice'); return null; }
+  const { data: row, error } = await _sb.from('invoices').insert(payload).select().single();
+  if (error) { _showSaveError('Failed to add invoice'); console.error(error); return null; }
   _showSaveSuccess();
   return row;
+}
+
+async function sbUpdateInvoice(sbId, updates) {
+  if (!_sb || !sbId) return false;
+  const { error } = await _sb.from('invoices').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to update invoice'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbDeleteInvoice(sbId) {
+  if (!_sb || !sbId) return false;
+  const { error } = await _sb.from('invoices').delete().eq('id', sbId);
+  if (error) { _showSaveError('Failed to delete invoice'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+/* ---- SUPABASE CRUD: CLIENTS ---- */
+async function sbAddClient(data) {
+  if (!_sb || !CREATOR._sbId) return null;
+  const { data: row, error } = await _sb.from('clients').insert({
+    name: data.name, company: data.company || '', email: data.email || '',
+    billing_address: data.billingAddress || '', invoice_prefix: data.invoicePrefix || ''
+  }).select().single();
+  if (error) { _showSaveError('Failed to add client'); console.error(error); return null; }
+  _showSaveSuccess();
+  return row;
+}
+
+async function sbUpdateClient(sbId, updates) {
+  if (!_sb || !sbId) return false;
+  const { error } = await _sb.from('clients').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to update client'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbDeleteClient(sbId) {
+  if (!_sb || !sbId) return false;
+  const { error } = await _sb.from('clients').delete().eq('id', sbId);
+  if (error) { _showSaveError('Failed to delete client'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
 }
 
 /* ---- SUPABASE CRUD: PROFILE ---- */
@@ -2806,6 +2884,7 @@ function renderSettings() {
       <button class="settings-tab" data-tab="platforms" onclick="switchSettingsTab('platforms')">Platforms</button>
       <button class="settings-tab" data-tab="ratecard" onclick="switchSettingsTab('ratecard')">Rate Card</button>
       <button class="settings-tab" data-tab="contract" onclick="switchSettingsTab('contract')">Contract Defaults</button>
+      <button class="settings-tab" data-tab="invoicing" onclick="switchSettingsTab('invoicing')">Invoicing</button>
       <button class="settings-tab" data-tab="audience" onclick="switchSettingsTab('audience')">Audience</button>
       <button class="settings-tab" data-tab="danger" onclick="switchSettingsTab('danger')">Account</button>
     </div>
@@ -2822,6 +2901,9 @@ function renderSettings() {
     <div class="settings-panel" id="settings-panel-contract" style="display:none;">
       ${renderContractSettingsPanel()}
     </div>
+    <div class="settings-panel" id="settings-panel-invoicing" style="display:none;">
+      ${renderInvoicingSettings()}
+    </div>
     <div class="settings-panel" id="settings-panel-audience" style="display:none;">
       ${renderAudienceSettings()}
     </div>
@@ -2833,7 +2915,7 @@ function renderSettings() {
 
 function switchSettingsTab(tab) {
   document.querySelectorAll('.settings-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  ['profile','platforms','ratecard','contract','audience','danger'].forEach(t => {
+  ['profile','platforms','ratecard','contract','invoicing','audience','danger'].forEach(t => {
     const el = document.getElementById('settings-panel-' + t);
     if (el) el.style.display = (t === tab) ? '' : 'none';
   });
@@ -3250,152 +3332,33 @@ function safeSet(key, val) {
   try { if(_ls) _ls.setItem(key, val); } catch(e) {}
 }
 
-/* ---- INVOICES ---- */
+/* ---- INVOICES ----
+   State lives here (loaded by sbFetchAllData); the view — list,
+   two-pane editor, document render, print export — lives in
+   invoices.js. */
 let INVOICE_DATA = [];
-try {
-  INVOICE_DATA = DEALS.filter(d => d.invoiced && parseValue(d.invoiced) > 0).map((d, i) => ({
-    id: `INV-${String(2025001 + i)}`,
-    brand: d.brand,
-    amount: parseValue(d.invoiced),
-    date: d.lastContact || "2026-03-01",
-    status: (d.status || "") === "SIGNED" ? "paid" : (String(d.status || "").includes("ACTIVE") ? "sent" : "draft"),
-    description: d.deliverables ? String(d.deliverables) : "Creator partnership"
-  }));
-} catch(e) { console.warn("INVOICE_DATA init:", e); }
+let CLIENTS = [];
+let _invoicingMigrationMissing = false;
 
-function renderInvoices() {
-  const container = document.getElementById("view-invoices");
-  const totalInvoiced = INVOICE_DATA.reduce((s, inv) => s + inv.amount, 0);
-  const paidTotal = INVOICE_DATA.filter(inv => inv.status === "paid").reduce((s, inv) => s + inv.amount, 0);
-  const pendingTotal = INVOICE_DATA.filter(inv => inv.status === "sent").reduce((s, inv) => s + inv.amount, 0);
-
-  container.innerHTML = `
-    <div class="view-header">
-      <div>
-        <h1 class="view-title">Invoices</h1>
-      </div>
-      <div class="gap-row">
-        <button class="btn btn-primary" onclick="toggleInvoiceForm()">+ Create Invoice</button>
-      </div>
-    </div>
-
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <span class="kpi-label">Total Invoiced</span>
-        <span class="kpi-value">${formatCurrency(totalInvoiced)}</span>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Paid</span>
-        <span class="kpi-value">${formatCurrency(paidTotal)}</span>
-        <span class="kpi-delta up">${INVOICE_DATA.filter(i => i.status === "paid").length} invoices</span>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-label">Pending</span>
-        <span class="kpi-value">${formatCurrency(pendingTotal)}</span>
-        <span class="kpi-delta">${INVOICE_DATA.filter(i => i.status === "sent").length} invoices</span>
-      </div>
-    </div>
-
-    <div id="invoiceFormWrap" style="display:none;margin-bottom:20px">
-      <div class="card">
-        <h3 style="font-family:var(--font-display);margin-bottom:16px">New Invoice</h3>
-        <div class="invoice-form">
-          <div>
-            <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:4px">Brand</label>
-            <select id="invoiceBrand" style="width:100%;padding:8px;border:2px solid var(--border);background:var(--surface);color:var(--text-primary);font-family:var(--font-body)">
-              ${DEALS.map(d => `<option value="${d.brand}">${d.brand}</option>`).join("")}
-            </select>
-          </div>
-          <div>
-            <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:4px">Amount</label>
-            <input id="invoiceAmount" type="number" placeholder="15000" style="width:100%;padding:8px;border:2px solid var(--border);background:var(--surface);color:var(--text-primary);font-family:var(--font-body);box-sizing:border-box">
-          </div>
-          <div>
-            <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:4px">Description</label>
-            <input id="invoiceDesc" type="text" placeholder="Instagram Reel + Stories" style="width:100%;padding:8px;border:2px solid var(--border);background:var(--surface);color:var(--text-primary);font-family:var(--font-body);box-sizing:border-box">
-          </div>
-          <div>
-            <label style="display:block;font-size:0.8rem;font-weight:600;margin-bottom:4px">Payment Terms</label>
-            <select id="invoiceTerms" style="width:100%;padding:8px;border:2px solid var(--border);background:var(--surface);color:var(--text-primary);font-family:var(--font-body)">
-              <option value="net15">Net 15</option>
-              <option value="net30" selected>Net 30</option>
-              <option value="net45">Net 45</option>
-              <option value="net60">Net 60</option>
-            </select>
-          </div>
-        </div>
-        <div class="invoice-actions" style="margin-top:16px">
-          <button class="btn btn-primary" onclick="createInvoice()">Save as Draft</button>
-          <button class="btn" onclick="toggleInvoiceForm()">Cancel</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Invoice #</th>
-              <th>Brand</th>
-              <th>Amount</th>
-              <th>Date</th>
-              <th>Status</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${INVOICE_DATA.length ? INVOICE_DATA.map(inv => `
-              <tr>
-                <td style="font-weight:600;font-variant-numeric:tabular-nums">${inv.id}</td>
-                <td>${inv.brand}</td>
-                <td style="font-variant-numeric:tabular-nums">${formatCurrency(inv.amount)}</td>
-                <td>${inv.date}</td>
-                <td><span class="invoice-status ${inv.status}">${inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}</span></td>
-                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${inv.description}</td>
-              </tr>
-            `).join("") : '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:40px">No invoices yet. Click "+ Create Invoice" to get started.</td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card quickbooks-card" style="margin-top:20px">
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <h3 style="margin:0 0 4px;font-family:var(--font-display);font-size:1.1rem">QuickBooks Integration</h3>
-          <p style="margin:0;color:var(--text-muted);font-size:0.85rem">Sync invoices with QuickBooks for automated accounting, payment tracking, and tax preparation.</p>
-        </div>
-        <button class="btn btn-primary" disabled style="opacity:0.6">Connect QuickBooks (Coming Soon)</button>
-      </div>
-    </div>
-  `;
-}
-
-function toggleInvoiceForm() {
-  const wrap = document.getElementById('invoiceFormWrap');
-  if (wrap) wrap.style.display = wrap.style.display === 'none' ? 'block' : 'none';
-}
-
-async function createInvoice() {
-  const brand = document.getElementById('invoiceBrand').value;
-  const amount = parseFloat(document.getElementById('invoiceAmount').value) || 0;
-  const desc = document.getElementById('invoiceDesc').value || 'Creator partnership';
-  const terms = document.getElementById('invoiceTerms').value;
-  if (amount > 0) {
-    const invNum = `INV-${String(2025001 + INVOICE_DATA.length)}`;
-    const invDate = new Date().toISOString().split('T')[0];
-    const row = await sbAddInvoice({
-      invoiceNumber: invNum, brand: brand, amount: amount,
-      date: invDate, status: 'draft', description: desc, paymentTerms: terms
-    });
-    INVOICE_DATA.push({
-      id: invNum, brand, amount, date: invDate,
-      status: 'draft', description: desc,
-      _sbId: row ? row.id : null
-    });
-    renderInvoices();
-  }
+function _mapInvoiceRow(r) {
+  return {
+    _sbId: r.id,
+    invoiceNumber: r.invoice_number || '',
+    brand: r.brand || '',
+    clientId: r.client_id || null,
+    billToName: r.bill_to_name || r.brand || '',
+    billToAddress: r.bill_to_address || '',
+    lineItems: Array.isArray(r.line_items) ? r.line_items : [],
+    amount: Number(r.amount) || 0,
+    amountPaid: Number(r.amount_paid) || 0,
+    date: r.date || '',
+    dueDate: r.due_date || '',
+    status: r.status || 'draft',
+    description: r.description || '',
+    paymentTerms: r.payment_terms || 'none',
+    notes: r.notes || '',
+    includePaymentInfo: r.include_payment_info !== false
+  };
 }
 
 /* ---- MEDIA KIT PDF EXPORT ---- */
