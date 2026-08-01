@@ -6112,29 +6112,6 @@ a.mk-platform-link:hover {
    OUTREACH (Analytics → Outreach tab)
    ============================================================ */
 
-/* --- Social | Outreach segmented control --- */
-.ana-seg {
-  display: inline-flex;
-  border: 2px solid var(--border);
-  background: var(--bg-1);
-  margin-bottom: 20px;
-}
-.ana-seg-btn {
-  padding: 7px 22px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  font-family: var(--font-body);
-  cursor: pointer;
-}
-.ana-seg-btn + .ana-seg-btn { border-left: 2px solid var(--border); }
-.ana-seg-btn.active {
-  background: var(--text-primary);
-  color: var(--bg-1);
-}
-
 /* --- Layout: lists rail + table --- */
 .out-layout {
   display: flex;

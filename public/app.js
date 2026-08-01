@@ -998,6 +998,7 @@ function renderView(view) {
     case "revenue": renderRevenue(); break;
     case "mediakit": renderMediaKit(); break;
     case "analytics": renderAnalytics(); break;
+    case "outreach": if (typeof renderOutreach === "function") renderOutreach(); break;
     case "inbox": renderInbox(); break;
     case "calendar": renderCalendar(); break;
     case "settings": renderSettings(); break;
@@ -1517,7 +1518,6 @@ function renderMediaKit() {
 
 /* ---- SOCIAL ANALYTICS (Live via Social Blade) ---- */
 let analyticsData = null;
-let analyticsSection = "social";   // social | outreach (Analytics top-level tab)
 let analyticsPlatform = "instagram";
 let analyticsTimePeriod = "3m";
 let analyticsLoading = false;
@@ -1611,30 +1611,7 @@ function renderAnalyticsLoading() {
   }
 }
 
-/* Analytics is two top-level tabs: Social (platform stats) and
-   Outreach (prospecting book, view logic in outreach.js). */
 function renderAnalytics() {
-  if (analyticsSection === "outreach" && typeof renderOutreach === "function") {
-    renderOutreach();
-    return;
-  }
-  renderAnalyticsSocial();
-}
-
-function analyticsSectionSwitch(section) {
-  analyticsSection = section;
-  renderAnalytics();
-}
-
-function analyticsSegHTML() {
-  return `
-    <div class="ana-seg">
-      <button class="ana-seg-btn ${analyticsSection === "social" ? "active" : ""}" onclick="analyticsSectionSwitch('social')">Social</button>
-      <button class="ana-seg-btn ${analyticsSection === "outreach" ? "active" : ""}" onclick="analyticsSectionSwitch('outreach')">Outreach</button>
-    </div>`;
-}
-
-function renderAnalyticsSocial() {
   const container = document.getElementById("view-analytics");
 
   // Calculate totals from live data or show defaults
@@ -1655,7 +1632,6 @@ function renderAnalyticsSocial() {
   const lastFetchDisplay = analyticsLastFetch ? new Date(analyticsLastFetch).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Never";
 
   container.innerHTML = `
-    ${analyticsSegHTML()}
     <div class="view-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
       <div>
         <h1 class="view-title">Social Analytics</h1>

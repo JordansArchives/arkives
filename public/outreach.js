@@ -77,7 +77,7 @@ function _outMigrationGuard() {
 
 /* ---- MAIN RENDER ---- */
 function renderOutreach() {
-  const container = document.getElementById('view-analytics');
+  const container = document.getElementById('view-outreach');
 
   const total = OUTREACH_TARGETS.length;
   const inTalks = OUTREACH_TARGETS.filter(t => t.status === 'in_talks').length;
@@ -92,7 +92,6 @@ function renderOutreach() {
     </div>` : '';
 
   container.innerHTML = `
-    ${analyticsSegHTML()}
     <div class="view-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
       <div>
         <h1 class="view-title">Outreach</h1>
