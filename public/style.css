@@ -5734,20 +5734,23 @@ a.mk-platform-link:hover {
    ============================================ */
 
 .inv-row { cursor: pointer; }
-.inv-row-actions { white-space: nowrap; text-align: right; }
-.inv-row-actions .btn-sm { margin-left: 6px; }
+.inv-row-actions { white-space: nowrap; text-align: right; padding-left: 24px; }
+.inv-row-actions .btn-sm { margin-left: 8px; }
 
+/* Same header-strip treatment as .card-header */
 .inv-clients-head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 2px solid var(--border);
 }
 .inv-client-form {
   border: 1px dashed var(--bg-4);
   background: var(--bg-0);
-  padding: 14px;
-  margin-top: 14px;
+  padding: 16px 20px;
+  margin: 16px 20px;
 }
 
 /* --- Editor layout --- */
@@ -6038,13 +6041,16 @@ a.mk-platform-link:hover {
 .inv-row-delete:hover { color: var(--red); border-color: var(--red); }
 
 /* --- Invoice list controls (chips + search) --- */
+/* Padded header strip, matching .card-header on Revenue/Calendar —
+   the table sits flush against its bottom border */
 .inv-list-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  padding: 16px 20px;
+  border-bottom: 2px solid var(--border);
 }
 .inv-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .inv-chip {
@@ -6119,9 +6125,9 @@ a.mk-platform-link:hover {
   align-items: flex-start;
 }
 .out-rail {
-  width: 200px;
+  width: 210px;
   flex-shrink: 0;
-  padding: 12px;
+  padding: 16px;
 }
 .out-main {
   flex: 1;
@@ -6216,14 +6222,16 @@ a.mk-platform-link:hover {
 .out-rail-add:hover { color: var(--text-primary); background: var(--bg-2); }
 .out-rail-add svg { width: 12px; height: 12px; }
 
-/* --- Controls row (type chips + status filter + search) --- */
+/* --- Controls row (type chips + status filter + search) ---
+   Padded header strip, matching .card-header on Revenue/Calendar */
 .out-controls {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
+  padding: 16px 20px;
+  border-bottom: 2px solid var(--border);
 }
 .out-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .out-chip {

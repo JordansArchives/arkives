@@ -309,7 +309,7 @@ function renderClientsCard() {
       </div>
       ${form}
       ${CLIENTS.length ? `
-      <div class="table-wrap" style="margin-top:12px">
+      <div class="table-wrap">
         <table class="data-table">
           <thead><tr><th>Name</th><th>Company</th><th>Prefix</th><th>Address</th><th></th></tr></thead>
           <tbody>
@@ -326,7 +326,7 @@ function renderClientsCard() {
               </tr>`).join('')}
           </tbody>
         </table>
-      </div>` : (editing ? '' : '<p style="color:var(--text-muted);padding:12px 0 0;font-size:0.85rem">No clients saved yet.</p>')}
+      </div>` : (editing ? '' : '<p style="color:var(--text-muted);padding:16px 20px;margin:0;font-size:0.85rem">No clients saved yet.</p>')}
     </div>`;
 }
 
