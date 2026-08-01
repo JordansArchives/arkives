@@ -280,7 +280,9 @@ async function handleLogout() {
   TASKS = []; _tasksTableMissing = false;
   _taskComposerOpen = false; _tasksCompletedOpen = false; _editingTaskId = null;
   CLIENTS = []; _invoicingMigrationMissing = false;
+  OUTREACH_TARGETS = []; OUTREACH_LISTS = []; _outreachMigrationMissing = false;
   if (typeof resetInvoiceViewState === 'function') resetInvoiceViewState();
+  if (typeof resetOutreachViewState === 'function') resetOutreachViewState();
   showAuthScreen();
 }
 
@@ -598,6 +600,33 @@ async function sbFetchAllData() {
       }));
     }
 
+    // Fetch outreach lists + targets — tables added in migration 012; a
+    // missing table means the outreach migration hasn't run, so the
+    // Outreach tab shows setup instructions instead of erroring
+    const orlRes = await _sb.from('outreach_lists').select('*').eq('user_id', CREATOR._sbId).order('sort_order');
+    if (orlRes.error) {
+      _outreachMigrationMissing = (orlRes.error.code === '42P01' || orlRes.error.code === 'PGRST205');
+      if (!_outreachMigrationMissing) console.error('outreach_lists fetch error:', orlRes.error);
+      OUTREACH_LISTS = [];
+    } else {
+      _outreachMigrationMissing = false;
+      OUTREACH_LISTS = (orlRes.data || []).map(l => ({
+        _sbId: l.id, name: l.name || '', sortOrder: l.sort_order || 0
+      }));
+    }
+    if (!_outreachMigrationMissing) {
+      const ortRes = await _sb.from('outreach_targets').select('*').eq('user_id', CREATOR._sbId).order('name');
+      if (ortRes.error) {
+        _outreachMigrationMissing = (ortRes.error.code === '42P01' || ortRes.error.code === 'PGRST205');
+        if (!_outreachMigrationMissing) console.error('outreach_targets fetch error:', ortRes.error);
+        OUTREACH_TARGETS = [];
+      } else {
+        OUTREACH_TARGETS = (ortRes.data || []).map(_mapOutreachRow);
+      }
+    } else {
+      OUTREACH_TARGETS = [];
+    }
+
     // Fetch invoices (table exists since 001; new 011 columns are simply
     // absent pre-migration and the mapper defaults them)
     const invRes = await _sb.from('invoices').select('*').eq('user_id', CREATOR._sbId).order('date', { ascending: false });
@@ -784,6 +813,59 @@ async function sbDeleteClient(sbId) {
   if (!_sb || !sbId) return false;
   const { error } = await _sb.from('clients').delete().eq('id', sbId);
   if (error) { _showSaveError('Failed to delete client'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+/* ---- SUPABASE CRUD: OUTREACH ---- */
+// user_id is stamped by the DB default (current_profile_id) per the
+// multi-tenancy rules — inserts must not pass it manually
+async function sbAddOutreachTarget(payload) {
+  if (!_sb || !CREATOR._sbId) return null;
+  const { data: row, error } = await _sb.from('outreach_targets').insert(payload).select().single();
+  if (error) { _showSaveError('Failed to add target'); console.error(error); return null; }
+  _showSaveSuccess();
+  return row;
+}
+
+async function sbUpdateOutreachTarget(sbId, updates) {
+  if (!_sb || !sbId) return false;
+  const { error } = await _sb.from('outreach_targets').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to update target'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbDeleteOutreachTarget(sbId) {
+  if (!_sb || !sbId) return false;
+  const { error } = await _sb.from('outreach_targets').delete().eq('id', sbId);
+  if (error) { _showSaveError('Failed to delete target'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbAddOutreachList(name, sortOrder) {
+  if (!_sb || !CREATOR._sbId) return null;
+  const { data: row, error } = await _sb.from('outreach_lists').insert({
+    name: name, sort_order: sortOrder || 0
+  }).select().single();
+  if (error) { _showSaveError('Failed to add list'); console.error(error); return null; }
+  _showSaveSuccess();
+  return row;
+}
+
+async function sbUpdateOutreachList(sbId, updates) {
+  if (!_sb || !sbId) return false;
+  const { error } = await _sb.from('outreach_lists').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to update list'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbDeleteOutreachList(sbId) {
+  if (!_sb || !sbId) return false;
+  const { error } = await _sb.from('outreach_lists').delete().eq('id', sbId);
+  if (error) { _showSaveError('Failed to delete list'); console.error(error); return false; }
   _showSaveSuccess();
   return true;
 }
@@ -1435,6 +1517,7 @@ function renderMediaKit() {
 
 /* ---- SOCIAL ANALYTICS (Live via Social Blade) ---- */
 let analyticsData = null;
+let analyticsSection = "social";   // social | outreach (Analytics top-level tab)
 let analyticsPlatform = "instagram";
 let analyticsTimePeriod = "3m";
 let analyticsLoading = false;
@@ -1528,7 +1611,30 @@ function renderAnalyticsLoading() {
   }
 }
 
+/* Analytics is two top-level tabs: Social (platform stats) and
+   Outreach (prospecting book, view logic in outreach.js). */
 function renderAnalytics() {
+  if (analyticsSection === "outreach" && typeof renderOutreach === "function") {
+    renderOutreach();
+    return;
+  }
+  renderAnalyticsSocial();
+}
+
+function analyticsSectionSwitch(section) {
+  analyticsSection = section;
+  renderAnalytics();
+}
+
+function analyticsSegHTML() {
+  return `
+    <div class="ana-seg">
+      <button class="ana-seg-btn ${analyticsSection === "social" ? "active" : ""}" onclick="analyticsSectionSwitch('social')">Social</button>
+      <button class="ana-seg-btn ${analyticsSection === "outreach" ? "active" : ""}" onclick="analyticsSectionSwitch('outreach')">Outreach</button>
+    </div>`;
+}
+
+function renderAnalyticsSocial() {
   const container = document.getElementById("view-analytics");
 
   // Calculate totals from live data or show defaults
@@ -1549,6 +1655,7 @@ function renderAnalytics() {
   const lastFetchDisplay = analyticsLastFetch ? new Date(analyticsLastFetch).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Never";
 
   container.innerHTML = `
+    ${analyticsSegHTML()}
     <div class="view-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
       <div>
         <h1 class="view-title">Social Analytics</h1>
@@ -3339,6 +3446,31 @@ function safeSet(key, val) {
 let INVOICE_DATA = [];
 let CLIENTS = [];
 let _invoicingMigrationMissing = false;
+
+/* ---- OUTREACH ----
+   State lives here (loaded by sbFetchAllData); the view — the
+   Analytics → Outreach tab: lists rail, table, detail drawer —
+   lives in outreach.js. */
+let OUTREACH_TARGETS = [];
+let OUTREACH_LISTS = [];
+let _outreachMigrationMissing = false;
+
+function _mapOutreachRow(r) {
+  return {
+    _sbId: r.id,
+    name: r.name || '',
+    type: r.type || 'brand',
+    website: r.website || '',
+    pitch: r.pitch || '',
+    status: r.status || 'not_contacted',
+    initiatedBy: r.initiated_by || 'none',
+    projects: Array.isArray(r.projects) ? r.projects : [],
+    notes: r.notes || '',
+    listIds: Array.isArray(r.list_ids) ? r.list_ids : [],
+    createdAt: r.created_at || '',
+    updatedAt: r.updated_at || ''
+  };
+}
 
 function _mapInvoiceRow(r) {
   return {
