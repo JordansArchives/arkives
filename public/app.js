@@ -3516,11 +3516,30 @@ function _mapInvoiceRow(r) {
 }
 
 /* ---- MEDIA KIT PDF EXPORT ---- */
-function exportMediaKitPDF() {
+// Brand mark for PDF headers, fetched once and cached as a data URL
+let _brandLogoDataUrl = null;
+async function _getBrandLogoDataUrl() {
+  if (_brandLogoDataUrl) return _brandLogoDataUrl;
+  try {
+    const resp = await fetch('logo-black.png');
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    _brandLogoDataUrl = await new Promise(resolve => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => resolve(null);
+      r.readAsDataURL(blob);
+    });
+  } catch (e) { _brandLogoDataUrl = null; }
+  return _brandLogoDataUrl;
+}
+
+async function exportMediaKitPDF() {
   if (!window.jspdf || !window.jspdf.jsPDF) {
     alert('PDF library is still loading. Please try again in a moment.');
     return;
   }
+  var brandLogo = await _getBrandLogoDataUrl();
   try {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
@@ -3610,18 +3629,14 @@ function exportMediaKitPDF() {
   drawPageBg();
   var Y = 38;
 
-  // Logo "A" mark
-  setDraw(RED);
-  doc.setLineWidth(2.5);
-  doc.line(M, Y + 2, M + 10, Y - 12);
-  doc.line(M + 10, Y - 12, M + 20, Y + 2);
-  doc.line(M + 4, Y - 3, M + 16, Y - 3);
+  // Brand logo (box mark) — 905x729 source, kept to aspect
+  if (brandLogo) doc.addImage(brandLogo, 'PNG', M, Y - 22, 34, 27.4);
 
   // Brand name
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(26);
   setColor(TEXT_DARK);
-  doc.text(mkBrand, M + 28, Y);
+  doc.text(mkBrand, brandLogo ? M + 44 : M, Y);
 
   // Subtitle
   doc.setFont('helvetica', 'normal');

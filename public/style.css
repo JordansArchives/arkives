@@ -26,81 +26,28 @@
   align-items: center;
   gap: 20px;
 }
-.loader-title {
-  font-family: var(--font-display, 'Instrument Serif', Georgia, serif);
-  font-size: 28px;
-  letter-spacing: 0.06em;
-  color: var(--text-primary);
+.loader-logo {
+  width: 210px;
+  height: auto;
   opacity: 0;
-  animation: loaderFadeIn 0.3s ease 0.15s forwards;
+  animation: loaderFadeIn 0.3s ease 0.1s forwards;
 }
-.loader-box {
-  width: 160px;
-  height: 130px;
-  color: var(--text-primary);
-}
-
-/* Box body draws in */
-.box-body {
-  stroke-dasharray: 280;
-  stroke-dashoffset: 280;
-  animation: drawStroke 0.5s ease forwards;
-}
-.box-label {
-  stroke-dasharray: 110;
-  stroke-dashoffset: 110;
-  animation: drawStroke 0.35s ease 0.2s forwards;
-}
-
-/* Lid opens (hinges from back/top edge of the lid) */
-.box-lid {
-  transform-origin: 60px 28px;
-  animation: lidOpen 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.45s forwards;
-}
-
-/* Dust particles burst out when lid opens */
-.dust { animation-fill-mode: forwards; }
-.d1 { animation: dustBurst1 0.6s ease 0.55s forwards; }
-.d2 { animation: dustBurst2 0.5s ease 0.5s forwards; }
-.d3 { animation: dustBurst3 0.65s ease 0.58s forwards; }
-.d4 { animation: dustBurst4 0.55s ease 0.52s forwards; }
-.d5 { animation: dustBurst5 0.6s ease 0.56s forwards; }
-
-@keyframes drawStroke {
-  to { stroke-dashoffset: 0; }
+[data-theme="dark"] .loader-logo { filter: invert(1); }
+.loader-wheel {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--bg-3);
+  border-top-color: var(--text-primary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
 }
 @keyframes loaderFadeIn {
   to { opacity: 1; }
 }
-@keyframes lidOpen {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(-95deg); }
-}
-@keyframes dustBurst1 {
-  0% { opacity: 0; transform: translate(0, 0) scale(1); }
-  20% { opacity: 0.7; }
-  100% { opacity: 0; transform: translate(-18px, -28px) scale(0.3); }
-}
-@keyframes dustBurst2 {
-  0% { opacity: 0; transform: translate(0, 0) scale(1); }
-  20% { opacity: 0.8; }
-  100% { opacity: 0; transform: translate(2px, -32px) scale(0.2); }
-}
-@keyframes dustBurst3 {
-  0% { opacity: 0; transform: translate(0, 0) scale(1); }
-  20% { opacity: 0.6; }
-  100% { opacity: 0; transform: translate(16px, -24px) scale(0.4); }
-}
-@keyframes dustBurst4 {
-  0% { opacity: 0; transform: translate(0, 0) scale(1); }
-  20% { opacity: 0.65; }
-  100% { opacity: 0; transform: translate(-10px, -35px) scale(0.25); }
-}
-@keyframes dustBurst5 {
-  0% { opacity: 0; transform: translate(0, 0) scale(1); }
-  20% { opacity: 0.7; }
-  100% { opacity: 0; transform: translate(12px, -30px) scale(0.35); }
-}
+
+/* Theme-paired brand marks: black logo in light mode, white in dark */
+[data-theme="dark"] .logo-light { display: none; }
+:root:not([data-theme="dark"]) .logo-dark { display: none; }
 /* === END LOADING ANIMATION === */
 
 /* --- Tokens (Light Mode Default) --- */
@@ -264,16 +211,14 @@ a:hover { text-decoration: underline; }
 .sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 24px 20px 20px;
+  justify-content: center;
+  padding: 20px;
   border-bottom: 2px solid var(--border);
 }
-.sidebar-logo { color: var(--accent); flex-shrink: 0; }
-.sidebar-title {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 400;
-  letter-spacing: -0.01em;
+.sidebar-logo {
+  width: 96px;
+  height: auto;
+  flex-shrink: 0;
 }
 .sidebar-nav {
   flex: 1;
@@ -4673,8 +4618,9 @@ a.mk-platform-link:hover {
   margin-bottom: 32px;
 }
 
-.auth-logo svg {
-  color: var(--text-primary);
+.auth-logo-img {
+  width: 120px;
+  height: auto;
   margin-bottom: 12px;
 }
 

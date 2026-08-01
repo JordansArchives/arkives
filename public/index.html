@@ -8,6 +8,7 @@
 <title>Arkives — Creator Partnership CRM</title>
 <meta name="description" content="Arkives — Creator partnership CRM for managing brand deals, invoicing, analytics, and content planning.">
 <meta name="author" content="Arkives">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="canonical" href="https://arkives.xyz">
 <link rel="preconnect" href="https://api.fontshare.com">
 <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&f[]=instrument-serif@400&display=swap" rel="stylesheet">
@@ -21,27 +22,8 @@
 <!-- Loading Animation Overlay -->
 <div class="loader-overlay" id="loaderOverlay">
   <div class="loader-content">
-    <svg class="loader-box" viewBox="0 -30 120 130" aria-hidden="true">
-      <!-- Box body (bottom) -->
-      <rect class="box-body" x="15" y="48" width="90" height="46" rx="2" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      <!-- Box label/handle -->
-      <rect class="box-label" x="42" y="60" width="36" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      <!-- Box lid (hinges from back edge) -->
-      <g class="box-lid">
-        <path d="M10 48 L22 28 h76 L110 48 Z" fill="var(--bg-0)" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <!-- Lid clasp -->
-        <path d="M52 48 v-5 h16 v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <!-- Red "A" branding on lid -->
-        <path d="M54 40 L60 30 L66 40" fill="none" stroke="#C73539" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-      </g>
-      <!-- Dust particles that fly out -->
-      <circle class="dust d1" cx="40" cy="46" r="1.5" fill="var(--text-muted)" opacity="0"/>
-      <circle class="dust d2" cx="60" cy="44" r="1.2" fill="var(--text-muted)" opacity="0"/>
-      <circle class="dust d3" cx="80" cy="46" r="1.8" fill="var(--text-muted)" opacity="0"/>
-      <circle class="dust d4" cx="50" cy="45" r="1" fill="var(--text-muted)" opacity="0"/>
-      <circle class="dust d5" cx="70" cy="44" r="1.4" fill="var(--text-muted)" opacity="0"/>
-    </svg>
-    <span class="loader-title">Arkives</span>
+    <img class="loader-logo" src="logo-loading.svg" alt="Arkives is loading">
+    <div class="loader-wheel" aria-hidden="true"></div>
   </div>
 </div>
 
@@ -49,12 +31,8 @@
 <div class="auth-screen" id="authScreen">
   <div class="auth-card">
     <div class="auth-logo">
-      <svg viewBox="0 0 32 32" width="48" height="48" aria-label="Arkives">
-        <rect x="4" y="14" width="24" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M2 14 L6 6 h20 L30 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M13 14 v-3 h6 v3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M12 22 L16 16 L20 22" fill="none" stroke="#C73539" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
+      <img class="auth-logo-img logo-light" src="logo-black.svg" alt="Arkives">
+      <img class="auth-logo-img logo-dark" src="logo-white.svg" alt="Arkives">
       <h1 class="auth-title">Arkives</h1>
       <p class="auth-subtitle">Creator Partnership CRM</p>
     </div>
@@ -111,14 +89,8 @@
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-brand">
-      <svg class="sidebar-logo" viewBox="0 0 32 32" width="32" height="32" aria-label="Arkives Logo">
-        <!-- Hand-drawn archive box with stylized "A" -->
-        <path d="M4.5 7.2c.1-.3.4-.5.8-.5h21.5c.4 0 .7.2.8.5l2.2 5.8c.1.2.1.4 0 .6-.2.3-.4.4-.7.4H3c-.3 0-.6-.2-.7-.4-.1-.2-.1-.4 0-.6L4.5 7.2z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M5.2 14v12.5c0 .5.3.9.8.9h20c.5 0 .8-.4.8-.9V14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M12.5 20.5h7c.4 0 .7.3.7.7v2.1c0 .4-.3.7-.7.7h-7c-.4 0-.7-.3-.7-.7v-2.1c0-.4.3-.7.7-.7z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M13.8 7.5L16 3.5l2.2 4" fill="none" stroke="#C73539" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <span class="sidebar-title">Arkives</span>
+      <img class="sidebar-logo logo-light" src="logo-black.svg" alt="Arkives">
+      <img class="sidebar-logo logo-dark" src="logo-white.svg" alt="Arkives">
     </div>
     <nav class="sidebar-nav">
       <a href="#dashboard" class="nav-item active" data-view="dashboard">
