@@ -216,7 +216,7 @@ a:hover { text-decoration: underline; }
   border-bottom: 2px solid var(--border);
 }
 .sidebar-logo {
-  width: 96px;
+  width: 58px;
   height: auto;
   flex-shrink: 0;
 }
@@ -4619,7 +4619,7 @@ a.mk-platform-link:hover {
 }
 
 .auth-logo-img {
-  width: 120px;
+  width: 72px;
   height: auto;
   margin-bottom: 12px;
 }

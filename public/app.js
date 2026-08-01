@@ -3630,13 +3630,13 @@ async function exportMediaKitPDF() {
   var Y = 38;
 
   // Brand logo (box mark) — 905x729 source, kept to aspect
-  if (brandLogo) doc.addImage(brandLogo, 'PNG', M, Y - 22, 34, 27.4);
+  if (brandLogo) doc.addImage(brandLogo, 'PNG', M, Y - 13, 20.4, 16.4);
 
   // Brand name
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(26);
   setColor(TEXT_DARK);
-  doc.text(mkBrand, brandLogo ? M + 44 : M, Y);
+  doc.text(mkBrand, brandLogo ? M + 30 : M, Y);
 
   // Subtitle
   doc.setFont('helvetica', 'normal');
