@@ -1,7 +1,7 @@
 /* ============================================================
    Arkives — Outreach view (Analytics → Outreach tab)
    Prospecting book: brands / companies / platforms /
-   opportunities Jordan wants to work with. Custom lists rail +
+   opportunities the user wants to work with. Custom lists rail +
    filterable table + right-side detail drawer with a projects
    (past work) editor.
 

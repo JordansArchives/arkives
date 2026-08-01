@@ -19,7 +19,7 @@ let CREATOR = {
 
 let RATE_CARD = {
   organic: [], ugc: [], tiktok: [], youtube: [], addOns: [], bundles: [],
-  minimumRate: 15000, pricingRule: "6% of follower count baseline"
+  minimumRate: 0, pricingRule: ""
 };
 
 const PIPELINE_STATUSES = ["Lead", "Qualifying", "Rates Sent", "Negotiating", "Contract", "Active", "Completed", "Declined"];
@@ -403,6 +403,11 @@ async function sbFetchAllData() {
       CREATOR.entity = profileRes.data.entity || '';
       CREATOR.email = profileRes.data.email || '';
       CREATOR.niche = profileRes.data.niche || '';
+      // Media-kit copy (migration 013) — undefined pre-migration, defaults cover it
+      CREATOR.mkAlignYes = Array.isArray(profileRes.data.mk_align_yes) ? profileRes.data.mk_align_yes : [];
+      CREATOR.mkAlignNo = Array.isArray(profileRes.data.mk_align_no) ? profileRes.data.mk_align_no : [];
+      CREATOR.mkInterests = Array.isArray(profileRes.data.mk_interests) ? profileRes.data.mk_interests : [];
+      CREATOR.mkContactEmail = profileRes.data.mk_contact_email || '';
       // Invoicing fields (migration 011) — undefined pre-migration, defaults cover it
       CREATOR.businessAddress = profileRes.data.business_address || '';
       CREATOR.bankName = profileRes.data.bank_name || '';
@@ -441,7 +446,7 @@ async function sbFetchAllData() {
     // Fetch rate card settings
     const rcsRes = await _sb.from('rate_card_settings').select('*').eq('user_id', CREATOR._sbId).limit(1).single();
     if (rcsRes.data) {
-      RATE_CARD.minimumRate = rcsRes.data.minimum_rate || 15000;
+      RATE_CARD.minimumRate = rcsRes.data.minimum_rate || 0;
       RATE_CARD.pricingRule = rcsRes.data.pricing_rule || '';
     }
 
@@ -542,9 +547,9 @@ async function sbFetchAllData() {
           AUDIENCE_DATA.topCities = row.data || {};
         }
       });
-      // Interests are not in the DB yet - keep hardcoded defaults
+      // Interests live on the profile (mk_interests, migration 013)
       if (!AUDIENCE_DATA.interests || AUDIENCE_DATA.interests.length === 0) {
-        AUDIENCE_DATA.interests = ["Photography", "Video Editing", "Creative Business", "AI Tools", "Tech & Gadgets", "Design", "Entrepreneurship"];
+        AUDIENCE_DATA.interests = CREATOR.mkInterests || [];
       }
     }
 
@@ -1345,6 +1350,42 @@ function renderMediaKit() {
   const container = document.getElementById("view-mediakit");
   const totalFollowers = Object.values(CREATOR.platforms).reduce((s, p) => s + p.followersNum, 0);
 
+  // Identity comes from the profile + platforms — nothing hardcoded
+  const mkBrand = CREATOR.brand || CREATOR.name || 'Your Brand';
+  const mkInitials = (CREATOR.brand || CREATOR.name || '').split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
+  const mkIgHandle = (CREATOR.platforms.instagram.handle || '').replace(/^@/, '');
+  const mkContact = CREATOR.mkContactEmail || CREATOR.email || '';
+  const mkAlignYes = CREATOR.mkAlignYes || [];
+  const mkAlignNo = CREATOR.mkAlignNo || [];
+
+  const mkPlatformDefs = [
+    { key: 'instagram', cls: 'ig', icon: SKETCHY_ICONS.instagram, label: 'Followers', sub: p => p.engagement + ' Engagement', url: h => 'https://instagram.com/' + h },
+    { key: 'tiktok', cls: 'tt', icon: SKETCHY_ICONS.tiktok, label: 'Followers', sub: p => (p.likes || '0') + ' Total Likes', url: h => 'https://tiktok.com/@' + h },
+    { key: 'youtube', cls: 'yt', icon: SKETCHY_ICONS.youtube, label: 'Subscribers', sub: p => (p.videos || 0) + ' Videos', url: h => 'https://youtube.com/@' + h },
+    { key: 'twitter', cls: 'tw', icon: SKETCHY_ICONS.twitter, label: 'Followers', sub: () => '', url: h => 'https://x.com/' + h },
+    { key: 'linkedin', cls: 'li', icon: SKETCHY_ICONS.linkedin, label: 'Followers', sub: p => (p.connections || 0) + ' Connections', url: h => 'https://linkedin.com/in/' + h }
+  ];
+  const mkPlatformCards = mkPlatformDefs
+    .filter(d => { const p = CREATOR.platforms[d.key]; return p && (p.handle || p.followersNum > 0); })
+    .map(d => {
+      const p = CREATOR.platforms[d.key];
+      const handle = (p.handle || '').replace(/^@/, '');
+      const href = p.profileUrl || (handle ? d.url(handle) : '');
+      const sub = d.sub(p);
+      const inner = `
+            <div class="platform-icon ${d.cls}">${d.icon}</div>
+            <div class="mk-platform-details">
+              <div class="mk-platform-stat">${_esc(p.followers)}</div>
+              <div class="mk-platform-label">${d.label}</div>
+              ${sub ? `<div class="mk-platform-er">${_esc(sub)}</div>` : ''}
+            </div>`;
+      return href
+        ? `<a href="${_esc(href)}" target="_blank" rel="noopener" class="mk-platform-card mk-platform-link">${inner}</a>`
+        : `<div class="mk-platform-card">${inner}</div>`;
+    }).join('');
+
+  const mkRateItems = [...RATE_CARD.organic, ...RATE_CARD.ugc, ...RATE_CARD.bundles];
+
   container.innerHTML = `
     <div class="view-header">
       <div>
@@ -1360,14 +1401,14 @@ function renderMediaKit() {
     <div class="media-kit">
       <div class="mk-hero">
         <div class="mk-hero-left">
-          <div class="mk-avatar">JW</div>
+          <div class="mk-avatar">${_esc(mkInitials)}</div>
           <div>
             <div class="mk-brand-name">
-              Jordan's Archives
-              <svg class="mk-verified" width="18" height="18" viewBox="0 0 24 24" fill="var(--teal)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+              ${_esc(mkBrand)}
+              ${CREATOR.platforms.instagram.verified ? '<svg class="mk-verified" width="18" height="18" viewBox="0 0 24 24" fill="var(--teal)"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>' : ''}
             </div>
-            <div class="mk-handle">@jordans.archivess</div>
-            <div class="mk-niche">Visual Creator \u00b7 Editing Education \u00b7 Creative Business</div>
+            ${mkIgHandle ? `<div class="mk-handle">@${_esc(mkIgHandle)}</div>` : ''}
+            ${CREATOR.niche ? `<div class="mk-niche">${_esc(CREATOR.niche)}</div>` : '<div class="mk-niche" style="color:var(--text-faint)">Add your niche in Settings \u2192 Profile</div>'}
           </div>
         </div>
         <div class="mk-hero-stats">
@@ -1380,54 +1421,17 @@ function renderMediaKit() {
 
       <div class="mk-section">
         <h3 class="mk-section-title">Platform Presence</h3>
-        <div class="mk-platforms">
-          <a href="https://instagram.com/jordans.archivess" target="_blank" rel="noopener" class="mk-platform-card mk-platform-link">
-            <div class="platform-icon ig">${SKETCHY_ICONS.instagram}</div>
-            <div class="mk-platform-details">
-              <div class="mk-platform-stat">${CREATOR.platforms.instagram.followers}</div>
-              <div class="mk-platform-label">Followers</div>
-              <div class="mk-platform-er">${CREATOR.platforms.instagram.engagement} Engagement</div>
-            </div>
-          </a>
-          <a href="https://tiktok.com/@jordans.archives" target="_blank" rel="noopener" class="mk-platform-card mk-platform-link">
-            <div class="platform-icon tt">${SKETCHY_ICONS.tiktok}</div>
-            <div class="mk-platform-details">
-              <div class="mk-platform-stat">${CREATOR.platforms.tiktok.followers}</div>
-              <div class="mk-platform-label">Followers</div>
-              <div class="mk-platform-er">${CREATOR.platforms.tiktok.likes} Total Likes</div>
-            </div>
-          </a>
-          <a href="https://youtube.com/@JordansArchives" target="_blank" rel="noopener" class="mk-platform-card mk-platform-link">
-            <div class="platform-icon yt">${SKETCHY_ICONS.youtube}</div>
-            <div class="mk-platform-details">
-              <div class="mk-platform-stat">${CREATOR.platforms.youtube.followers}</div>
-              <div class="mk-platform-label">Subscribers</div>
-              <div class="mk-platform-er">${CREATOR.platforms.youtube.videos} Videos</div>
-            </div>
-          </a>
-          <a href="https://x.com/jordanarchivess" target="_blank" rel="noopener" class="mk-platform-card mk-platform-link">
-            <div class="platform-icon tw">${SKETCHY_ICONS.twitter}</div>
-            <div class="mk-platform-details">
-              <div class="mk-platform-stat">${CREATOR.platforms.twitter.followers}</div>
-              <div class="mk-platform-label">Followers</div>
-              <div class="mk-platform-er">New Account</div>
-            </div>
-          </a>
-          <a href="https://linkedin.com/in/jordanwatkinss" target="_blank" rel="noopener" class="mk-platform-card mk-platform-link">
-            <div class="platform-icon li">${SKETCHY_ICONS.linkedin}</div>
-            <div class="mk-platform-details">
-              <div class="mk-platform-stat">${CREATOR.platforms.linkedin.followers}</div>
-              <div class="mk-platform-label">Followers</div>
-              <div class="mk-platform-er">${CREATOR.platforms.linkedin.connections} Connections</div>
-            </div>
-          </a>
-        </div>
+        ${mkPlatformCards
+          ? `<div class="mk-platforms">${mkPlatformCards}</div>`
+          : '<p style="color:var(--text-muted);font-size:13px">No platforms added yet. Add your handles and stats in Settings → Platforms.</p>'}
       </div>
 
       <div class="mk-row">
         <div class="mk-section">
           <h3 class="mk-section-title">Audience Demographics</h3>
-          <div class="mk-demo-grid">
+          ${(!AUDIENCE_DATA.ageRange && !AUDIENCE_DATA.topCountries.length && !AUDIENCE_DATA.gender.male && !AUDIENCE_DATA.gender.female)
+            ? '<p style="color:var(--text-muted);font-size:13px">No audience data yet. Demographics will appear once audience data is added to your account.</p>'
+            : `<div class="mk-demo-grid">
             <div class="mk-demo-item">
               <span class="mk-demo-label">Age Range</span>
               <span class="mk-demo-value">${AUDIENCE_DATA.ageRange}</span>
@@ -1450,28 +1454,27 @@ function renderMediaKit() {
                 </div>
               `).join("")}
             </div>
-          </div>
+          </div>`}
         </div>
 
         <div class="mk-section">
           <h3 class="mk-section-title">Brand Alignment</h3>
           <div class="mk-tags">
-            ${AUDIENCE_DATA.interests.map(i => `<span class="mk-tag">${i}</span>`).join("")}
+            ${AUDIENCE_DATA.interests.map(i => `<span class="mk-tag">${_esc(i)}</span>`).join("")}
           </div>
+          ${(mkAlignYes.length || mkAlignNo.length) ? `
           <div class="mk-alignment-list">
-            <div class="mk-alignment-item mk-align-yes"><span class="mk-align-icon">\u2713</span><span>AI tools that enhance creativity</span></div>
-            <div class="mk-alignment-item mk-align-yes"><span class="mk-align-icon">\u2713</span><span>Visual storytelling and editing tools</span></div>
-            <div class="mk-alignment-item mk-align-yes"><span class="mk-align-icon">\u2713</span><span>Creative business and entrepreneurship</span></div>
-            <div class="mk-alignment-item mk-align-yes"><span class="mk-align-icon">\u2713</span><span>Tech, gadgets, and productivity tools</span></div>
-            <div class="mk-alignment-item mk-align-no"><span class="mk-align-icon">\u2717</span><span>Products requiring rev-share only</span></div>
-            <div class="mk-alignment-item mk-align-no"><span class="mk-align-icon">\u2717</span><span>AI tools that replace creativity (organic)</span></div>
-          </div>
+            ${mkAlignYes.map(item => `<div class="mk-alignment-item mk-align-yes"><span class="mk-align-icon">\u2713</span><span>${_esc(item)}</span></div>`).join('')}
+            ${mkAlignNo.map(item => `<div class="mk-alignment-item mk-align-no"><span class="mk-align-icon">\u2717</span><span>${_esc(item)}</span></div>`).join('')}
+          </div>` : '<p style="color:var(--text-muted);font-size:13px">Tell brands what fits and what doesn\'t in Settings \u2192 Profile \u2192 Media Kit.</p>'}
         </div>
       </div>
 
       <div class="mk-section">
         <h3 class="mk-section-title">Campaign Performance</h3>
-        <div class="mk-campaigns">
+        ${!CAMPAIGN_RESULTS.length
+          ? '<p style="color:var(--text-muted);font-size:13px">No campaign results yet. Past brand campaigns will show here.</p>'
+          : `<div class="mk-campaigns">
           ${CAMPAIGN_RESULTS.map(c => `
             <div class="mk-campaign-card">
               <div class="mk-campaign-brand">${c.brand}</div>
@@ -1492,26 +1495,23 @@ function renderMediaKit() {
               </div>
             </div>
           `).join("")}
-        </div>
+        </div>`}
       </div>
 
       <div class="mk-section">
         <h3 class="mk-section-title">Rates</h3>
+        ${mkRateItems.length ? `
         <div class="mk-rates">
-          <div class="mk-rate-card"><div class="mk-rate-name">Instagram Reel</div><div class="mk-rate-price">$15,000</div></div>
-          <div class="mk-rate-card"><div class="mk-rate-name">IG Static / Carousel</div><div class="mk-rate-price">$10,000</div></div>
-          <div class="mk-rate-card"><div class="mk-rate-name">IG Stories (3-pack)</div><div class="mk-rate-price">$5,000</div></div>
-          <div class="mk-rate-card"><div class="mk-rate-name">UGC Video (30s)</div><div class="mk-rate-price">$3,500</div></div>
-          <div class="mk-rate-card"><div class="mk-rate-name">UGC Video (60s)</div><div class="mk-rate-price">$5,000</div></div>
-          <div class="mk-rate-card"><div class="mk-rate-name">Custom Bundle</div><div class="mk-rate-price">Let's talk</div></div>
+          ${mkRateItems.map(r => `<div class="mk-rate-card"><div class="mk-rate-name">${_esc(r.name)}</div><div class="mk-rate-price">${r.rate ? '$' + r.rate.toLocaleString('en-US') : (r.range ? _esc(r.range) : "Let's talk")}</div></div>`).join('')}
         </div>
-        <p style="color:var(--text-muted);font-size:12px;margin-top:12px">All pricing is flat-rate. NET 30 terms. Licensing, exclusivity, and paid ad usage rights available as add-ons.</p>
+        <p style="color:var(--text-muted);font-size:12px;margin-top:12px">All pricing is flat-rate. Licensing, exclusivity, and paid ad usage rights available as add-ons.</p>
+        ` : '<p style="color:var(--text-muted);font-size:13px">No rates set yet. Build your rate card in Settings → Rate Card.</p>'}
       </div>
 
+      ${mkContact ? `
       <div class="mk-footer">
-        <p>Contact: <a href="mailto:jordanss.archives@gmail.com" style="color:var(--accent)">jordanss.archives@gmail.com</a></p>
-
-      </div>
+        <p>Contact: <a href="mailto:${_esc(mkContact)}" style="color:var(--accent)">${_esc(mkContact)}</a></p>
+      </div>` : ''}
     </div>
   `;
 }
@@ -1567,10 +1567,21 @@ async function fetchAnalyticsData(refresh = false) {
   analyticsLoading = true;
   if (refresh) renderAnalyticsLoading();
   try {
-    // Load from local static analytics_cache.json (no backend required)
-    const resp = await fetch('analytics_cache.json', { cache: refresh ? 'reload' : 'default' });
-    if (resp.ok) {
-      const cache = await resp.json();
+    // Load this user's payload from social_stats (migration 013).
+    // No row / missing table = clean empty state, never someone
+    // else's numbers — the payload used to ship as a public
+    // static file with the owner's stats baked in.
+    let cache = null;
+    if (_sb && CREATOR._sbId) {
+      const res = await _sb.from('social_stats').select('payload').eq('user_id', CREATOR._sbId).limit(1).maybeSingle();
+      if (res.error) {
+        const missing = (res.error.code === '42P01' || res.error.code === 'PGRST205');
+        if (!missing) console.error('social_stats fetch error:', res.error);
+      } else if (res.data && res.data.payload && res.data.payload.platforms) {
+        cache = res.data.payload;
+      }
+    }
+    if (cache) {
       // Transform: snapshots grouped by date -> history grouped by platform
       const history = { instagram: [], tiktok: [], youtube: [], twitter: [], linkedin: [] };
       (cache.snapshots || []).forEach(snap => {
@@ -1605,7 +1616,7 @@ function renderAnalyticsLoading() {
     content.innerHTML = `
       <div class="card" style="padding:60px;text-align:center">
         <div class="loading-spinner" style="margin:0 auto 16px"></div>
-        <p style="color:var(--text-secondary)">Fetching live data from Social Blade...</p>
+        <p style="color:var(--text-secondary)">Loading your analytics...</p>
         <p style="color:var(--text-muted);font-size:12px;margin-top:4px">This may take a few seconds</p>
       </div>`;
   }
@@ -1694,7 +1705,7 @@ function renderAnalytics() {
     </div>
 
     <div id="analyticsContent">
-      ${analyticsData ? renderAnalyticsPlatform(analyticsPlatform) : '<div class="card" style="padding:60px;text-align:center"><p style="color:var(--text-muted)">Click "Refresh Data" to fetch live analytics</p></div>'}
+      ${analyticsData ? renderAnalyticsPlatform(analyticsPlatform) : '<div class="card" style="padding:60px;text-align:center"><p style="color:var(--text-secondary);font-weight:600;margin-bottom:6px">No analytics connected yet</p><p style="color:var(--text-muted);font-size:13px">Your social stats will appear here once analytics data is added to your account.</p></div>'}
     </div>
   `;
 
@@ -1894,7 +1905,7 @@ function renderAnalyticsPlatform(platform) {
         <div class="card analytics-stat-card">
           <div class="analytics-stat-value">${p.grade || 'New'}</div>
           <div class="analytics-stat-label">Status</div>
-          <div class="analytics-stat-delta">@${p.handle || 'jordanarchivess'}</div>
+          <div class="analytics-stat-delta">${p.handle ? '@' + p.handle.replace(/^@/, '') : '—'}</div>
         </div>
       </div>
       <div class="card">
@@ -1933,7 +1944,7 @@ function renderAnalyticsPlatform(platform) {
         <div class="card analytics-stat-card">
           <div class="analytics-stat-value">${p.grade || 'N/A'}</div>
           <div class="analytics-stat-label">Status</div>
-          <div class="analytics-stat-delta">/in/${p.handle || 'jordanwatkinss'}/</div>
+          <div class="analytics-stat-delta">${p.handle ? '/in/' + p.handle.replace(/^@/, '') + '/' : '—'}</div>
         </div>
       </div>
       <div class="card">
@@ -3014,17 +3025,17 @@ function renderProfileSettings() {
       <div class="form-row">
         <div class="form-group">
           <label>Full Name</label>
-          <input type="text" id="setProfileName" value="${_esc(c.name)}" placeholder="Jordan Watkins">
+          <input type="text" id="setProfileName" value="${_esc(c.name)}" placeholder="Your Name">
         </div>
         <div class="form-group">
           <label>Brand Name</label>
-          <input type="text" id="setProfileBrand" value="${_esc(c.brand)}" placeholder="Jordan's Archives">
+          <input type="text" id="setProfileBrand" value="${_esc(c.brand)}" placeholder="Your Brand">
         </div>
       </div>
       <div class="form-row">
         <div class="form-group">
           <label>Legal Entity</label>
-          <input type="text" id="setProfileEntity" value="${_esc(c.entity)}" placeholder="Asterisk LLC">
+          <input type="text" id="setProfileEntity" value="${_esc(c.entity)}" placeholder="Your Business LLC">
         </div>
         <div class="form-group">
           <label>Email</label>
@@ -3035,11 +3046,36 @@ function renderProfileSettings() {
         <label>Niche / Description</label>
         <input type="text" id="setProfileNiche" value="${_esc(c.niche)}" placeholder="Creative animator, tech, lifestyle">
       </div>
+      <div class="form-group">
+        <label>Media Kit Contact Email</label>
+        <input type="email" id="setMkContact" value="${_esc(c.mkContactEmail || '')}" placeholder="hello@yourbrand.com">
+        <p class="settings-help" style="margin-top:4px">Shown on your media kit page and PDF. Falls back to your email above if empty.</p>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Brand Alignment — Good Fit (one per line)</label>
+          <textarea id="setMkAlignYes" rows="4" placeholder="AI tools that enhance creativity&#10;Tech and productivity">${_esc((c.mkAlignYes || []).join('\n'))}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Brand Alignment — Not a Fit (one per line)</label>
+          <textarea id="setMkAlignNo" rows="4" placeholder="Rev-share only deals">${_esc((c.mkAlignNo || []).join('\n'))}</textarea>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Audience Interest Tags (one per line)</label>
+        <textarea id="setMkInterests" rows="3" placeholder="Photography&#10;Video Editing">${_esc((c.mkInterests || []).join('\n'))}</textarea>
+      </div>
       <div class="settings-actions">
         <button class="btn btn-primary" onclick="saveProfile()">Save Profile</button>
       </div>
     </div>
   `;
+}
+
+function _mkLines(id) {
+  const el = document.getElementById(id);
+  if (!el) return [];
+  return el.value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 20);
 }
 
 async function saveProfile() {
@@ -3050,10 +3086,20 @@ async function saveProfile() {
     entity: document.getElementById('setProfileEntity').value.trim(),
     email: document.getElementById('setProfileEmail').value.trim(),
     niche: document.getElementById('setProfileNiche').value.trim(),
+    mk_contact_email: document.getElementById('setMkContact').value.trim(),
+    mk_align_yes: _mkLines('setMkAlignYes'),
+    mk_align_no: _mkLines('setMkAlignNo'),
+    mk_interests: _mkLines('setMkInterests'),
   };
   const { error } = await _sb.from('profiles').update(updates).eq('id', CREATOR._sbId);
   if (error) { _showSaveError('Failed: ' + error.message); return; }
-  Object.assign(CREATOR, updates);
+  Object.assign(CREATOR, {
+    name: updates.name, brand: updates.brand, entity: updates.entity,
+    email: updates.email, niche: updates.niche,
+    mkContactEmail: updates.mk_contact_email,
+    mkAlignYes: updates.mk_align_yes, mkAlignNo: updates.mk_align_no,
+    mkInterests: updates.mk_interests
+  });
   updateSidebarUser();
   _showSaveSuccess();
 }
@@ -3166,11 +3212,11 @@ function renderRateCardSettings() {
       <div class="form-row">
         <div class="form-group">
           <label>Minimum Rate ($)</label>
-          <input type="number" id="setRateMin" value="${rc.minimumRate || 15000}" placeholder="15000">
+          <input type="number" id="setRateMin" value="${rc.minimumRate || ''}" placeholder="e.g. 15000">
         </div>
         <div class="form-group">
           <label>Pricing Rule</label>
-          <input type="text" id="setRatePricingRule" value="${_esc(rc.pricingRule)}" placeholder="6% of follower count baseline">
+          <input type="text" id="setRatePricingRule" value="${_esc(rc.pricingRule)}" placeholder="e.g. 6% of follower count">
         </div>
       </div>
 
@@ -3478,6 +3524,26 @@ function exportMediaKitPDF() {
   try {
   var jsPDF = window.jspdf.jsPDF;
   var doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+
+  // Identity comes from the profile + platforms — nothing hardcoded
+  var mkBrand = CREATOR.brand || CREATOR.name || 'Media Kit';
+  var mkIgHandle = (CREATOR.platforms.instagram.handle || '').replace(/^@/, '');
+  var mkContact = CREATOR.mkContactEmail || CREATOR.email || '';
+  var mkTagline = (CREATOR.niche || '').replace(/\s*·\s*/g, '  |  ');
+  function mkPlatformUrl(key) {
+    var p = CREATOR.platforms[key] || {};
+    if (p.profileUrl) return p.profileUrl;
+    var h = (p.handle || '').replace(/^@/, '');
+    if (!h) return '';
+    switch (key) {
+      case 'instagram': return 'https://instagram.com/' + h;
+      case 'tiktok': return 'https://tiktok.com/@' + h;
+      case 'youtube': return 'https://youtube.com/@' + h;
+      case 'twitter': return 'https://x.com/' + h;
+      case 'linkedin': return 'https://linkedin.com/in/' + h;
+    }
+    return '';
+  }
   var W = doc.internal.pageSize.getWidth();
   var H = doc.internal.pageSize.getHeight();
   var M = 50;
@@ -3526,18 +3592,18 @@ function exportMediaKitPDF() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     setColor(MUTED);
-    doc.text("Jordan's Archives  |  Media Kit  |  " + new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), W / 2, H - 22, { align: 'center' });
+    doc.text(mkBrand + "  |  Media Kit  |  " + new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), W / 2, H - 22, { align: 'center' });
     doc.text(pageNum + ' / ' + totalPages, W - M, H - 22, { align: 'right' });
     setFill(RED);
     doc.rect(0, H - 5, W, 5, 'F');
   }
 
   var PLATFORM_URLS = {
-    instagram: 'https://instagram.com/jordans.archivess',
-    tiktok: 'https://tiktok.com/@jordans.archives',
-    youtube: 'https://youtube.com/@JordansArchives',
-    twitter: 'https://x.com/jordanarchivess',
-    linkedin: 'https://linkedin.com/in/jordanwatkinss'
+    instagram: mkPlatformUrl('instagram'),
+    tiktok: mkPlatformUrl('tiktok'),
+    youtube: mkPlatformUrl('youtube'),
+    twitter: mkPlatformUrl('twitter'),
+    linkedin: mkPlatformUrl('linkedin')
   };
 
   // ==================== PAGE 1 ====================
@@ -3555,7 +3621,7 @@ function exportMediaKitPDF() {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(26);
   setColor(TEXT_DARK);
-  doc.text("Jordan's Archives", M + 28, Y);
+  doc.text(mkBrand, M + 28, Y);
 
   // Subtitle
   doc.setFont('helvetica', 'normal');
@@ -3579,11 +3645,11 @@ function exportMediaKitPDF() {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   setColor(TEXT_DARK);
-  doc.text('@jordans.archivess', M, Y);
+  if (mkIgHandle) doc.text('@' + mkIgHandle, M, Y);
   setColor(MUTED);
-  doc.text('Visual Creator  |  Editing Education  |  Creative Business', M + 80, Y);
+  if (mkTagline) doc.text(mkTagline, mkIgHandle ? M + 80 : M, Y);
   setColor(TEAL);
-  doc.text('jordanss.archives@gmail.com', W - M, Y, { align: 'right' });
+  if (mkContact) doc.text(mkContact, W - M, Y, { align: 'right' });
 
   Y += 24;
 
@@ -3641,8 +3707,8 @@ function exportMediaKitPDF() {
 
     drawCard(cx, cy, cardW - 2, cardH);
 
-    // Clickable link on the card
-    doc.link(cx, cy, cardW - 2, cardH, { url: PLATFORM_URLS[p.key] });
+    // Clickable link on the card (only when the platform has a URL)
+    if (PLATFORM_URLS[p.key]) doc.link(cx, cy, cardW - 2, cardH, { url: PLATFORM_URLS[p.key] });
 
     // Icon circle
     var iconColors = { IG: [225, 48, 108], TT: [0, 0, 0], YT: [255, 0, 0], X: [0, 0, 0], LI: [0, 119, 181] };
@@ -3766,8 +3832,8 @@ function exportMediaKitPDF() {
 
   Y += 22;
 
-  var alignYes = ['AI tools that enhance creativity', 'Visual storytelling and editing tools', 'Creative business and entrepreneurship', 'Tech, gadgets, and productivity tools'];
-  var alignNo = ['Products requiring rev-share only', 'AI tools that replace creativity (organic)'];
+  var alignYes = CREATOR.mkAlignYes || [];
+  var alignNo = CREATOR.mkAlignNo || [];
 
   alignYes.forEach(function(item) {
     setFill(TEAL);
@@ -3955,18 +4021,18 @@ function exportMediaKitPDF() {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   setColor(TEAL);
-  doc.text('jordanss.archives@gmail.com', M, Y);
+  if (mkContact) doc.text(mkContact, M, Y);
 
   pageFooter('2', '2');
 
   doc.setProperties({
-    title: "Jordan's Archives - Media Kit",
-    author: 'Jordan Watkins',
+    title: mkBrand + ' - Media Kit',
+    author: CREATOR.name || mkBrand,
     subject: 'Creator Media Kit',
     creator: 'Arkives CRM'
   });
 
-  doc.save('Jordans_Archives_Media_Kit.pdf');
+  doc.save((mkBrand.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'Media_Kit') + '_Media_Kit.pdf');
   } catch (err) {
     console.error('PDF export error:', err);
     alert('Error generating PDF: ' + err.message);

@@ -489,7 +489,7 @@ function gatherContractData() {
     CONTRACT_DEFAULTS.forceMajeureDays = Number(document.getElementById('cdFMDays')?.value) || CONTRACT_DEFAULTS.forceMajeureDays;
   }
 
-  const creatorName = (typeof CREATOR !== 'undefined' && CREATOR.name) ? CREATOR.name : 'Jordan Watkins';
+  const creatorName = (typeof CREATOR !== 'undefined' && CREATOR.name) ? CREATOR.name : 'Creator';
   const creatorEntity = CONTRACT_DEFAULTS.creatorEntity;
   const creatorEmail = (typeof CREATOR !== 'undefined' && CREATOR.email) ? CREATOR.email : '';
 
