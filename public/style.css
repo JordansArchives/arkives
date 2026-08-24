@@ -5984,6 +5984,96 @@ a.mk-platform-link:hover {
   }
 }
 @page { margin: 0.45in; }
+
+/* --- The RED document (invoice_template = 'red') ---
+   One-of-one [ INVOICE ] design rebuilt pixel-exact from the source
+   PDF. Letter page, everything in pt against measured coordinates.
+   Trip Sans Bold throughout; masthead + footer mark are vector art
+   extracted from the PDF. Single red #B7011D on paper texture. */
+@font-face {
+  font-family: 'Trip Sans';
+  src: url('trip-sans-bold.woff2') format('woff2');
+  font-weight: 700;
+}
+.invr {
+  display: flex; flex-direction: column;
+  width: 612pt; min-height: 792pt;
+  padding: 0 19.8pt 22pt 20.2pt;
+  background: #f0efed url('invoice-red-paper.jpg') center / cover no-repeat;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  color: #B7011D;
+  font-family: 'Trip Sans', sans-serif;
+  font-weight: 700;
+  font-size: 12.7pt;
+  line-height: normal;
+  box-sizing: border-box;
+}
+.invr *, .invr *::before, .invr *::after { box-sizing: border-box; }
+#invDocPreview .invr { box-shadow: var(--shadow-md); margin: 0 auto; }
+
+.invr-masthead { display: block; width: 572.8pt; margin-top: 11.8pt; }
+
+.invr-meta { margin-top: 12.4pt; }
+.invr-meta-row { display: flex; justify-content: space-between; line-height: 21.6pt; }
+
+.invr-parties { display: flex; margin-top: 11.8pt; }
+.invr-billbox {
+  width: 269.2pt; min-height: 121.5pt;
+  border: 1pt solid #B7011D;
+  padding: 8.3pt 14pt 0 17.2pt;
+}
+.invr-payable { margin-left: 45.2pt; padding-top: 9.3pt; }
+.invr-party-label { line-height: 16.8pt; }
+.invr-party-body { margin-top: 17.2pt; line-height: 16.8pt; }
+
+.invr-table { margin-top: 23.5pt; }
+.invr-thead {
+  display: grid; grid-template-columns: 349.9pt 34.9pt 86.9pt 1fr;
+  align-items: center;
+  height: 18.7pt;
+  background: #B7011D;
+  color: #fff;
+  font-size: 9.8pt;
+  position: relative;
+}
+.invr-thead span { text-align: center; position: relative; top: -1.3pt; }
+.invr-thead span:first-child { left: 3.8pt; }
+.invr-thead-icons { position: absolute; left: 2.2pt; top: 2.85pt; display: flex; gap: 3pt; }
+.invr-thead-icons svg { display: block; }
+.invr-tbody { border-left: 1pt solid #B7011D; border-right: 1pt solid #B7011D; }
+.invr-trow {
+  display: grid; grid-template-columns: 349.4pt 34.9pt 86.9pt 1fr;
+  min-height: 25.9pt; align-items: center;
+  border-bottom: 1pt solid #B7011D;
+  text-align: center;
+}
+.invr-trow > div { align-self: stretch; display: flex; align-items: center; justify-content: center; position: relative; top: -0.5pt; }
+.invr-trow > div:not(:last-child) { border-right: 1pt solid #B7011D; }
+.invr-sumrow {
+  display: grid; grid-template-columns: 471.2pt 1fr;
+  height: 25.9pt; align-items: center;
+  border-bottom: 1pt solid #B7011D;
+}
+.invr-sumrow.invr-totalrow { height: 27.8pt; }
+.invr-sumrow > div { position: relative; top: -0.5pt; }
+.invr-sumrow > div:first-child { text-align: right; padding-right: 9.5pt; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; border-right: 1pt solid #B7011D; }
+.invr-sumrow > div:last-child { text-align: center; }
+
+.invr-notes { margin-top: 14pt; font-size: 11.5pt; line-height: 15pt; white-space: pre-line; }
+
+.invr-footer { margin-top: auto; position: relative; height: 130pt; flex-shrink: 0; }
+.invr-mark { position: absolute; left: -0.2pt; top: 0; width: 240pt; height: 126pt; }
+.invr-pay { position: absolute; right: 2.9pt; top: 1.4pt; width: 254.2pt; line-height: 17.5pt; }
+.invr-pay-rows { margin-top: 16.1pt; }
+.invr-pay-row { display: flex; justify-content: space-between; }
+
+@media print {
+  body.printing-invoice-red #invPrintHost .invr {
+    box-shadow: none;
+    margin: 0;
+  }
+}
+
 .inv-row-delete:hover { color: var(--red); border-color: var(--red); }
 
 /* --- Invoice list controls (chips + search) --- */

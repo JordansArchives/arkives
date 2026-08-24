@@ -417,6 +417,8 @@ async function sbFetchAllData() {
       CREATOR.bankAccountType = profileRes.data.bank_account_type || '';
       CREATOR.invoiceNumbering = profileRes.data.invoice_numbering || 'per_client';
       CREATOR.invoicePrefix = profileRes.data.invoice_prefix || 'INV';
+      // Document template (migration 015) — undefined pre-migration, defaults to classic
+      CREATOR.invoiceTemplate = profileRes.data.invoice_template || 'classic';
       CREATOR._sbId = profileRes.data.id;
     }
 
@@ -3505,6 +3507,7 @@ function _mapInvoiceRow(r) {
     lineItems: Array.isArray(r.line_items) ? r.line_items : [],
     amount: Number(r.amount) || 0,
     amountPaid: Number(r.amount_paid) || 0,
+    tax: Number(r.tax) || 0,
     date: r.date || '',
     dueDate: r.due_date || '',
     status: r.status || 'draft',

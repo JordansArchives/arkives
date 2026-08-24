@@ -78,9 +78,19 @@ function invLineAmount(li) {
 }
 
 // Legacy invoices (pre-011) have no line items, just a stored amount
-function invTotal(inv) {
+function invSubtotal(inv) {
   const items = inv.lineItems || [];
   return items.length ? items.reduce((s, li) => s + invLineAmount(li), 0) : (Number(inv.amount) || 0);
+}
+
+// Tax (migration 015, red template only) rides on top of the line items
+function invTotal(inv) {
+  return invSubtotal(inv) + (Number(inv.tax) || 0);
+}
+
+// Which document design this account renders (profiles.invoice_template)
+function _invUsesRedDoc() {
+  return (CREATOR.invoiceTemplate || 'classic') === 'red';
 }
 
 function invBalance(inv) {
@@ -519,7 +529,7 @@ function invNew() {
     billToName: '', billToAddress: '',
     date: todayISO(), paymentTerms: 'none', dueDate: '',
     lineItems: [{ type: 'flat', desc: '', qty: 1, rate: 0, fee: 0 }],
-    amountPaid: 0, notes: '', includePaymentInfo: true,
+    tax: 0, amountPaid: 0, notes: '', includePaymentInfo: true,
     status: 'draft'
   };
   _invEditingId = null; _invEditorOpen = true; _invNewClientOpen = false;
@@ -636,6 +646,11 @@ function renderInvoiceEditor() {
         <div class="inv-section-label">Line Items</div>
         <div id="invLineItems">${_renderInvLineItems()}</div>
         <button class="btn inv-add-line" onclick="invAddLine()">+ Add line item</button>
+        ${_invUsesRedDoc() ? `
+        <div class="form-group" style="margin-top:12px">
+          <label>Tax</label>
+          <input type="number" id="invTax" step="0.01" min="0" value="${inv.tax || ''}" placeholder="0.00" oninput="invField('tax', this.value)">
+        </div>` : ''}
 
         <div class="inv-section-label">Payment</div>
         <div class="form-group">
@@ -661,6 +676,7 @@ function renderInvoiceEditor() {
       </div>
     </div>
   `;
+  _invFitRedPreview();
 }
 
 function _renderInvLineItems() {
@@ -703,7 +719,7 @@ function _renderInvLineItems() {
 
 /* ---- EDITOR FIELD HANDLERS ---- */
 function invField(key, val) {
-  if (key === 'amountPaid') val = parseFloat(val) || 0;
+  if (key === 'amountPaid' || key === 'tax') val = parseFloat(val) || 0;
   _inv[key] = val;
   if (key === 'paymentTerms') {
     _inv.dueDate = INV_TERM_DAYS[val] ? invTermDueDate(_inv.date, val) : _inv.dueDate;
@@ -746,7 +762,18 @@ function invRemoveLine(i) {
 
 function _invUpdatePreview() {
   const el = document.getElementById('invDocPreview');
-  if (el && _inv) el.innerHTML = renderInvoiceDoc(_inv);
+  if (el && _inv) { el.innerHTML = renderInvoiceDoc(_inv); _invFitRedPreview(); }
+}
+
+// The red doc is a fixed 612pt (816px) page; scale it down to the
+// preview pane instead of horizontal-scrolling. Print ignores this
+// (the print host renders unzoomed).
+function _invFitRedPreview() {
+  const pane = document.querySelector('.inv-preview-pane');
+  const doc = document.querySelector('#invDocPreview .invr');
+  if (!pane || !doc) return;
+  const w = doc.offsetWidth;
+  if (w > 0 && pane.clientWidth < w) doc.style.zoom = pane.clientWidth / w;
 }
 
 /* ---- CLIENT PICKING (inside editor) ---- */
@@ -806,7 +833,11 @@ async function invSave() {
     description: summary,
     payment_terms: inv.paymentTerms || 'none',
     notes: inv.notes || '',
-    include_payment_info: !!inv.includePaymentInfo
+    include_payment_info: !!inv.includePaymentInfo,
+    // tax column exists only after migration 015; the red template is
+    // flipped on after that migration, so gate on it to keep classic
+    // accounts' saves working pre-migration
+    ...(_invUsesRedDoc() ? { tax: Number(inv.tax) || 0 } : {})
   };
 
   if (_invEditingId) {
@@ -860,6 +891,136 @@ const INV_ORNAMENT_SVG = `<svg viewBox="0 0 32 32" width="22" height="22" aria-h
 </svg>`;
 
 function renderInvoiceDoc(inv) {
+  return _invUsesRedDoc() ? renderInvoiceDocRed(inv) : renderInvoiceDocClassic(inv);
+}
+
+/* ---- RED TEMPLATE ----
+   One-of-one [ INVOICE ] document: Trip Sans Bold on paper texture,
+   monochrome #B7011D, box-character mark. Rebuilt pixel-exact from
+   the source PDF (letter, measurements in pt). The masthead and the
+   footer mark are vector art extracted from that PDF, so they never
+   drift. Activated per account via profiles.invoice_template = 'red'
+   (migration 015). */
+function fmtMoneyRed(n) {
+  const v = Number(n) || 0;
+  const opts = Number.isInteger(v)
+    ? { maximumFractionDigits: 0 }
+    : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  return (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', opts);
+}
+
+function fmtDocDateOrdinal(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return iso;
+  const day = d.getDate();
+  const suf = (day % 10 === 1 && day !== 11) ? 'st'
+    : (day % 10 === 2 && day !== 12) ? 'nd'
+    : (day % 10 === 3 && day !== 13) ? 'rd' : 'th';
+  return d.toLocaleDateString('en-US', { month: 'long' }) + ' ' + day + suf + ', ' + d.getFullYear();
+}
+
+const INVR_ICONS = `
+  <svg width="13pt" height="13pt" viewBox="0 0 13 13"><rect x="0.6" y="0.6" width="11.8" height="11.8" fill="none" stroke="#fff" stroke-width="1.2"/><path d="M3.5 3.5 L9.5 9.5 M9.5 3.5 L3.5 9.5" stroke="#fff" stroke-width="1.2"/></svg>
+  <svg width="13pt" height="13pt" viewBox="0 0 13 13"><rect x="0.6" y="0.6" width="11.8" height="11.8" fill="none" stroke="#fff" stroke-width="1.2"/><rect x="3.5" y="3.5" width="6" height="6" fill="none" stroke="#fff" stroke-width="1.2"/></svg>
+  <svg width="13pt" height="13pt" viewBox="0 0 13 13"><rect x="0.6" y="0.6" width="11.8" height="11.8" fill="none" stroke="#fff" stroke-width="1.2"/><path d="M3.5 9.5 L8 9.5" stroke="#fff" stroke-width="1.2"/></svg>`;
+
+function renderInvoiceDocRed(inv) {
+  const fromName = CREATOR.entity || CREATOR.brand || CREATOR.name || '';
+  const subtotal = invSubtotal(inv);
+  const tax = Number(inv.tax) || 0;
+  const total = subtotal + tax;
+  const paid = Number(inv.amountPaid) || 0;
+  const hasBank = !!(CREATOR.bankName || CREATOR.bankAccountNumber);
+  const showPay = inv.includePaymentInfo && hasBank;
+  const termDays = INV_TERM_DAYS[inv.paymentTerms];
+
+  // Flat items read as qty 1 at the fee; hourly/day expose qty x rate.
+  // A completely blank line renders as an empty grid row, and the grid
+  // always pads to 6 rows like the source design.
+  const items = (inv.lineItems || []).map(li => {
+    const type = li.type || 'flat';
+    const qty = type === 'flat' ? 1 : (Number(li.qty) || 0);
+    const price = type === 'flat' ? (Number(li.fee) || 0) : (Number(li.rate) || 0);
+    const blank = !(li.desc || '').trim() && !price && !invLineAmount(li);
+    return blank ? null : { desc: li.desc || '', qty, price, total: invLineAmount(li) };
+  });
+  while (items.length < 6) items.push(null);
+
+  // A described line with no price yet reads TBD (e.g. reimbursements
+  // quoted after the fact) instead of a misleading $0
+  const rows = items.map(it => it ? `
+      <div class="invr-trow"><div>${_esc(it.desc)}</div><div>${it.qty}</div><div>${it.price ? fmtMoneyRed(it.price) : 'TBD'}</div><div>${it.total ? fmtMoneyRed(it.total) : 'TBD'}</div></div>` : `
+      <div class="invr-trow"><div></div><div></div><div></div><div></div></div>`).join('');
+
+  const paidRows = paid > 0 ? `
+      <div class="invr-sumrow"><div>Amount Paid:</div><div>${fmtMoneyRed(-paid)}</div></div>
+      <div class="invr-sumrow"><div>Balance Due:</div><div>${fmtMoneyRed(total - paid)}</div></div>` : '';
+
+  const payRow = (label, val) => val ? `<div class="invr-pay-row"><span>${label}</span><span>${_esc(val)}</span></div>` : '';
+  const payBlock = showPay ? `
+    <div class="invr-pay">
+      <div class="invr-pay-label">Payment Info:</div>
+      <div class="invr-pay-rows">
+        ${payRow('Bank:', CREATOR.bankName)}
+        ${payRow('Acc Name:', CREATOR.bankAccountHolder)}
+        ${payRow('Account #:', CREATOR.bankAccountNumber)}
+        ${payRow('Routing #:', CREATOR.bankRoutingNumber)}
+        ${payRow('Acc Type:', CREATOR.bankAccountType)}
+      </div>
+    </div>` : '';
+
+  return `
+  <div class="invr">
+    <img class="invr-masthead" src="invoice-red-masthead.svg" alt="Invoice">
+
+    <div class="invr-meta">
+      <div class="invr-meta-row"><span>Invoice Number:</span><span>${_esc(inv.invoiceNumber || '')}</span></div>
+      <div class="invr-meta-row"><span>Date:</span><span>${fmtDocDateOrdinal(inv.date)}</span></div>
+      ${inv.dueDate ? `<div class="invr-meta-row"><span>Due Date:</span><span>${fmtDocDateOrdinal(inv.dueDate)}</span></div>` : ''}
+      ${termDays ? `<div class="invr-meta-row"><span>Terms:</span><span>(NET ${termDays})</span></div>` : ''}
+    </div>
+
+    <div class="invr-parties">
+      <div class="invr-billbox">
+        <div class="invr-party-label">Billed To:</div>
+        <div class="invr-party-body">
+          <div>${_esc(inv.billToName || '')}</div>
+          ${String(inv.billToAddress || '').split('\n').filter(Boolean).map(l => `<div>${_esc(l)}</div>`).join('')}
+        </div>
+      </div>
+      <div class="invr-payable">
+        <div class="invr-party-label">Payable To:</div>
+        <div class="invr-party-body">
+          <div>${_esc(fromName)}</div>
+          ${String(CREATOR.businessAddress || '').split('\n').filter(Boolean).map(l => `<div>${_esc(l)}</div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="invr-table">
+      <div class="invr-thead">
+        <div class="invr-thead-icons">${INVR_ICONS}</div>
+        <span>Description</span><span>Qty.</span><span>Price ($)</span><span>Total ($)</span>
+      </div>
+      <div class="invr-tbody">
+        ${rows}
+        <div class="invr-sumrow"><div>Tax:</div><div>${tax ? fmtMoneyRed(tax) : '$0.00'}</div></div>
+        <div class="invr-sumrow invr-totalrow"><div>Total:</div><div>${fmtMoneyRed(total)}</div></div>
+        ${paidRows}
+      </div>
+    </div>
+
+    ${inv.notes ? `<div class="invr-notes"><strong>Notes:</strong> ${_esc(inv.notes)}</div>` : ''}
+
+    <div class="invr-footer">
+      <img class="invr-mark" src="invoice-red-mark.svg" alt="">
+      ${payBlock}
+    </div>
+  </div>`;
+}
+
+function renderInvoiceDocClassic(inv) {
   const fromName = CREATOR.entity || CREATOR.brand || CREATOR.name || '';
   const brandMark = CREATOR.brand || fromName || 'Arkives';
   const total = invTotal(inv);
@@ -965,13 +1126,36 @@ function invPrintDoc(inv) {
     document.body.appendChild(host);
   }
   host.innerHTML = renderInvoiceDoc(inv);
+  const red = _invUsesRedDoc();
   document.body.classList.add('printing-invoice');
+  if (red) {
+    // Full-bleed letter page — overrides the global @page margin
+    // (later in the cascade wins) for the paper-texture background
+    document.body.classList.add('printing-invoice-red');
+    if (!document.getElementById('invRedPageStyle')) {
+      const st = document.createElement('style');
+      st.id = 'invRedPageStyle';
+      st.textContent = '@page { size: letter; margin: 0; }';
+      document.head.appendChild(st);
+    }
+  }
   const done = () => {
-    document.body.classList.remove('printing-invoice');
+    document.body.classList.remove('printing-invoice', 'printing-invoice-red');
+    const st = document.getElementById('invRedPageStyle');
+    if (st) st.remove();
     window.removeEventListener('afterprint', done);
   };
   window.addEventListener('afterprint', done);
-  window.print();
+  if (!red) { window.print(); return; }
+  // Red doc: fonts + vector art + paper bg must be in before the
+  // print snapshot, or a list-view print on a cold cache falls back
+  // to system fonts / empty images
+  const waits = [...host.querySelectorAll('img')].map(im => im.decode ? im.decode().catch(() => {}) : Promise.resolve());
+  const paper = new Image();
+  paper.src = 'invoice-red-paper.jpg';
+  waits.push(paper.decode ? paper.decode().catch(() => {}) : Promise.resolve());
+  if (document.fonts && document.fonts.ready) waits.push(document.fonts.ready);
+  Promise.all(waits).then(() => setTimeout(() => window.print(), 50));
 }
 
 function invDownloadPDF() {
