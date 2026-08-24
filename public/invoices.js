@@ -920,10 +920,9 @@ function fmtDocDateOrdinal(iso) {
   return d.toLocaleDateString('en-US', { month: 'long' }) + ' ' + day + suf + ', ' + d.getFullYear();
 }
 
-const INVR_ICONS = `
-  <svg width="13pt" height="13pt" viewBox="0 0 13 13"><rect x="0.6" y="0.6" width="11.8" height="11.8" fill="none" stroke="#fff" stroke-width="1.2"/><path d="M3.5 3.5 L9.5 9.5 M9.5 3.5 L3.5 9.5" stroke="#fff" stroke-width="1.2"/></svg>
-  <svg width="13pt" height="13pt" viewBox="0 0 13 13"><rect x="0.6" y="0.6" width="11.8" height="11.8" fill="none" stroke="#fff" stroke-width="1.2"/><rect x="3.5" y="3.5" width="6" height="6" fill="none" stroke="#fff" stroke-width="1.2"/></svg>
-  <svg width="13pt" height="13pt" viewBox="0 0 13 13"><rect x="0.6" y="0.6" width="11.8" height="11.8" fill="none" stroke="#fff" stroke-width="1.2"/><path d="M3.5 9.5 L8 9.5" stroke="#fff" stroke-width="1.2"/></svg>`;
+// Exact icon vectors extracted from the source PDF (solid white squares,
+// red 1pt glyphs) — see invoice-red-icons.svg
+const INVR_ICONS = `<img src="invoice-red-icons.svg" alt="">`;
 
 function renderInvoiceDocRed(inv) {
   const fromName = CREATOR.entity || CREATOR.brand || CREATOR.name || '';

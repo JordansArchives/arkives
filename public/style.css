@@ -5992,6 +5992,11 @@ a.mk-platform-link:hover {
    extracted from the PDF. Single red #B7011D on paper texture. */
 @font-face {
   font-family: 'Trip Sans';
+  src: url('trip-sans-medium.woff2') format('woff2');
+  font-weight: 500;
+}
+@font-face {
+  font-family: 'Trip Sans';
   src: url('trip-sans-bold.woff2') format('woff2');
   font-weight: 700;
 }
@@ -6003,7 +6008,7 @@ a.mk-platform-link:hover {
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
   color: #B7011D;
   font-family: 'Trip Sans', sans-serif;
-  font-weight: 700;
+  font-weight: 500;
   font-size: 12.7pt;
   line-height: normal;
   box-sizing: border-box;
@@ -6016,17 +6021,34 @@ a.mk-platform-link:hover {
 .invr-meta { margin-top: 12.4pt; }
 .invr-meta-row { display: flex; justify-content: space-between; line-height: 21.6pt; }
 
-.invr-parties { display: flex; margin-top: 11.8pt; }
+/* Grid lines are painted as gradients / positioned strips, never CSS
+   borders: Chrome snaps border widths to whole CSS px (1pt -> 0.75pt in
+   print), while background sizes honor exact fractional pt. The source
+   PDF strokes are exactly 1pt, centered on the measured coordinates. */
+.invr-parties { display: flex; margin-top: 11.32pt; }
 .invr-billbox {
-  width: 269.2pt; min-height: 121.5pt;
-  border: 1pt solid #B7011D;
-  padding: 8.3pt 14pt 0 17.2pt;
+  width: 269.2pt; min-height: 121.86pt;
+  padding: 9.3pt 15pt 0 18.2pt;
+  background-image: linear-gradient(#B7011D,#B7011D), linear-gradient(#B7011D,#B7011D), linear-gradient(#B7011D,#B7011D), linear-gradient(#B7011D,#B7011D);
+  background-size: 100% 1pt, 100% 1pt, 1pt 100%, 1pt 100%;
+  background-position: left top, left bottom, left top, right top;
+  background-repeat: no-repeat;
 }
 .invr-payable { margin-left: 45.2pt; padding-top: 9.3pt; }
 .invr-party-label { line-height: 16.8pt; }
 .invr-party-body { margin-top: 17.2pt; line-height: 16.8pt; }
 
-.invr-table { margin-top: 23.5pt; }
+.invr-table { margin-top: 22.9pt; position: relative; }
+/* Outer left/right table lines, centered on the source coordinates */
+.invr-table::before, .invr-table::after {
+  content: ''; position: absolute; top: 0; bottom: -0.5pt; width: 3pt;
+  background-image: linear-gradient(#B7011D,#B7011D);
+  background-size: 1pt 100%;
+  background-position: 1pt 0;
+  background-repeat: no-repeat;
+}
+.invr-table::before { left: -1.42pt; }
+.invr-table::after { right: -1.5pt; }
 .invr-thead {
   display: grid; grid-template-columns: 349.9pt 34.9pt 86.9pt 1fr;
   align-items: center;
@@ -6038,25 +6060,45 @@ a.mk-platform-link:hover {
 }
 .invr-thead span { text-align: center; position: relative; top: -1.3pt; }
 .invr-thead span:first-child { left: 3.8pt; }
-.invr-thead-icons { position: absolute; left: 2.2pt; top: 2.85pt; display: flex; gap: 3pt; }
-.invr-thead-icons svg { display: block; }
-.invr-tbody { border-left: 1pt solid #B7011D; border-right: 1pt solid #B7011D; }
+/* Icon strip is the exact vector art from the source PDF: solid white
+   squares with 1pt red glyphs (x, window, underscore). Position is the
+   measured offset from the bar's top-left. */
+.invr-thead-icons { position: absolute; left: 2.23pt; top: 3.11pt; width: 44.9pt; height: 13pt; }
+.invr-thead-icons img { display: block; width: 100%; height: 100%; }
+.invr-trow:first-of-type { min-height: 26.32pt; }
 .invr-trow {
-  display: grid; grid-template-columns: 349.4pt 34.9pt 86.9pt 1fr;
+  display: grid; grid-template-columns: 349.9pt 35pt 86.9pt 1fr;
   min-height: 25.9pt; align-items: center;
-  border-bottom: 1pt solid #B7011D;
   text-align: center;
+  position: relative;
+  background-image: linear-gradient(#B7011D,#B7011D), linear-gradient(#B7011D,#B7011D), linear-gradient(#B7011D,#B7011D);
+  background-size: 1pt 100%, 1pt 100%, 1pt 100%;
+  background-position: 349.4pt 0, 384.66pt 0, 471.52pt 0;
+  background-repeat: no-repeat;
+}
+/* Bottom rule straddles the row boundary. The pseudo is 3pt tall
+   (snap-safe) and the 1pt line is a background layer centered in it —
+   element bounds pixel-snap in Chrome, background layers don't. */
+.invr-trow::after, .invr-sumrow::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -1.5pt; height: 3pt;
+  background-image: linear-gradient(#B7011D,#B7011D);
+  background-size: 100% 1pt;
+  background-position: 0 1pt;
+  background-repeat: no-repeat;
 }
 .invr-trow > div { align-self: stretch; display: flex; align-items: center; justify-content: center; position: relative; top: -0.5pt; }
-.invr-trow > div:not(:last-child) { border-right: 1pt solid #B7011D; }
 .invr-sumrow {
-  display: grid; grid-template-columns: 471.2pt 1fr;
-  height: 25.9pt; align-items: center;
-  border-bottom: 1pt solid #B7011D;
+  display: grid; grid-template-columns: 471.8pt 1fr;
+  height: 25.78pt; align-items: center;
+  position: relative;
+  background-image: linear-gradient(#B7011D,#B7011D);
+  background-size: 1pt 100%;
+  background-position: 471.52pt 0;
+  background-repeat: no-repeat;
 }
-.invr-sumrow.invr-totalrow { height: 27.8pt; }
+.invr-sumrow.invr-totalrow { height: 27.68pt; }
 .invr-sumrow > div { position: relative; top: -0.5pt; }
-.invr-sumrow > div:first-child { text-align: right; padding-right: 9.5pt; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; border-right: 1pt solid #B7011D; }
+.invr-sumrow > div:first-child { text-align: right; padding-right: 10pt; align-self: stretch; display: flex; align-items: center; justify-content: flex-end; }
 .invr-sumrow > div:last-child { text-align: center; }
 
 .invr-notes { margin-top: 14pt; font-size: 11.5pt; line-height: 15pt; white-space: pre-line; }

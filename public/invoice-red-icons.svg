@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="22.42 384.71 44.9 13">
+<g fill="#fff">
+<rect x="22.426" y="384.715" width="12.984" height="12.988"/>
+<rect x="38.379" y="384.719" width="12.984" height="12.988"/>
+<rect x="54.328" y="384.719" width="12.988" height="12.988"/>
+</g>
+<g fill="none" stroke="#B7011D" stroke-width="1">
+<path d="M 32.410 387.717 L 25.426 394.699"/>
+<path d="M 32.410 394.700 L 25.426 387.719"/>
+<rect x="40.590" y="387.719" width="8.563" height="6.981"/>
+<rect x="40.590" y="388.340" width="8.563" height="0.844"/>
+<rect x="56.684" y="394.078" width="8.469" height="0.621"/>
+</g>
+</svg>
