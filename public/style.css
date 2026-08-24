@@ -5999,7 +5999,7 @@ a.mk-platform-link:hover {
   display: flex; flex-direction: column;
   width: 612pt; min-height: 792pt;
   padding: 0 19.8pt 22pt 20.2pt;
-  background: #f0efed url('invoice-red-paper.jpg') center / cover no-repeat;
+  background: #fbfaf8 url('invoice-red-paper.jpg') center / cover no-repeat;
   -webkit-print-color-adjust: exact; print-color-adjust: exact;
   color: #B7011D;
   font-family: 'Trip Sans', sans-serif;
