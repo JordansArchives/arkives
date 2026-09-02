@@ -910,7 +910,19 @@ function getHash() {
 }
 
 function navigate(view) {
-  /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN */
+  /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN, bshared/TOKEN */
+  if (view.startsWith('bshared/')) {
+    // Public shared-board link — works logged out, sidebar hidden
+    var bsToken = view.split('?')[0].split('/')[1];
+    document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
+    var bsEl = document.getElementById('view-board-editor');
+    if (bsEl) { bsEl.style.display = 'block'; bsEl.classList.add('active'); }
+    document.getElementById('sidebar').style.display = 'none';
+    var bsMc = document.querySelector('.main') || document.getElementById('mainContent');
+    if (bsMc) bsMc.style.marginLeft = '0';
+    if (typeof renderSharedBoard === 'function') renderSharedBoard(bsToken);
+    return;
+  }
   if (view.startsWith('board/')) {
     var boardId = view.split('/')[1];
     document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
@@ -4591,9 +4603,9 @@ async function renderSharedScript(token, mode) {
 /* ---- INIT ---- */
 (async function init() {
   try {
-    // Public shared-link route — skip auth entirely
+    // Public shared-link routes — skip auth entirely
     var hash = getHash();
-    if (hash.startsWith('shared/')) {
+    if (hash.startsWith('shared/') || hash.startsWith('bshared/')) {
       showApp();
       navigate(hash);
     } else {
@@ -4618,7 +4630,7 @@ async function renderSharedScript(token, mode) {
     console.error('Init error:', e);
     // If we were on a shared route, still try to render it
     var h = getHash();
-    if (h.startsWith('shared/')) {
+    if (h.startsWith('shared/') || h.startsWith('bshared/')) {
       showApp();
       try { navigate(h); } catch (_) {}
     } else {

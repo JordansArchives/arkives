@@ -96,7 +96,7 @@ arkives/
 **Config:** brand_rules, contract_rules, audience_data, user_settings  
 **Tasks:** weekly_plans, weekly_tasks, parking_lot  
 **Scripts:** scripts, script_scenes  
-**Boards:** boards, board_items (016) + `board-media` private Storage bucket for uploaded images  
+**Boards:** boards, board_items (016) + `board-media` private Storage bucket for uploaded images. Sharing (017): share_token/share_mode on boards, token-gated `get_shared_board`/`get_shared_board_items` RPCs (work for anon — unlike the scripts share path), anon storage read policy for images on actively shared boards. Public link: `#bshared/{token}`.  
 
 ---
 
