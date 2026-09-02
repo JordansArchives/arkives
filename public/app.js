@@ -4090,6 +4090,36 @@ var _scriptsCache = [];
 var _currentScriptId = null;
 var _currentScenes = [];
 var _scriptAutoSaveTimer = null;
+/* Shared-link session (#shared/TOKEN[/edit]): when set, every script
+   read/write routes through the token-gated RPCs from migration 018
+   instead of direct table access (which RLS blocks for anon). */
+var _sharedScriptToken = null;
+var _sharedScriptMode = 'view';
+
+function _scriptRerender() {
+  if (_sharedScriptToken) renderSharedScript(_sharedScriptToken, _sharedScriptMode);
+  else renderScriptEditor(_currentScriptId);
+}
+
+/* Scene field saves route through here so shared-edit sessions work.
+   fields may hold script_text / scene_description / thumbnail_data. */
+async function _saveSceneFields(sceneId, fields) {
+  if (!_sb) return;
+  try {
+    if (_sharedScriptToken) {
+      var res = await _sb.rpc('patch_shared_scene', {
+        p_token: _sharedScriptToken, p_scene_id: sceneId,
+        p_script_text: ('script_text' in fields) ? fields.script_text : null,
+        p_scene_description: ('scene_description' in fields) ? fields.scene_description : null,
+        p_thumbnail_data: ('thumbnail_data' in fields) ? fields.thumbnail_data : null
+      });
+      if (res.error) throw res.error;
+    } else {
+      var res2 = await _sb.from('script_scenes').update(fields).eq('id', sceneId);
+      if (res2.error) throw res2.error;
+    }
+  } catch (e) { console.error('scene save error:', e); throw e; }
+}
 var _dragSrcIdx = null;
 
 /* ---- SUPABASE CRUD FOR SCRIPTS ---- */
@@ -4124,6 +4154,13 @@ async function sbDeleteScript(scriptId) {
 async function sbUpdateScript(scriptId, updates) {
   if (!_sb) return;
   try {
+    if (_sharedScriptToken) {
+      // Shared editors may only rename; share_mode etc. stay owner-only
+      if ('title' in updates) {
+        await _sb.rpc('update_shared_script_title', { p_token: _sharedScriptToken, p_title: updates.title });
+      }
+      return;
+    }
     await _sb.from('scripts').update(updates).eq('id', scriptId);
   } catch (e) { console.error('script update exception:', e); }
 }
@@ -4131,6 +4168,11 @@ async function sbUpdateScript(scriptId, updates) {
 async function sbFetchScenes(scriptId) {
   if (!_sb) return [];
   try {
+    if (_sharedScriptToken) {
+      var shRes = await _sb.rpc('get_shared_script_scenes', { p_token: _sharedScriptToken });
+      if (shRes.error) { console.error('shared scenes fetch err:', shRes.error); return []; }
+      return shRes.data || [];
+    }
     var res = await _sb.from('script_scenes').select('*').eq('script_id', scriptId).order('sort_order', { ascending: true });
     if (res.error) { console.error('scenes fetch err:', res.error); return []; }
     return res.data || [];
@@ -4149,6 +4191,10 @@ async function sbUpsertScene(scene) {
 async function sbDeleteScene(sceneId) {
   if (!_sb) return;
   try {
+    if (_sharedScriptToken) {
+      await _sb.rpc('delete_shared_scene', { p_token: _sharedScriptToken, p_scene_id: sceneId });
+      return;
+    }
     await _sb.from('script_scenes').delete().eq('id', sceneId);
   } catch (e) { console.error('scene delete exception:', e); }
 }
@@ -4156,6 +4202,13 @@ async function sbDeleteScene(sceneId) {
 async function sbReorderScenes(scenes) {
   if (!_sb || !scenes.length) return;
   try {
+    if (_sharedScriptToken) {
+      await _sb.rpc('reorder_shared_scenes', {
+        p_token: _sharedScriptToken,
+        p_scene_ids: scenes.map(function(s) { return s.id; })
+      });
+      return;
+    }
     var updates = scenes.map(function(s, i) { return { id: s.id, script_id: s.script_id, sort_order: i }; });
     await _sb.from('script_scenes').upsert(updates);
   } catch (e) { console.error('reorder exception:', e); }
@@ -4167,9 +4220,11 @@ async function sbFetchScriptByToken(token) {
   var cleanToken = String(token).split('?')[0].split('&')[0].trim();
   if (!cleanToken) return null;
   try {
-    var res = await _sb.from('scripts').select('*').eq('share_token', cleanToken).maybeSingle();
+    // Token-gated RPC (018): works for logged-out visitors, where the
+    // old direct table read came back empty under user-scoped RLS
+    var res = await _sb.rpc('get_shared_script', { p_token: cleanToken });
     if (res.error) { console.error('sbFetchScriptByToken error:', res.error); return null; }
-    return res.data || null;
+    return (res.data && res.data[0]) || null;
   } catch (e) { console.error('sbFetchScriptByToken exception:', e); return null; }
 }
 
@@ -4232,6 +4287,7 @@ function _escHtml(str) {
 
 /* ---- SCRIPT EDITOR VIEW ---- */
 async function renderScriptEditor(scriptId) {
+  _sharedScriptToken = null;
   _currentScriptId = scriptId;
   var container = document.getElementById('view-script-editor');
   container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:300px;border-radius:12px"></div></div>';
@@ -4251,15 +4307,21 @@ async function renderScriptEditor(scriptId) {
 function _renderEditorUI(container, script, scenes, readOnly) {
   var html = '<div class="script-editor">';
 
-  /* Top bar */
+  /* Top bar. In a shared session the owner controls (Back into the app,
+     the Share modal) are hidden — visitors only get the editing surface. */
+  var isSharedSession = !!_sharedScriptToken;
   html += '<div class="script-editor-topbar">';
-  if (!readOnly) {
+  if (!readOnly && !isSharedSession) {
     html += '<a href="#scripts" class="script-back-btn">' + SKETCHY_ICONS.chevronLeft + ' Back</a>';
   }
   html += '<input type="text" class="script-title-input" id="scriptTitleInput" value="' + _escHtml(script.title) + '" ' + (readOnly ? 'disabled' : '') + ' placeholder="Script title..." />';
   if (!readOnly) {
     html += '<div class="script-topbar-actions">';
-    html += '<button class="btn-ghost" onclick="_openShareModal()" title="Share">' + SKETCHY_ICONS.share + ' Share</button>';
+    if (!isSharedSession) {
+      html += '<button class="btn-ghost" onclick="_openShareModal()" title="Share">' + SKETCHY_ICONS.share + ' Share</button>';
+    } else {
+      html += '<span class="script-readonly-badge">Shared — can edit</span>';
+    }
     html += '<span class="script-save-indicator" id="scriptSaveIndicator">Saved</span>';
     html += '</div>';
   } else {
@@ -4408,7 +4470,7 @@ async function _saveAllSceneData() {
     updates[sceneId][field] = ta.value;
   });
   var promises = Object.keys(updates).map(function(sceneId) {
-    return _sb.from('script_scenes').update(updates[sceneId]).eq('id', sceneId);
+    return _saveSceneFields(sceneId, updates[sceneId]);
   });
   try {
     await Promise.all(promises);
@@ -4424,10 +4486,19 @@ async function _saveAllSceneData() {
 /* ---- ADD / DELETE SCENES ---- */
 async function _addScene() {
   var newOrder = _currentScenes.length;
-  var res = await _sb.from('script_scenes').insert({ script_id: _currentScriptId, sort_order: newOrder, script_text: '', scene_description: '', thumbnail_data: '' }).select().single();
+  var res;
+  if (_sharedScriptToken) {
+    var rpcRes = await _sb.rpc('add_shared_scene', { p_token: _sharedScriptToken, p_sort_order: newOrder });
+    res = { data: rpcRes.data && rpcRes.data[0], error: rpcRes.error };
+  } else {
+    res = await _sb.from('script_scenes').insert({ script_id: _currentScriptId, sort_order: newOrder, script_text: '', scene_description: '', thumbnail_data: '' }).select().single();
+  }
   if (res.data) {
     _currentScenes.push(res.data);
-    renderScriptEditor(_currentScriptId);
+    _scriptRerender();
+  } else if (res.error) {
+    console.error('add scene err:', res.error);
+    _showSaveError('Could not add scene');
   }
 }
 
@@ -4436,7 +4507,7 @@ async function _deleteSceneRow(sceneId) {
   _currentScenes = _currentScenes.filter(function(s) { return s.id !== sceneId; });
   /* Reorder remaining */
   await sbReorderScenes(_currentScenes);
-  renderScriptEditor(_currentScriptId);
+  _scriptRerender();
 }
 
 /* ---- THUMBNAIL UPLOAD ---- */
@@ -4462,10 +4533,10 @@ function _handleThumbUpload(input, sceneId) {
       var ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
       var compressed = canvas.toDataURL('image/jpeg', 0.8);
-      await _sb.from('script_scenes').update({ thumbnail_data: compressed }).eq('id', sceneId);
+      await _saveSceneFields(sceneId, { thumbnail_data: compressed });
       /* Update local cache */
       _currentScenes.forEach(function(s) { if (s.id === sceneId) s.thumbnail_data = compressed; });
-      renderScriptEditor(_currentScriptId);
+      _scriptRerender();
     };
     img.src = dataUrl;
   };
@@ -4473,9 +4544,9 @@ function _handleThumbUpload(input, sceneId) {
 }
 
 async function _removeThumb(sceneId) {
-  await _sb.from('script_scenes').update({ thumbnail_data: '' }).eq('id', sceneId);
+  await _saveSceneFields(sceneId, { thumbnail_data: '' });
   _currentScenes.forEach(function(s) { if (s.id === sceneId) s.thumbnail_data = ''; });
-  renderScriptEditor(_currentScriptId);
+  _scriptRerender();
 }
 
 /* ---- DRAG & DROP REORDER ---- */
@@ -4504,7 +4575,7 @@ function _bindDragDrop() {
       var moved = _currentScenes.splice(_dragSrcIdx, 1)[0];
       _currentScenes.splice(targetIdx, 0, moved);
       await sbReorderScenes(_currentScenes);
-      renderScriptEditor(_currentScriptId);
+      _scriptRerender();
     });
     row.addEventListener('dragend', function() {
       row.classList.remove('script-row-dragging');
@@ -4570,16 +4641,16 @@ async function renderSharedScript(token, mode) {
 
   var script = await sbFetchScriptByToken(token);
   if (!script) {
-    container.innerHTML = '<div style="padding:48px;text-align:center"><h2>Script Not Found</h2><p style="color:var(--text-secondary)">This link may have expired or the script has been deleted.</p></div>';
+    // The RPC returns nothing for bad tokens AND for private scripts
+    container.innerHTML = '<div style="padding:48px;text-align:center"><h2>Script Not Found</h2><p style="color:var(--text-secondary)">This link is invalid, the script was deleted, or sharing was turned off.</p></div>';
     return;
   }
-  if (script.share_mode === 'none') {
-    container.innerHTML = '<div style="padding:48px;text-align:center"><h2>Access Denied</h2><p style="color:var(--text-secondary)">This script is currently set to private.</p></div>';
-    return;
-  }
-  var scenes = await sbFetchScenes(script.id);
   var isEdit = mode === 'edit' && script.share_mode === 'edit';
+  /* All reads/writes below route through the token-gated RPCs */
+  _sharedScriptToken = String(token).split('?')[0].split('&')[0].trim();
+  _sharedScriptMode = isEdit ? 'edit' : 'view';
   _currentScriptId = script.id;
+  var scenes = await sbFetchScenes(script.id);
   _currentScenes = scenes;
 
   _renderEditorUI(container, script, scenes, !isEdit);
