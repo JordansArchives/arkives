@@ -48,6 +48,7 @@ arkives/
 │   ├── app.js              # data layer, auth, CRUD, all view renderers
 │   ├── style.css           # full design system, all component styles
 │   ├── toolkit-views.js    # Contracts view (Content Studio/Brand Voice cut July 2026)
+│   ├── boards.js           # Boards: Milanote-style storyboard canvas (state + CRUD + view)
 │   ├── analytics_cache.json # platform analytics snapshots (read by charts; P3.2 moves to Supabase)
 │   ├── paper-bg.png        # Light theme background texture
 │   └── paper-bg-dark.png   # Dark theme background texture
@@ -95,6 +96,7 @@ arkives/
 **Config:** brand_rules, contract_rules, audience_data, user_settings  
 **Tasks:** weekly_plans, weekly_tasks, parking_lot  
 **Scripts:** scripts, script_scenes  
+**Boards:** boards, board_items (016) + `board-media` private Storage bucket for uploaded images  
 
 ---
 
@@ -156,6 +158,7 @@ Every data type has Supabase-connected CRUD:
 | `#mediakit` | `renderMediaKit()` | Exportable media kit with PDF generation |
 | `#analytics` | `renderAnalytics()` | Per-platform analytics with growth charts |
 | `#scripts` | `renderScripts()` | Script manager with scene-by-scene editor |
+| `#boards` / `#board/{id}` | `renderBoards()` / `renderBoardEditor()` | Milanote-style storyboards: pan/zoom canvas, stickies, text, image uploads, video links, pen (boards.js) |
 | `#contentstudio` | Content Studio view | Content planning (in toolkit-views.js) |
 | `#contracts` | Contracts view | Contract builder (in toolkit-views.js) |
 | `#expenses` | `renderExpenses()` | Expense tracking (partially migrated) |

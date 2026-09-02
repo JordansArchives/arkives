@@ -910,7 +910,20 @@ function getHash() {
 }
 
 function navigate(view) {
-  /* Handle sub-routes: script/UUID, shared/TOKEN */
+  /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN */
+  if (view.startsWith('board/')) {
+    var boardId = view.split('/')[1];
+    document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
+    var bdEl = document.getElementById('view-board-editor');
+    if (bdEl) { bdEl.style.display = 'block'; bdEl.classList.add('active'); }
+    document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+    var navB = document.querySelector('[data-view="boards"]');
+    if (navB) navB.classList.add('active');
+    document.getElementById('sidebar').classList.remove('open');
+    var ovB = document.querySelector('.sidebar-overlay'); if (ovB) ovB.classList.remove('open');
+    if (typeof renderBoardEditor === 'function') renderBoardEditor(boardId);
+    return;
+  }
   if (view.startsWith('script/')) {
     var scriptId = view.split('/')[1];
     document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
@@ -1010,6 +1023,7 @@ function renderView(view) {
     case "calendar": renderCalendar(); break;
     case "settings": renderSettings(); break;
     case "scripts": renderScripts(); break;
+    case "boards": if (typeof renderBoards === "function") renderBoards(); break;
     case "contracts": renderContracts(); break;
     case "invoices": renderInvoices(); break;
     case "tasks": renderTasks(); break;
