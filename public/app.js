@@ -4169,7 +4169,7 @@ async function renderScripts() {
   var html = '<div class="scripts-page">';
   html += '<div class="scripts-header">';
   html += '<div><h2 class="view-title" style="margin:0">Scripts</h2><p style="color:var(--text-secondary);margin:4px 0 0;font-size:13px">Storyboards and video scripts</p></div>';
-  html += '<button class="btn-primary" onclick="_createNewScript()" style="display:flex;align-items:center;gap:6px">' + SKETCHY_ICONS.plus + ' New Script</button>';
+  html += '<button class="btn btn-primary" onclick="_createNewScript()">+ New Script</button>';
   html += '</div>';
 
   if (scripts.length === 0) {

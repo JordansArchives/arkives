@@ -124,7 +124,7 @@ async function renderBoards() {
   let html = '<div class="boards-page">';
   html += '<div class="boards-header">';
   html += '<div><h2 class="view-title" style="margin:0">Boards</h2><p style="color:var(--text-secondary);margin:4px 0 0;font-size:13px">Storyboards and idea canvases</p></div>';
-  html += '<button class="btn-primary" onclick="_createNewBoard()" style="display:flex;align-items:center;gap:6px">' + SKETCHY_ICONS.plus + ' New Board</button>';
+  html += '<button class="btn btn-primary" onclick="_createNewBoard()">+ New Board</button>';
   html += '</div>';
 
   if (BOARDS.length === 0) {
@@ -226,7 +226,7 @@ async function renderBoardEditor(boardId) {
         '<div class="bd-tool-options" id="bdStickyOptions" style="display:none">' + stickyDots + '</div>' +
         '<div class="bd-video-popover" id="bdVideoPopover" style="display:none">' +
           '<input type="text" id="bdVideoUrl" placeholder="Paste a YouTube, Vimeo, or any link…">' +
-          '<button class="btn-primary" onclick="_bdAddVideoFromPopover()">Add</button>' +
+          '<button class="btn btn-primary" onclick="_bdAddVideoFromPopover()">Add</button>' +
         '</div>' +
         '<input type="file" id="bdFileInput" accept="image/*" multiple style="display:none">' +
         '<div class="bd-drop-hint" id="bdDropHint">Drop images to add them</div>' +
