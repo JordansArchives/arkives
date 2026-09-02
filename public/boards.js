@@ -40,6 +40,8 @@ let _bdUndoStack = [];        // session-local undo (cleared per board)
 let _bdRedoStack = [];
 let _bdOrphanPaths = [];      // storage files of deleted images — purged on board exit so undo can restore them
 let _bdReadOnly = false;      // shared (#bshared/token) view
+let _bdSharedToken = null;    // set in a shared EDIT session — routes all writes through the 019 RPCs
+let _bdSharedOwnerId = null;  // board owner's profile id (shared edit needs it for upload paths)
 let _bdEditingEl = null;      // .bd-text-content currently in edit mode (format bar target)
 
 const BD_STICKY_COLORS = {
@@ -70,7 +72,7 @@ async function sbCreateBoard(title) {
 }
 
 async function sbUpdateBoard(boardId, updates, silent) {
-  if (!_sb) return false;
+  if (!_sb || _bdSharedToken) return false; // board row (title/viewport/share) is owner-only
   const { error } = await _sb.from('boards').update(updates).eq('id', boardId);
   if (error) { _showSaveError('Failed to save board'); console.error(error); return false; }
   if (!silent) _showSaveSuccess();
@@ -102,6 +104,15 @@ async function sbFetchBoardItems(boardId) {
 
 async function sbAddBoardItem(item) {
   if (!_sb) return null;
+  if (_bdSharedToken) {
+    const res = await _sb.rpc('add_shared_board_item', {
+      p_token: _bdSharedToken, p_kind: item.kind,
+      p_x: item.x, p_y: item.y, p_w: item.w, p_h: item.h,
+      p_z: item.z, p_content: item.content, p_id: item.id || null
+    });
+    if (res.error) { _showSaveError('Failed to add to board'); console.error(res.error); return null; }
+    return (res.data && res.data[0]) || null;
+  }
   // user_id is stamped by the DB default (current_profile_id) per the
   // multi-tenancy rules — never pass it manually.
   const res = await _sb.from('board_items').insert(item).select().single();
@@ -111,6 +122,17 @@ async function sbAddBoardItem(item) {
 
 async function sbUpdateBoardItem(itemId, updates) {
   if (!_sb) return false;
+  if (_bdSharedToken) {
+    const res = await _sb.rpc('update_shared_board_item', {
+      p_token: _bdSharedToken, p_item_id: itemId,
+      p_x: ('x' in updates) ? updates.x : null, p_y: ('y' in updates) ? updates.y : null,
+      p_w: ('w' in updates) ? updates.w : null, p_h: ('h' in updates) ? updates.h : null,
+      p_z: ('z' in updates) ? updates.z : null,
+      p_content: ('content' in updates) ? updates.content : null
+    });
+    if (res.error) { _showSaveError('Failed to save changes'); console.error(res.error); return false; }
+    return true;
+  }
   const { error } = await _sb.from('board_items').update(updates).eq('id', itemId);
   if (error) { _showSaveError('Failed to save changes'); console.error(error); return false; }
   return true;
@@ -118,6 +140,11 @@ async function sbUpdateBoardItem(itemId, updates) {
 
 async function sbDeleteBoardItem(itemId) {
   if (!_sb) return false;
+  if (_bdSharedToken) {
+    const res = await _sb.rpc('delete_shared_board_item', { p_token: _bdSharedToken, p_item_id: itemId });
+    if (res.error) { _showSaveError('Failed to delete'); console.error(res.error); return false; }
+    return true;
+  }
   const { error } = await _sb.from('board_items').delete().eq('id', itemId);
   if (error) { _showSaveError('Failed to delete'); console.error(error); return false; }
   return true;
@@ -149,8 +176,8 @@ async function renderBoards() {
       html += '<div class="board-card" onclick="window.location.hash=\'board/' + b.id + '\';">';
       html += '<div class="board-card-canvas"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4.2 5.1h6.1v5.2H4.2z"/><path d="M13.6 7.2h6.2"/><path d="M13.7 10.1h4.9"/><path d="M5.1 14.3c3.2 2.6 8.9-1.8 13.7 1.9"/></svg></div>';
       html += '<div class="board-card-title">' + _escHtml(b.title) + '</div>';
-      const shareLabel = b.share_mode === 'view' ? 'View link' : 'Private';
-      const shareDot = b.share_mode === 'view' ? 'var(--teal)' : 'var(--text-secondary)';
+      const shareLabel = b.share_mode === 'view' ? 'View link' : (b.share_mode === 'edit' ? 'Edit link' : 'Private');
+      const shareDot = (b.share_mode === 'view' || b.share_mode === 'edit') ? 'var(--teal)' : 'var(--text-secondary)';
       html += '<div class="board-card-meta"><span>' + date + '</span>';
       html += '<span style="display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:' + shareDot + ';display:inline-block"></span>' + shareLabel + '</span></div>';
       html += '<button class="board-card-delete" onclick="event.stopPropagation(); _deleteBoard(\'' + b.id + '\')" title="Delete board">' + SKETCHY_ICONS.trash + '</button>';
@@ -183,6 +210,8 @@ function _bdEditorActive() {
 async function renderBoardEditor(boardId) {
   const token = ++_bdLoadToken;
   _bdReadOnly = false;
+  _bdSharedToken = null;
+  _bdSharedOwnerId = null;
   _bdFlushOrphans();
   _bdUndoStack = []; _bdRedoStack = [];
   _bdEditingEl = null;
@@ -206,26 +235,40 @@ async function renderBoardEditor(boardId) {
   if (token !== _bdLoadToken) return;
   _bdMaxZ = _bdItems.reduce((m, it) => Math.max(m, it.z || 1), 1);
 
+  container.innerHTML = _bdEditorShellHtml(false);
+
+  _bdApplyView();
+  const plane = document.getElementById('bdPlane');
+  _bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => plane.appendChild(_bdItemEl(it)));
+  _bdBindEditor();
+  _bdResolveSignedUrls();
+}
+
+/* The full editor shell, used by the owner editor and by shared EDIT
+   sessions (shared=true drops the owner-only pieces: back button,
+   editable title, share popover). */
+function _bdEditorShellHtml(shared) {
   const penDots = Object.keys(BD_PEN_COLORS).map(c =>
     '<button class="bd-dot' + (c === _bdPenColor ? ' active' : '') + '" data-pen-color="' + c + '" style="background:' + BD_PEN_COLORS[c] + '" title="' + c + '"></button>').join('');
   const stickyDots = Object.keys(BD_STICKY_COLORS).map(c =>
     '<button class="bd-dot' + (c === _bdStickyColor ? ' active' : '') + '" data-sticky-color="' + c + '" style="background:' + BD_STICKY_COLORS[c] + '" title="' + c + '"></button>').join('');
 
-  container.innerHTML =
+  return (
     '<div class="board-editor">' +
       '<div class="board-topbar">' +
-        '<button class="bd-back" onclick="window.location.hash=\'boards\'" title="Back to Boards">' + SKETCHY_ICONS.chevronLeft + '</button>' +
-        '<div class="bd-title" id="bdTitle" contenteditable="false" spellcheck="false">' + _escHtml(_bdBoard.title) + '</div>' +
+      (shared ? '' :
+        '<button class="bd-back" onclick="window.location.hash=\'boards\'" title="Back to Boards">' + SKETCHY_ICONS.chevronLeft + '</button>') +
+        '<div class="bd-title" id="bdTitle" contenteditable="false" spellcheck="false"' + (shared ? ' style="cursor:default"' : '') + '>' + _escHtml(_bdBoard.title) + '</div>' +
+      (shared ? '<span class="bd-shared-tag">Shared board · can edit</span>' : '') +
         '<span class="bd-savestate" id="bdSaveState"></span>' +
-        '<button class="bd-share-btn" id="bdShareBtn">' + SKETCHY_ICONS.share + '<span id="bdShareBtnLabel">' + (_bdBoard.share_mode === 'view' ? 'Shared' : 'Share') + '</span></button>' +
+      (shared ? '' :
+        '<button class="bd-share-btn" id="bdShareBtn">' + SKETCHY_ICONS.share + '<span id="bdShareBtnLabel">' + (_bdBoard.share_mode === 'none' || !_bdBoard.share_mode ? 'Share' : 'Shared') + '</span></button>' +
         '<div class="bd-share-popover" id="bdSharePopover" style="display:none">' +
           '<button class="bd-share-opt" data-share="none">Private</button>' +
           '<button class="bd-share-opt" data-share="view">Anyone with the link can view</button>' +
-          '<div class="bd-share-linkrow" id="bdShareLinkRow" style="display:none">' +
-            '<input type="text" id="bdShareLinkInput" readonly>' +
-            '<button class="btn btn-primary" id="bdShareCopyBtn">Copy</button>' +
-          '</div>' +
-        '</div>' +
+          '<button class="bd-share-opt" data-share="edit">Anyone with the link can edit</button>' +
+          '<div id="bdShareLinks"></div>' +
+        '</div>') +
         '<div class="bd-zoom">' +
           '<button onclick="_bdZoomBtn(-1)" title="Zoom out">−</button>' +
           '<button class="bd-zoom-pct" id="bdZoomPct" onclick="_bdZoomFit()" title="Fit to items">' + Math.round(_bdView.z * 100) + '%</button>' +
@@ -267,13 +310,7 @@ async function renderBoardEditor(boardId) {
         '</div>' +
         '<div class="bd-drop-hint" id="bdDropHint">Drop images to add them</div>' +
       '</div>' +
-    '</div>';
-
-  _bdApplyView();
-  const plane = document.getElementById('bdPlane');
-  _bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => plane.appendChild(_bdItemEl(it)));
-  _bdBindEditor();
-  _bdResolveSignedUrls();
+    '</div>');
 }
 
 /* ---- EDITOR: COORDS & VIEWPORT ---- */
@@ -304,7 +341,7 @@ function _bdApplyView() {
 }
 
 function _bdQueueViewSave() {
-  if (!_bdBoard) return;
+  if (!_bdBoard || _bdSharedToken) return; // viewport memory belongs to the owner
   // Skip when nothing changed — opening a board shouldn't bump updated_at
   if (_bdBoard.view_x === _bdView.x && _bdBoard.view_y === _bdView.y && _bdBoard.view_zoom === _bdView.z) return;
   clearTimeout(_bdViewSaveTimer);
@@ -563,19 +600,20 @@ async function _bdRedo() {
   _bdUndoStack.push(op);
 }
 
-// Re-insert a deleted/undone item with its original id (RLS stamps user_id)
+// Re-insert a deleted/undone item with its original id. Routes through
+// sbAddBoardItem so shared-edit sessions restore via the RPC (p_id).
 async function _bdRestoreItem(item) {
   if (!_sb) return;
   const row = _bdClone(item);
-  const res = await _sb.from('board_items').insert({
+  const restored = await sbAddBoardItem({
     id: row.id, board_id: row.board_id, kind: row.kind,
     x: row.x, y: row.y, w: row.w, h: row.h, z: row.z, content: row.content
-  }).select().single();
-  if (res.error) { _showSaveError('Undo failed'); console.error(res.error); return; }
-  _bdItems.push(res.data);
-  if ((res.data.z || 1) > _bdMaxZ) _bdMaxZ = res.data.z;
+  });
+  if (!restored) { _showSaveError('Undo failed'); return; }
+  _bdItems.push(restored);
+  if ((restored.z || 1) > _bdMaxZ) _bdMaxZ = restored.z;
   const plane = document.getElementById('bdPlane');
-  if (plane) plane.appendChild(_bdItemEl(res.data));
+  if (plane) plane.appendChild(_bdItemEl(restored));
   if (row.kind === 'image' && row.content && row.content.path) {
     _bdOrphanPaths = _bdOrphanPaths.filter(p => p !== row.content.path);
   }
@@ -610,18 +648,16 @@ function _bdShareLink() {
 function _bdSyncSharePopover() {
   const pop = document.getElementById('bdSharePopover');
   if (!pop || !_bdBoard) return;
-  const mode = _bdBoard.share_mode === 'view' ? 'view' : 'none';
+  const mode = (_bdBoard.share_mode === 'view' || _bdBoard.share_mode === 'edit') ? _bdBoard.share_mode : 'none';
   pop.querySelectorAll('.bd-share-opt').forEach(b => b.classList.toggle('active', b.dataset.share === mode));
-  const row = document.getElementById('bdShareLinkRow');
-  if (row) row.style.display = mode === 'view' ? 'flex' : 'none';
-  const input = document.getElementById('bdShareLinkInput');
-  if (input && mode === 'view') input.value = _bdShareLink();
+  const links = document.getElementById('bdShareLinks');
+  if (links) links.innerHTML = mode === 'none' ? '' : _shareLinkRowsHtml(mode, _bdShareLink(), _bdShareLink() + '/edit');
   const label = document.getElementById('bdShareBtnLabel');
-  if (label) label.textContent = mode === 'view' ? 'Shared' : 'Share';
+  if (label) label.textContent = mode === 'none' ? 'Share' : 'Shared';
 }
 
 async function _bdSetBoardShare(mode) {
-  if (mode === 'view' && !_bdBoard.share_token) {
+  if (mode !== 'none' && !_bdBoard.share_token) {
     _showSaveError('Sharing needs migration 017 — run it in Supabase first');
     return;
   }
@@ -633,15 +669,35 @@ async function _bdSetBoardShare(mode) {
 
 /* ---- EDITOR: SIGNED URLS ---- */
 
+// One image URL, right for the session: owners mint signed URLs; shared
+// sessions (view or edit) download the blob under the shared-board
+// storage policy and use an object URL.
+async function _bdUrlForPath(path) {
+  if (!_sb) return null;
+  if (_bdSharedToken || _bdReadOnly) {
+    const res = await _sb.storage.from('board-media').download(path);
+    return res.data ? URL.createObjectURL(res.data) : null;
+  }
+  const res = await _sb.storage.from('board-media').createSignedUrl(path, 60 * 60 * 12);
+  return (res.data && res.data.signedUrl) || null;
+}
+
 async function _bdResolveSignedUrls() {
   const paths = _bdItems.filter(i => i.kind === 'image' && i.content && i.content.path && !_bdSignedUrls[i.content.path])
     .map(i => i.content.path);
   if (!paths.length || !_sb) return;
-  const res = await _sb.storage.from('board-media').createSignedUrls(paths, 60 * 60 * 12);
-  if (res.error || !res.data) { console.error('Signed URL batch failed', res.error); return; }
-  res.data.forEach(function(entry, idx) {
-    if (entry.signedUrl) _bdSignedUrls[paths[idx]] = entry.signedUrl;
-  });
+  if (_bdSharedToken || _bdReadOnly) {
+    await Promise.all(paths.map(async function(p) {
+      const url = await _bdUrlForPath(p);
+      if (url) _bdSignedUrls[p] = url;
+    }));
+  } else {
+    const res = await _sb.storage.from('board-media').createSignedUrls(paths, 60 * 60 * 12);
+    if (res.error || !res.data) { console.error('Signed URL batch failed', res.error); return; }
+    res.data.forEach(function(entry, idx) {
+      if (entry.signedUrl) _bdSignedUrls[paths[idx]] = entry.signedUrl;
+    });
+  }
   _bdItems.forEach(function(it) {
     if (it.kind === 'image' && it.content && _bdSignedUrls[it.content.path]) _bdRefreshItem(it.id);
   });
@@ -706,11 +762,12 @@ async function _bdAddImageFiles(files, bx, by) {
     _bdSetSaveState('saving');
     try {
       const prepped = await _bdPrepareImage(file);
-      const path = CREATOR._sbId + '/' + _bdBoard.id + '/' + crypto.randomUUID() + '.' + prepped.ext;
+      const ownerId = _bdSharedOwnerId || CREATOR._sbId;
+      const path = ownerId + '/' + _bdBoard.id + '/' + crypto.randomUUID() + '.' + prepped.ext;
       const up = await _sb.storage.from('board-media').upload(path, prepped.blob, { contentType: prepped.type });
       if (up.error) { _showSaveError('Upload failed: ' + (up.error.message || 'unknown error')); console.error(up.error); continue; }
-      const signed = await _sb.storage.from('board-media').createSignedUrl(path, 60 * 60 * 12);
-      if (signed.data && signed.data.signedUrl) _bdSignedUrls[path] = signed.data.signedUrl;
+      const url = await _bdUrlForPath(path);
+      if (url) _bdSignedUrls[path] = url;
       const w = 320, h = Math.round(w * (prepped.natH / prepped.natW));
       await _bdCreateItem('image', bx - w / 2 + offset, by - h / 2 + offset, w, h,
         { path: path, caption: '', natW: prepped.natW, natH: prepped.natH });
@@ -935,27 +992,29 @@ function _bdBindEditor() {
     await _bdAddImageFiles(files, center.x, center.y);
   });
 
-  /* Board title */
-  const titleEl = document.getElementById('bdTitle');
-  titleEl.addEventListener('click', function() {
-    if (titleEl.getAttribute('contenteditable') !== 'true') {
-      titleEl.setAttribute('contenteditable', 'true');
-      titleEl.focus();
-    }
-  });
-  titleEl.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); }
-    e.stopPropagation();
-  });
-  titleEl.addEventListener('blur', function() {
-    titleEl.setAttribute('contenteditable', 'false');
-    const t = titleEl.textContent.trim() || 'Untitled Board';
-    titleEl.textContent = t;
-    if (_bdBoard && t !== _bdBoard.title) {
-      _bdBoard.title = t;
-      sbUpdateBoard(_bdBoard.id, { title: t }, true);
-    }
-  });
+  /* Board title — renaming is owner-only */
+  if (!_bdSharedToken) {
+    const titleEl = document.getElementById('bdTitle');
+    titleEl.addEventListener('click', function() {
+      if (titleEl.getAttribute('contenteditable') !== 'true') {
+        titleEl.setAttribute('contenteditable', 'true');
+        titleEl.focus();
+      }
+    });
+    titleEl.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); titleEl.blur(); }
+      e.stopPropagation();
+    });
+    titleEl.addEventListener('blur', function() {
+      titleEl.setAttribute('contenteditable', 'false');
+      const t = titleEl.textContent.trim() || 'Untitled Board';
+      titleEl.textContent = t;
+      if (_bdBoard && t !== _bdBoard.title) {
+        _bdBoard.title = t;
+        sbUpdateBoard(_bdBoard.id, { title: t }, true);
+      }
+    });
+  }
 
   /* Wheel: pan by default, zoom with ctrl/cmd (covers trackpad pinch) */
   vp.addEventListener('wheel', function(e) {
@@ -1156,27 +1215,20 @@ function _bdBindEditor() {
     }
   });
 
-  /* Share popover */
-  document.getElementById('bdShareBtn').addEventListener('click', function() {
-    const pop = document.getElementById('bdSharePopover');
-    _bdSyncSharePopover();
-    pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
-  });
-  document.getElementById('bdSharePopover').addEventListener('click', function(e) {
-    const opt = e.target.closest('.bd-share-opt');
-    if (opt) { _bdSetBoardShare(opt.dataset.share); return; }
-    if (e.target.closest('#bdShareCopyBtn')) {
-      const copyBtn = document.getElementById('bdShareCopyBtn');
-      navigator.clipboard.writeText(_bdShareLink()).then(function() {
-        copyBtn.textContent = 'Copied';
-        setTimeout(function() { copyBtn.textContent = 'Copy'; }, 1400);
-      }).catch(function() {
-        const input = document.getElementById('bdShareLinkInput');
-        input.select();
-        document.execCommand('copy');
-      });
-    }
-  });
+  /* Share popover — owner sessions only (shared shell has no share UI).
+     Copy buttons are handled by the global .bd-share-copy listener. */
+  const shareBtn = document.getElementById('bdShareBtn');
+  if (shareBtn) {
+    shareBtn.addEventListener('click', function() {
+      const pop = document.getElementById('bdSharePopover');
+      _bdSyncSharePopover();
+      pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
+    });
+    document.getElementById('bdSharePopover').addEventListener('click', function(e) {
+      const opt = e.target.closest('.bd-share-opt');
+      if (opt) _bdSetBoardShare(opt.dataset.share);
+    });
+  }
 
   /* Item action buttons + video play (click, since pointerdown skips them) */
   vp.addEventListener('click', function(e) {
@@ -1282,22 +1334,27 @@ function _bdBindEditor() {
    through the token-gated SECURITY DEFINER RPCs (migration 017); images are
    downloaded with the anon key under the shared-board storage policy. */
 
-async function renderSharedBoard(token) {
+async function renderSharedBoard(token, mode) {
   const loadToken = ++_bdLoadToken;
+  const cleanToken = String(token).split('?')[0].split('&')[0].trim();
   _bdReadOnly = true;
-  _bdBoard = null; // no viewport saves in shared view
+  _bdBoard = null;
+  _bdSharedToken = null;
+  _bdSharedOwnerId = null;
   _bdSelectedId = null;
   _bdSignedUrls = {};
   _bdPtr = null;
+  _bdUndoStack = []; _bdRedoStack = [];
+  _bdEditingEl = null;
   const container = document.getElementById('view-board-editor');
   container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:400px;border-radius:12px"></div></div>';
 
   let board = null, items = [];
   if (_sb) {
-    const bRes = await _sb.rpc('get_shared_board', { p_token: token });
+    const bRes = await _sb.rpc('get_shared_board', { p_token: cleanToken });
     board = bRes.data && bRes.data[0];
     if (board) {
-      const iRes = await _sb.rpc('get_shared_board_items', { p_token: token });
+      const iRes = await _sb.rpc('get_shared_board_items', { p_token: cleanToken });
       items = iRes.data || [];
     }
   }
@@ -1312,6 +1369,25 @@ async function renderSharedBoard(token) {
 
   _bdItems = items;
   _bdView = { x: board.view_x || 0, y: board.view_y || 0, z: board.view_zoom || 1 };
+  _bdMaxZ = _bdItems.reduce((m, it) => Math.max(m, it.z || 1), 1);
+
+  /* Edit link on an edit-shared board: run the real editor, with every
+     write routed through the token-gated RPCs */
+  if (mode === 'edit' && board.share_mode === 'edit') {
+    _bdReadOnly = false;
+    _bdSharedToken = cleanToken;
+    _bdSharedOwnerId = board.user_id;
+    _bdTool = 'select';
+    _bdBoard = { id: board.id, title: board.title, share_mode: 'edit', share_token: null,
+                 view_x: board.view_x, view_y: board.view_y, view_zoom: board.view_zoom };
+    container.innerHTML = _bdEditorShellHtml(true);
+    _bdApplyView();
+    const editPlane = document.getElementById('bdPlane');
+    _bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => editPlane.appendChild(_bdItemEl(it)));
+    _bdBindEditor();
+    _bdResolveSignedUrls();
+    return;
+  }
 
   container.innerHTML =
     '<div class="board-editor bd-ro">' +

@@ -7061,3 +7061,32 @@ a.mk-platform-link:hover {
 .bd-ro .bd-caption.empty { display: none !important; }
 .bd-ro .bd-item { cursor: default; }
 .bd-ro .bd-text-content, .bd-ro .bd-caption { cursor: default; }
+
+/* Shared share-popover bits (Boards + Scripts) */
+.script-editor-topbar { position: relative; }
+.bd-share-linklabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+  margin: 10px 2px 4px;
+}
+#bdShareLinks .bd-share-linkrow:first-of-type,
+#scShareLinks .bd-share-linkrow:first-of-type {
+  border-top: 1.5px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+#bdShareLinks .bd-share-linklabel + .bd-share-linkrow,
+#scShareLinks .bd-share-linklabel + .bd-share-linkrow {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+#bdShareLinks .bd-share-linklabel:first-child,
+#scShareLinks .bd-share-linklabel:first-child {
+  border-top: 1.5px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}

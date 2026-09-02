@@ -96,7 +96,7 @@ arkives/
 **Config:** brand_rules, contract_rules, audience_data, user_settings  
 **Tasks:** weekly_plans, weekly_tasks, parking_lot  
 **Scripts:** scripts, script_scenes. Sharing fixed in 018 (closes the accepted 008 gap): `#shared/{token}` and `#shared/{token}/edit` now work logged-out via token-gated RPCs — get_shared_script, get_shared_script_scenes (reads), update_shared_script_title, patch_shared_scene, add_shared_scene, delete_shared_scene, reorder_shared_scenes (writes, edit links only). App routes through RPCs only when `_sharedScriptToken` is set; owners use direct table access. 018 also writes down the `scripts.share_mode` column that existed on live but in no migration.  
-**Boards:** boards, board_items (016) + `board-media` private Storage bucket for uploaded images. Sharing (017): share_token/share_mode on boards, token-gated `get_shared_board`/`get_shared_board_items` RPCs (work for anon — unlike the scripts share path), anon storage read policy for images on actively shared boards. Public link: `#bshared/{token}`.  
+**Boards:** boards, board_items (016) + `board-media` private Storage bucket for uploaded images. Sharing (017 + 019): share_token/share_mode ('none'|'view'|'edit') on boards; token-gated read RPCs get_shared_board/get_shared_board_items and write RPCs add/update/delete_shared_board_item (edit links only); storage SELECT for shared boards, INSERT/DELETE scoped to edit-shared boards' own folders. Links: `#bshared/{token}` (view), `#bshared/{token}/edit` (full editor, writes routed via `_bdSharedToken`). Boards and Scripts share one popover UI (bd-share-* classes, `_shareLinkRowsHtml` in app.js).  
 
 ---
 

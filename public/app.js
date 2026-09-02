@@ -913,14 +913,16 @@ function navigate(view) {
   /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN, bshared/TOKEN */
   if (view.startsWith('bshared/')) {
     // Public shared-board link — works logged out, sidebar hidden
-    var bsToken = view.split('?')[0].split('/')[1];
+    var bsClean = view.split('?')[0];
+    var bsToken = bsClean.split('/')[1];
+    var bsMode = bsClean.split('/')[2] || 'view';
     document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
     var bsEl = document.getElementById('view-board-editor');
     if (bsEl) { bsEl.style.display = 'block'; bsEl.classList.add('active'); }
     document.getElementById('sidebar').style.display = 'none';
     var bsMc = document.querySelector('.main') || document.getElementById('mainContent');
     if (bsMc) bsMc.style.marginLeft = '0';
-    if (typeof renderSharedBoard === 'function') renderSharedBoard(bsToken);
+    if (typeof renderSharedBoard === 'function') renderSharedBoard(bsToken, bsMode);
     return;
   }
   if (view.startsWith('board/')) {
@@ -4088,8 +4090,47 @@ async function exportMediaKitPDF() {
 
 var _scriptsCache = [];
 var _currentScriptId = null;
+var _currentScriptRow = null;   // full script row from renderScriptEditor (share popover needs share_token/mode)
 var _currentScenes = [];
 var _scriptAutoSaveTimer = null;
+
+/* ---- SHARE POPOVER PLUMBING (shared by Boards and Scripts) ---- */
+
+/* Link rows for a share popover: one row when mode=view, labeled
+   view + edit rows when mode=edit. Copy handled by the global
+   .bd-share-copy listener below. */
+function _shareLinkRowsHtml(mode, viewLink, editLink) {
+  function row(link) {
+    return '<div class="bd-share-linkrow"><input type="text" readonly value="' + link + '">' +
+      '<button class="btn btn-primary bd-share-copy" data-link="' + link + '">Copy</button></div>';
+  }
+  if (mode === 'edit') {
+    return '<div class="bd-share-linklabel">View link</div>' + row(viewLink) +
+           '<div class="bd-share-linklabel">Edit link</div>' + row(editLink);
+  }
+  return row(viewLink);
+}
+
+document.addEventListener('click', function(e) {
+  /* Click outside a share popover closes it (both Boards and Scripts) */
+  ['scSharePopover', 'bdSharePopover'].forEach(function(id) {
+    var pop = document.getElementById(id);
+    if (pop && pop.style.display !== 'none' &&
+        !e.target.closest('#' + id + ', #scShareBtn, #bdShareBtn')) {
+      pop.style.display = 'none';
+    }
+  });
+  var btn = e.target.closest('.bd-share-copy');
+  if (!btn) return;
+  var link = btn.getAttribute('data-link');
+  navigator.clipboard.writeText(link).then(function() {
+    btn.textContent = 'Copied';
+    setTimeout(function() { btn.textContent = 'Copy'; }, 1400);
+  }).catch(function() {
+    var input = btn.parentElement.querySelector('input');
+    if (input) { input.select(); document.execCommand('copy'); }
+  });
+});
 /* Shared-link session (#shared/TOKEN[/edit]): when set, every script
    read/write routes through the token-gated RPCs from migration 018
    instead of direct table access (which RLS blocks for anon). */
@@ -4299,6 +4340,7 @@ async function renderScriptEditor(scriptId) {
     return;
   }
   var script = scriptRes.data;
+  _currentScriptRow = script;
   _currentScenes = await sbFetchScenes(scriptId);
 
   _renderEditorUI(container, script, _currentScenes, false);
@@ -4318,7 +4360,7 @@ function _renderEditorUI(container, script, scenes, readOnly) {
   if (!readOnly) {
     html += '<div class="script-topbar-actions">';
     if (!isSharedSession) {
-      html += '<button class="btn-ghost" onclick="_openShareModal()" title="Share">' + SKETCHY_ICONS.share + ' Share</button>';
+      html += '<button class="bd-share-btn" id="scShareBtn">' + SKETCHY_ICONS.share + '<span id="scShareBtnLabel">' + (!script.share_mode || script.share_mode === 'none' ? 'Share' : 'Shared') + '</span></button>';
     } else {
       html += '<span class="script-readonly-badge">Shared — can edit</span>';
     }
@@ -4326,6 +4368,15 @@ function _renderEditorUI(container, script, scenes, readOnly) {
     html += '</div>';
   } else {
     html += '<span class="script-readonly-badge">View Only</span>';
+  }
+  if (!readOnly && !isSharedSession) {
+    /* Same share popover as Boards (shared CSS classes + link-row builder) */
+    html += '<div class="bd-share-popover" id="scSharePopover" style="display:none;right:16px">' +
+      '<button class="bd-share-opt" data-share="none">Private</button>' +
+      '<button class="bd-share-opt" data-share="view">Anyone with the link can view</button>' +
+      '<button class="bd-share-opt" data-share="edit">Anyone with the link can edit</button>' +
+      '<div id="scShareLinks"></div>' +
+      '</div>';
   }
   html += '</div>';
 
@@ -4370,7 +4421,45 @@ function _renderEditorUI(container, script, scenes, readOnly) {
     }
     _bindSceneEvents();
     _bindDragDrop();
+    var scShareBtn = document.getElementById('scShareBtn');
+    if (scShareBtn) {
+      scShareBtn.addEventListener('click', function() {
+        var pop = document.getElementById('scSharePopover');
+        _scSyncSharePopover();
+        pop.style.display = pop.style.display === 'none' ? 'block' : 'none';
+      });
+      document.getElementById('scSharePopover').addEventListener('click', function(e) {
+        var opt = e.target.closest('.bd-share-opt');
+        if (opt) _scSetShareMode(opt.dataset.share);
+      });
+    }
   }
+}
+
+function _scShareLink() {
+  return window.location.origin + window.location.pathname + '#shared/' + _currentScriptRow.share_token;
+}
+
+function _scSyncSharePopover() {
+  var pop = document.getElementById('scSharePopover');
+  if (!pop || !_currentScriptRow) return;
+  var mode = (_currentScriptRow.share_mode === 'view' || _currentScriptRow.share_mode === 'edit') ? _currentScriptRow.share_mode : 'none';
+  pop.querySelectorAll('.bd-share-opt').forEach(function(b) { b.classList.toggle('active', b.dataset.share === mode); });
+  var links = document.getElementById('scShareLinks');
+  if (links) links.innerHTML = mode === 'none' ? '' : _shareLinkRowsHtml(mode, _scShareLink(), _scShareLink() + '/edit');
+  var label = document.getElementById('scShareBtnLabel');
+  if (label) label.textContent = mode === 'none' ? 'Share' : 'Shared';
+}
+
+async function _scSetShareMode(mode) {
+  if (mode !== 'none' && !_currentScriptRow.share_token) {
+    _showSaveError('Sharing needs migration 018 — run it in Supabase first');
+    return;
+  }
+  await sbUpdateScript(_currentScriptId, { share_mode: mode });
+  _currentScriptRow.share_mode = mode;
+  _scriptsCache.forEach(function(s) { if (s.id === _currentScriptId) s.share_mode = mode; });
+  _scSyncSharePopover();
 }
 
 function _renderSceneRow(scene, idx, readOnly) {
@@ -4585,54 +4674,7 @@ function _bindDragDrop() {
 }
 
 /* ---- SHARE MODAL ---- */
-function _openShareModal() {
-  var script = _scriptsCache.find(function(s) { return s.id === _currentScriptId; });
-  if (!script) return;
-  var currentUrl = window.location.origin + window.location.pathname;
-  var viewLink = currentUrl + '#shared/' + script.share_token;
-  var editLink = currentUrl + '#shared/' + script.share_token + '/edit';
-
-  var modal = document.createElement('div');
-  modal.className = 'script-share-modal-overlay';
-  modal.innerHTML = '<div class="script-share-modal">' +
-    '<div class="script-share-modal-header"><h3>Share Script</h3><button onclick="this.closest(\'.script-share-modal-overlay\').remove()" class="script-share-close">&times;</button></div>' +
-    '<div class="script-share-modal-body">' +
-    '<label class="script-share-label">Share Mode</label>' +
-    '<div class="script-share-options">' +
-    '<button class="script-share-opt ' + (script.share_mode === 'none' ? 'active' : '') + '" data-mode="none" onclick="_setShareMode(\'none\', this)">Private</button>' +
-    '<button class="script-share-opt ' + (script.share_mode === 'view' ? 'active' : '') + '" data-mode="view" onclick="_setShareMode(\'view\', this)">View Only</button>' +
-    '<button class="script-share-opt ' + (script.share_mode === 'edit' ? 'active' : '') + '" data-mode="edit" onclick="_setShareMode(\'edit\', this)">Can Edit</button>' +
-    '</div>' +
-    '<div id="shareLinksArea" style="' + (script.share_mode === 'none' ? 'display:none' : '') + '">' +
-    '<label class="script-share-label" style="margin-top:16px">View Link</label>' +
-    '<div class="script-share-link-row"><input type="text" value="' + viewLink + '" readonly id="shareLinkView" /><button onclick="_copyShareLink(\'shareLinkView\')">Copy</button></div>' +
-    '<label class="script-share-label" style="margin-top:12px">Edit Link</label>' +
-    '<div class="script-share-link-row"><input type="text" value="' + editLink + '" readonly id="shareLinkEdit" /><button onclick="_copyShareLink(\'shareLinkEdit\')">Copy</button></div>' +
-    '</div>' +
-    '</div></div>';
-  document.body.appendChild(modal);
-  modal.addEventListener('click', function(e) { if (e.target === modal) modal.remove(); });
-}
-
-async function _setShareMode(mode, btn) {
-  await sbUpdateScript(_currentScriptId, { share_mode: mode });
-  /* Update local cache */
-  _scriptsCache.forEach(function(s) { if (s.id === _currentScriptId) s.share_mode = mode; });
-  /* Toggle UI */
-  btn.closest('.script-share-options').querySelectorAll('.script-share-opt').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  var linksArea = document.getElementById('shareLinksArea');
-  if (linksArea) linksArea.style.display = mode === 'none' ? 'none' : '';
-}
-
-function _copyShareLink(inputId) {
-  var input = document.getElementById(inputId);
-  if (!input) return;
-  input.select();
-  navigator.clipboard.writeText(input.value).then(function() {
-    _showSaveSuccess();
-  });
-}
+/* (Old share modal removed — replaced by the board-style popover above) */
 
 /* ---- SHARED SCRIPT VIEWER ---- */
 async function renderSharedScript(token, mode) {
