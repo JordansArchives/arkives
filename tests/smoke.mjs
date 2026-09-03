@@ -85,7 +85,7 @@ for (const state of ['populated', 'empty']) {
       if (m.xss) flagged.push(`${v}: injection stub executed`);
       if (m.scrollX) flagged.push(`${v}: horizontal page overflow`);
       if (vp.name === 'phone' && m.headerH > 80) flagged.push(`${v}: mobile header ${m.headerH}px`);
-      if (['dashboard', 'tasks', 'invoices', 'boards'].includes(v)) await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-${v}.png`) });
+      await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-${v}.png`), animations: 'disabled' });
       if (vp.name === 'phone') {
         const t = await page.evaluate(() => ({
           tabbar: getComputedStyle(document.getElementById('tabbar')).display,
@@ -120,7 +120,7 @@ for (const state of ['populated', 'empty']) {
       if (m.cols !== 1) flagged.push(`script rows not stacked on phone (${m.cols} columns)`);
       if (m.hdr !== 'none') flagged.push('script column header visible on phone');
       if (m.taWidth < m.vw * 0.7) flagged.push(`script textarea only ${m.taWidth}px wide on a ${m.vw}px phone`);
-      await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-script-editor.png`) });
+      await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-script-editor.png`), animations: 'disabled' });
     }
     if (state === 'populated' && vp.name === 'desktop') {
       currentView = 'modals';
