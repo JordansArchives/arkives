@@ -287,11 +287,32 @@
   </nav>
 </div>
 
-<script defer src="app.js"></script>
-<script defer src="invoices.js"></script>
-<script defer src="outreach.js"></script>
-<script defer src="boards.js"></script>
-<script defer src="toolkit-views.js"></script>
+<!-- App: native ES modules, no bundler. Preloads let the browser fetch the whole graph at once instead of level by level. -->
+<link rel="modulepreload" href="src/state.js">
+<link rel="modulepreload" href="src/lib/actions.js">
+<link rel="modulepreload" href="src/lib/format.js">
+<link rel="modulepreload" href="src/lib/toast.js">
+<link rel="modulepreload" href="src/lib/sb.js">
+<link rel="modulepreload" href="src/views/auth.js">
+<link rel="modulepreload" href="src/lib/icons.js">
+<link rel="modulepreload" href="src/router.js">
+<link rel="modulepreload" href="src/views/dashboard.js">
+<link rel="modulepreload" href="src/views/revenue.js">
+<link rel="modulepreload" href="src/views/mediakit.js">
+<link rel="modulepreload" href="src/views/analytics.js">
+<link rel="modulepreload" href="src/views/inbox.js">
+<link rel="modulepreload" href="src/views/calendar.js">
+<link rel="modulepreload" href="src/views/tasks.js">
+<link rel="modulepreload" href="src/views/settings.js">
+<link rel="modulepreload" href="src/lib/esc.js">
+<link rel="modulepreload" href="src/lib/storage.js">
+<link rel="modulepreload" href="src/lib/share.js">
+<link rel="modulepreload" href="src/views/scripts.js">
+<link rel="modulepreload" href="src/views/invoices.js">
+<link rel="modulepreload" href="src/views/outreach.js">
+<link rel="modulepreload" href="src/views/boards.js">
+<link rel="modulepreload" href="src/views/contracts.js">
+<script type="module" src="src/main.js"></script>
 
 </body>
 </html>

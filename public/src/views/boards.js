@@ -1,50 +1,12 @@
-/* ============================================================
-   Arkives — Boards view (Milanote-style storyboards)
+// Arkives — Boards: Milanote-style canvas editor, sharing and live sync.
+import { state } from '../state.js';
+import { db } from '../lib/sb.js';
+import { _args, act } from '../lib/actions.js';
+import { _esc, _escHtml } from '../lib/esc.js';
+import { SKETCHY_ICONS } from '../lib/icons.js';
+import { _shareLinkRowsHtml } from '../lib/share.js';
+import { _showSaveError } from '../lib/toast.js';
 
-   Endless pannable/zoomable canvas per board. Items: sticky
-   notes, text blocks, uploaded images (Supabase Storage,
-   downscaled client-side), video links (YouTube/Vimeo embeds,
-   anything else becomes a link card), and freehand pen strokes.
-
-   Self-contained: state, Supabase CRUD, and all view logic live
-   here (boards data is lazy-loaded when the tab opens, same as
-   Scripts). Loaded after app.js in index.html. Tables + the
-   board-media bucket come from migrations/016_boards.sql.
-
-   Geometry lives in columns (x/y/w/h/z, board coordinates);
-   kind-specific payload lives in content JSONB. Pen stroke
-   points are stored relative to the item's x/y so moving a
-   stroke only updates x/y.
-   ============================================================ */
-
-/* ---- STATE ---- */
-let BOARDS = [];
-let _bdBoard = null;          // current board row
-let _bdItems = [];            // current board's items
-let _bdView = { x: 0, y: 0, z: 1 };
-let _bdTool = 'select';       // select | note | text | pen
-let _bdSelectedId = null;
-let _bdMaxZ = 1;
-let _bdStickyColor = 'yellow';
-let _bdPenColor = 'ink';
-let _bdPenWidth = 3;
-let _bdSignedUrls = {};       // storage path -> signed URL
-let _bdPtr = null;            // active pointer gesture
-let _bdPenPts = null;         // in-progress stroke points (board coords)
-let _bdPendingSaves = {};     // item id -> {updates, timer}
-let _bdViewSaveTimer = null;
-let _bdListenersBound = false;
-let _bdSuppressClick = false; // eat the click that follows a drag gesture
-let _bdLoadToken = 0;         // guards against stale async renders
-let _bdUndoStack = [];        // session-local undo (cleared per board)
-let _bdRedoStack = [];
-let _bdOrphanPaths = [];      // storage files of deleted images — purged on board exit so undo can restore them
-let _bdReadOnly = false;      // shared (#bshared/token) view
-let _bdSharedToken = null;    // set in a shared EDIT session — routes all writes through the 019 RPCs
-let _bdSharedOwnerId = null;  // board owner's profile id (shared edit needs it for upload paths)
-let _bdEditingEl = null;      // .bd-text-content currently in edit mode (format bar target)
-let _bdPointers = new Map();  // active touch pointers (two-finger pan / pinch)
-let _bdPinch = null;          // in-progress pinch: {dist, mx, my}
 
 const BD_STICKY_COLORS = {
   yellow: '#F7E9A9', red: '#F3C8C6', teal: '#C9E0D4', white: '#FFFFFF'
@@ -82,125 +44,30 @@ function _bdEmbedSrc(c) {
     : 'https://player.vimeo.com/video/' + c.vid + '?autoplay=1';
 }
 
-/* ---- SUPABASE CRUD ---- */
-
-async function sbFetchBoards() {
-  if (!_sb) return [];
-  const res = await _sb.from('boards').select('*').order('updated_at', { ascending: false });
-  if (res.error) { _showSaveError('Failed to load boards'); console.error(res.error); return []; }
-  return res.data || [];
-}
-
-async function sbCreateBoard(title) {
-  if (!_sb) return null;
-  const res = await _sb.from('boards').insert({ title: title || 'Untitled Board' }).select().single();
-  if (res.error) { _showSaveError('Failed to create board'); console.error(res.error); return null; }
-  return res.data;
-}
-
-async function sbUpdateBoard(boardId, updates, silent) {
-  if (!_sb || _bdSharedToken) return false; // board row (title/viewport/share) is owner-only
-  const { error } = await _sb.from('boards').update(updates).eq('id', boardId);
-  if (error) { _showSaveError('Failed to save board'); console.error(error); return false; }
-  if (!silent) _showSaveSuccess();
-  return true;
-}
-
-async function sbDeleteBoard(boardId) {
-  if (!_sb) return false;
-  // Best-effort storage cleanup first (items cascade with the row)
-  try {
-    const folder = CREATOR._sbId + '/' + boardId;
-    const listing = await _sb.storage.from('board-media').list(folder, { limit: 1000 });
-    if (listing.data && listing.data.length) {
-      await _sb.storage.from('board-media').remove(listing.data.map(f => folder + '/' + f.name));
-    }
-  } catch (e) { console.warn('Board media cleanup failed', e); }
-  const { error } = await _sb.from('boards').delete().eq('id', boardId);
-  if (error) { _showSaveError('Failed to delete board'); console.error(error); return false; }
-  _showSaveSuccess();
-  return true;
-}
-
-async function sbFetchBoardItems(boardId) {
-  if (!_sb) return [];
-  const res = await _sb.from('board_items').select('*').eq('board_id', boardId);
-  if (res.error) { _showSaveError('Failed to load board'); console.error(res.error); return []; }
-  return res.data || [];
-}
-
-async function sbAddBoardItem(item) {
-  if (!_sb) return null;
-  if (_bdSharedToken) {
-    const res = await _sb.rpc('add_shared_board_item', {
-      p_token: _bdSharedToken, p_kind: item.kind,
-      p_x: item.x, p_y: item.y, p_w: item.w, p_h: item.h,
-      p_z: item.z, p_content: item.content, p_id: item.id || null
-    });
-    if (res.error) { _showSaveError('Failed to add to board'); console.error(res.error); return null; }
-    return (res.data && res.data[0]) || null;
-  }
-  // user_id is stamped by the DB default (current_profile_id) per the
-  // multi-tenancy rules — never pass it manually.
-  const res = await _sb.from('board_items').insert(item).select().single();
-  if (res.error) { _showSaveError('Failed to add to board'); console.error(res.error); return null; }
-  return res.data;
-}
-
-async function sbUpdateBoardItem(itemId, updates) {
-  if (!_sb) return false;
-  if (_bdSharedToken) {
-    const res = await _sb.rpc('update_shared_board_item', {
-      p_token: _bdSharedToken, p_item_id: itemId,
-      p_x: ('x' in updates) ? updates.x : null, p_y: ('y' in updates) ? updates.y : null,
-      p_w: ('w' in updates) ? updates.w : null, p_h: ('h' in updates) ? updates.h : null,
-      p_z: ('z' in updates) ? updates.z : null,
-      p_content: ('content' in updates) ? updates.content : null
-    });
-    if (res.error) { _showSaveError('Failed to save changes'); console.error(res.error); return false; }
-    return true;
-  }
-  const { error } = await _sb.from('board_items').update(updates).eq('id', itemId);
-  if (error) { _showSaveError('Failed to save changes'); console.error(error); return false; }
-  return true;
-}
-
-async function sbDeleteBoardItem(itemId) {
-  if (!_sb) return false;
-  if (_bdSharedToken) {
-    const res = await _sb.rpc('delete_shared_board_item', { p_token: _bdSharedToken, p_item_id: itemId });
-    if (res.error) { _showSaveError('Failed to delete'); console.error(res.error); return false; }
-    return true;
-  }
-  const { error } = await _sb.from('board_items').delete().eq('id', itemId);
-  if (error) { _showSaveError('Failed to delete'); console.error(error); return false; }
-  return true;
-}
-
 /* ---- BOARD LIST VIEW ---- */
 
 async function renderBoards() {
   _bdFlushPendingSaves();
   _bdLiveLeave();
-  _bdReadOnly = false;
+  state._bdReadOnly = false;
   _bdFlushOrphans();
   const container = document.getElementById('view-boards');
   container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:200px;border-radius:12px"></div></div>';
-  BOARDS = await sbFetchBoards();
+  state.BOARDS = await db.sbFetchBoards();
   let html = '<div class="boards-page">';
   html += '<div class="boards-header">';
   html += '<div><h2 class="view-title" style="margin:0">Boards</h2><p style="color:var(--text-secondary);margin:4px 0 0;font-size:13px">Storyboards and idea canvases</p></div>';
   html += '<button class="btn btn-primary" data-action="_createNewBoard">+ New Board</button>';
   html += '</div>';
 
-  if (BOARDS.length === 0) {
+  if (state.BOARDS.length === 0) {
     html += '<div class="boards-empty">';
     html += '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5"><path d="M3.2 4.1h17.6v13.7H3.2z"/><path d="M8.1 21.2l3.9-3.3 3.9 3.2"/><path d="M6.8 7.9h4.1v3.9H6.8z"/><path d="M13.9 9.6h3.4"/><path d="M13.8 12.4h3.5"/></svg>';
     html += '<p style="color:var(--text-secondary);font-size:15px;margin:12px 0 0">No boards yet. Create your first storyboard.</p>';
     html += '</div>';
   } else {
     html += '<div class="boards-grid">';
-    BOARDS.forEach(function(b) {
+    state.BOARDS.forEach(function(b) {
       const date = new Date(b.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       html += '<div class="board-card" data-action="go" data-args="' + _args('board/' + b.id) + '">';
       html += '<div class="board-card-canvas"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4.2 5.1h6.1v5.2H4.2z"/><path d="M13.6 7.2h6.2"/><path d="M13.7 10.1h4.9"/><path d="M5.1 14.3c3.2 2.6 8.9-1.8 13.7 1.9"/></svg></div>';
@@ -219,13 +86,13 @@ async function renderBoards() {
 }
 
 async function _createNewBoard() {
-  const board = await sbCreateBoard('Untitled Board');
+  const board = await db.sbCreateBoard('Untitled Board');
   if (board) window.location.hash = 'board/' + board.id;
 }
 
 async function _deleteBoard(boardId) {
   if (!confirm('Delete this board and everything on it? Uploaded images are removed too. This cannot be undone.')) return;
-  await sbDeleteBoard(boardId);
+  await db.sbDeleteBoard(boardId);
   renderBoards();
 }
 
@@ -238,41 +105,41 @@ function _bdEditorActive() {
 
 async function renderBoardEditor(boardId) {
   _bdFlushPendingSaves();
-  const token = ++_bdLoadToken;
-  _bdReadOnly = false;
-  _bdSharedToken = null;
-  _bdSharedOwnerId = null;
+  const token = ++state._bdLoadToken;
+  state._bdReadOnly = false;
+  state._bdSharedToken = null;
+  state._bdSharedOwnerId = null;
   _bdFlushOrphans();
-  _bdUndoStack = []; _bdRedoStack = [];
-  _bdEditingEl = null;
+  state._bdUndoStack = []; state._bdRedoStack = [];
+  state._bdEditingEl = null;
   const container = document.getElementById('view-board-editor');
   container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:400px;border-radius:12px"></div></div>';
 
-  const boardRes = _sb ? await _sb.from('boards').select('*').eq('id', boardId).maybeSingle() : { data: null };
-  if (token !== _bdLoadToken) return; // user navigated away mid-load
+  const boardRes = state._sb ? await state._sb.from('boards').select('*').eq('id', boardId).maybeSingle() : { data: null };
+  if (token !== state._bdLoadToken) return; // user navigated away mid-load
   if (!boardRes.data) {
     container.innerHTML = '<div style="padding:48px;text-align:center;color:var(--text-secondary)">Board not found. <a href="#boards">Back to Boards</a></div>';
     return;
   }
-  _bdBoard = boardRes.data;
-  _bdView = { x: _bdBoard.view_x || 0, y: _bdBoard.view_y || 0, z: _bdBoard.view_zoom || 1 };
-  _bdTool = 'select';
-  _bdSelectedId = null;
-  _bdSignedUrls = {};
-  _bdPtr = null; _bdPenPts = null;
+  state._bdBoard = boardRes.data;
+  state._bdView = { x: state._bdBoard.view_x || 0, y: state._bdBoard.view_y || 0, z: state._bdBoard.view_zoom || 1 };
+  state._bdTool = 'select';
+  state._bdSelectedId = null;
+  state._bdSignedUrls = {};
+  state._bdPtr = null; state._bdPenPts = null;
 
-  _bdItems = await sbFetchBoardItems(boardId);
-  if (token !== _bdLoadToken) return;
-  _bdMaxZ = _bdItems.reduce((m, it) => Math.max(m, it.z || 1), 1);
+  state._bdItems = await db.sbFetchBoardItems(boardId);
+  if (token !== state._bdLoadToken) return;
+  state._bdMaxZ = state._bdItems.reduce((m, it) => Math.max(m, it.z || 1), 1);
 
   container.innerHTML = _bdEditorShellHtml(false);
 
   _bdApplyView();
   const plane = document.getElementById('bdPlane');
-  _bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => plane.appendChild(_bdItemEl(it)));
+  state._bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => plane.appendChild(_bdItemEl(it)));
   _bdBindEditor();
   _bdResolveSignedUrls();
-  if (_bdBoard.share_mode === 'view' || _bdBoard.share_mode === 'edit') _bdLiveJoin(_bdBoard.id); else _bdLiveLeave();
+  if (state._bdBoard.share_mode === 'view' || state._bdBoard.share_mode === 'edit') _bdLiveJoin(state._bdBoard.id); else _bdLiveLeave();
 }
 
 /* The full editor shell, used by the owner editor and by shared EDIT
@@ -280,20 +147,20 @@ async function renderBoardEditor(boardId) {
    editable title, share popover). */
 function _bdEditorShellHtml(shared) {
   const penDots = Object.keys(BD_PEN_COLORS).map(c =>
-    '<button class="bd-dot' + (c === _bdPenColor ? ' active' : '') + '" data-pen-color="' + c + '" style="background:' + BD_PEN_COLORS[c] + '" title="' + c + '"></button>').join('');
+    '<button class="bd-dot' + (c === state._bdPenColor ? ' active' : '') + '" data-pen-color="' + c + '" style="background:' + BD_PEN_COLORS[c] + '" title="' + c + '"></button>').join('');
   const stickyDots = Object.keys(BD_STICKY_COLORS).map(c =>
-    '<button class="bd-dot' + (c === _bdStickyColor ? ' active' : '') + '" data-sticky-color="' + c + '" style="background:' + BD_STICKY_COLORS[c] + '" title="' + c + '"></button>').join('');
+    '<button class="bd-dot' + (c === state._bdStickyColor ? ' active' : '') + '" data-sticky-color="' + c + '" style="background:' + BD_STICKY_COLORS[c] + '" title="' + c + '"></button>').join('');
 
   return (
     '<div class="board-editor">' +
       '<div class="board-topbar">' +
       (shared ? '' :
         '<button class="bd-back" data-action="go" data-args="[&quot;boards&quot;]" title="Back to Boards">' + SKETCHY_ICONS.chevronLeft + '</button>') +
-        '<div class="bd-title" id="bdTitle" contenteditable="false" spellcheck="false"' + (shared ? ' style="cursor:default"' : '') + '>' + _escHtml(_bdBoard.title) + '</div>' +
+        '<div class="bd-title" id="bdTitle" contenteditable="false" spellcheck="false"' + (shared ? ' style="cursor:default"' : '') + '>' + _escHtml(state._bdBoard.title) + '</div>' +
       (shared ? '<span class="bd-shared-tag">Shared board · can edit</span>' : '') +
         '<span class="bd-savestate" id="bdSaveState"></span>' +
       (shared ? '' :
-        '<button class="bd-share-btn" id="bdShareBtn">' + SKETCHY_ICONS.share + '<span id="bdShareBtnLabel">' + (_bdBoard.share_mode === 'none' || !_bdBoard.share_mode ? 'Share' : 'Shared') + '</span></button>' +
+        '<button class="bd-share-btn" id="bdShareBtn">' + SKETCHY_ICONS.share + '<span id="bdShareBtnLabel">' + (state._bdBoard.share_mode === 'none' || !state._bdBoard.share_mode ? 'Share' : 'Shared') + '</span></button>' +
         '<div class="bd-share-popover" id="bdSharePopover" style="display:none">' +
           '<button class="bd-share-opt" data-share="none">Private</button>' +
           '<button class="bd-share-opt" data-share="view">Anyone with the link can view</button>' +
@@ -302,7 +169,7 @@ function _bdEditorShellHtml(shared) {
         '</div>') +
         '<div class="bd-zoom">' +
           '<button data-action="_bdZoomBtn" data-args="[-1]" title="Zoom out">−</button>' +
-          '<button class="bd-zoom-pct" id="bdZoomPct" data-action="_bdZoomFit" title="Fit to items">' + Math.round(_bdView.z * 100) + '%</button>' +
+          '<button class="bd-zoom-pct" id="bdZoomPct" data-action="_bdZoomFit" title="Fit to items">' + Math.round(state._bdView.z * 100) + '%</button>' +
           '<button data-action="_bdZoomBtn" data-args="[1]" title="Zoom in">+</button>' +
         '</div>' +
       '</div>' +
@@ -323,8 +190,8 @@ function _bdEditorShellHtml(shared) {
         '</div>' +
         '<div class="bd-tool-options" id="bdPenOptions" style="display:none">' + penDots +
           '<div class="bd-opt-sep"></div>' +
-          '<button class="bd-width' + (_bdPenWidth === 3 ? ' active' : '') + '" data-pen-width="3" title="Thin"><span style="height:2px"></span></button>' +
-          '<button class="bd-width' + (_bdPenWidth === 6 ? ' active' : '') + '" data-pen-width="6" title="Thick"><span style="height:5px"></span></button>' +
+          '<button class="bd-width' + (state._bdPenWidth === 3 ? ' active' : '') + '" data-pen-width="3" title="Thin"><span style="height:2px"></span></button>' +
+          '<button class="bd-width' + (state._bdPenWidth === 6 ? ' active' : '') + '" data-pen-width="6" title="Thick"><span style="height:5px"></span></button>' +
         '</div>' +
         '<div class="bd-tool-options" id="bdStickyOptions" style="display:none">' + stickyDots + '</div>' +
         '<div class="bd-video-popover" id="bdVideoPopover" style="display:none">' +
@@ -358,35 +225,35 @@ function _bdCapture(el, e) { try { el.setPointerCapture(e.pointerId); } catch (_
 function _bdBindPinch(vp, cancelSingle) {
   vp.addEventListener('pointerdown', function(e) {
     if (e.pointerType !== 'touch') return;
-    _bdPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (_bdPointers.size >= 2) {
-      if (!_bdPinch && cancelSingle) cancelSingle();
-      const pts = [..._bdPointers.values()].slice(0, 2);
-      _bdPinch = { dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), mx: (pts[0].x + pts[1].x) / 2, my: (pts[0].y + pts[1].y) / 2 };
+    state._bdPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (state._bdPointers.size >= 2) {
+      if (!state._bdPinch && cancelSingle) cancelSingle();
+      const pts = [...state._bdPointers.values()].slice(0, 2);
+      state._bdPinch = { dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), mx: (pts[0].x + pts[1].x) / 2, my: (pts[0].y + pts[1].y) / 2 };
       try { _bdCapture(vp, e); } catch (_) { /* not all targets allow capture */ }
       e.stopPropagation();
     }
   }, true);
   vp.addEventListener('pointermove', function(e) {
-    if (e.pointerType !== 'touch' || !_bdPointers.has(e.pointerId)) return;
-    _bdPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (!_bdPinch || _bdPointers.size < 2) return;
-    const pts = [..._bdPointers.values()].slice(0, 2);
+    if (e.pointerType !== 'touch' || !state._bdPointers.has(e.pointerId)) return;
+    state._bdPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!state._bdPinch || state._bdPointers.size < 2) return;
+    const pts = [...state._bdPointers.values()].slice(0, 2);
     const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
     const mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
-    if (_bdPinch.dist > 0 && dist > 0) _bdZoomAt(mx, my, dist / _bdPinch.dist);
-    _bdView.x += mx - _bdPinch.mx;
-    _bdView.y += my - _bdPinch.my;
+    if (state._bdPinch.dist > 0 && dist > 0) _bdZoomAt(mx, my, dist / state._bdPinch.dist);
+    state._bdView.x += mx - state._bdPinch.mx;
+    state._bdView.y += my - state._bdPinch.my;
     _bdApplyView();
-    _bdPinch = { dist: dist, mx: mx, my: my };
+    state._bdPinch = { dist: dist, mx: mx, my: my };
     e.stopPropagation();
   }, true);
   function lift(e) {
     if (e.pointerType !== 'touch') return;
-    _bdPointers.delete(e.pointerId);
-    if (_bdPinch && _bdPointers.size < 2) {
+    state._bdPointers.delete(e.pointerId);
+    if (state._bdPinch && state._bdPointers.size < 2) {
       // The remaining finger does nothing until it lifts too
-      _bdPinch = null; _bdPtr = null; _bdSuppressClick = true;
+      state._bdPinch = null; state._bdPtr = null; state._bdSuppressClick = true;
       e.stopPropagation();
     }
   }
@@ -400,62 +267,54 @@ function _bdCommitActiveText() {
   const el = document.activeElement;
   if (el && el.isContentEditable && el.closest && el.closest('.bd-item') &&
       (el.classList.contains('bd-text-content') || el.classList.contains('bd-caption'))) {
-    if (el === _bdEditingEl) _bdHideFormatBar();
+    if (el === state._bdEditingEl) _bdHideFormatBar();
     _bdCommitTextEdit(el);
   }
 }
-
-/* ---- LIVE SYNC (shared boards) ----
-   While a board is shared, every client on it (the owner and anyone with
-   the link) joins a Broadcast channel and announces the item ops it just
-   saved; the others apply them locally. No tables, no policies: the
-   token-gated RPCs still do the persistence, this only keeps screens in
-   step. If Realtime is unavailable, nothing else changes. */
-let _bdChannel = null;
 function _bdLiveJoin(boardId) {
   _bdLiveLeave();
-  if (!_sb || !boardId || typeof _sb.channel !== 'function') return;
+  if (!state._sb || !boardId || typeof state._sb.channel !== 'function') return;
   try {
-    _bdChannel = _sb.channel('board:' + boardId, { config: { broadcast: { self: false } } })
+    state._bdChannel = state._sb.channel('board:' + boardId, { config: { broadcast: { self: false } } })
       .on('broadcast', { event: 'op' }, function(msg) { _bdApplyRemoteOp(msg && msg.payload); })
       .subscribe();
-  } catch (e) { console.warn('live sync unavailable', e); _bdChannel = null; }
+  } catch (e) { console.warn('live sync unavailable', e); state._bdChannel = null; }
 }
 function _bdLiveLeave() {
-  if (_bdChannel && _sb) { try { _sb.removeChannel(_bdChannel); } catch (_) { /* already gone */ } }
-  _bdChannel = null;
+  if (state._bdChannel && state._sb) { try { state._sb.removeChannel(state._bdChannel); } catch (_) { /* already gone */ } }
+  state._bdChannel = null;
 }
 function _bdLiveSend(op) {
-  if (!_bdChannel || !op || !op.board) return;
-  try { _bdChannel.send({ type: 'broadcast', event: 'op', payload: op }); } catch (_) { /* best effort */ }
+  if (!state._bdChannel || !op || !op.board) return;
+  try { state._bdChannel.send({ type: 'broadcast', event: 'op', payload: op }); } catch (_) { /* best effort */ }
 }
 async function _bdApplyRemoteOp(op) {
-  if (!op || !_bdBoard || op.board !== _bdBoard.id) return;
+  if (!op || !state._bdBoard || op.board !== state._bdBoard.id) return;
   const plane = document.getElementById('bdPlane');
   if (!plane) return;
   if (op.type === 'delete' && op.id) {
-    _bdItems = _bdItems.filter(i => i.id !== op.id);
+    state._bdItems = state._bdItems.filter(i => i.id !== op.id);
     const el = document.querySelector('.bd-item[data-id="' + op.id + '"]');
     if (el) el.remove();
-    if (_bdSelectedId === op.id) _bdSelectedId = null;
+    if (state._bdSelectedId === op.id) state._bdSelectedId = null;
     return;
   }
   if (op.type === 'upsert' && op.item && op.item.id) {
     const it = op.item;
-    const idx = _bdItems.findIndex(i => i.id === it.id);
+    const idx = state._bdItems.findIndex(i => i.id === it.id);
     if (idx >= 0) {
       // Never clobber text someone here is in the middle of typing
       if (document.querySelector('.bd-item[data-id="' + it.id + '"] [contenteditable="true"]')) return;
-      _bdItems[idx] = it;
+      state._bdItems[idx] = it;
       _bdRefreshItem(it.id);
     } else {
-      _bdItems.push(it);
+      state._bdItems.push(it);
       plane.appendChild(_bdItemEl(it));
     }
-    if ((it.z || 1) > _bdMaxZ) _bdMaxZ = it.z;
-    if (it.kind === 'image' && it.content && it.content.path && !_bdSignedUrls[it.content.path]) {
+    if ((it.z || 1) > state._bdMaxZ) state._bdMaxZ = it.z;
+    if (it.kind === 'image' && it.content && it.content.path && !state._bdSignedUrls[it.content.path]) {
       const url = await _bdUrlForPath(it.content.path);
-      if (url) { _bdSignedUrls[it.content.path] = url; _bdRefreshItem(it.id); }
+      if (url) { state._bdSignedUrls[it.content.path] = url; _bdRefreshItem(it.id); }
     }
   }
 }
@@ -465,47 +324,47 @@ async function _bdApplyRemoteOp(op) {
 function _bdScreenToBoard(clientX, clientY) {
   const rect = document.getElementById('bdViewport').getBoundingClientRect();
   return {
-    x: (clientX - rect.left - _bdView.x) / _bdView.z,
-    y: (clientY - rect.top - _bdView.y) / _bdView.z
+    x: (clientX - rect.left - state._bdView.x) / state._bdView.z,
+    y: (clientY - rect.top - state._bdView.y) / state._bdView.z
   };
 }
 
 function _bdApplyView() {
   const plane = document.getElementById('bdPlane');
-  if (plane) plane.style.transform = 'translate(' + _bdView.x + 'px,' + _bdView.y + 'px) scale(' + _bdView.z + ')';
+  if (plane) plane.style.transform = 'translate(' + state._bdView.x + 'px,' + state._bdView.y + 'px) scale(' + state._bdView.z + ')';
   const live = document.getElementById('bdPenLive');
-  if (live) live.style.transform = 'translate(' + _bdView.x + 'px,' + _bdView.y + 'px) scale(' + _bdView.z + ')';
+  if (live) live.style.transform = 'translate(' + state._bdView.x + 'px,' + state._bdView.y + 'px) scale(' + state._bdView.z + ')';
   // The paper texture rides along with the canvas so panning reads as movement
   const vp = document.getElementById('bdViewport');
   if (vp) {
-    vp.style.backgroundPosition = _bdView.x + 'px ' + _bdView.y + 'px';
-    vp.style.backgroundSize = Math.max(120, Math.round(480 * _bdView.z)) + 'px auto';
+    vp.style.backgroundPosition = state._bdView.x + 'px ' + state._bdView.y + 'px';
+    vp.style.backgroundSize = Math.max(120, Math.round(480 * state._bdView.z)) + 'px auto';
   }
   const pct = document.getElementById('bdZoomPct');
-  if (pct) pct.textContent = Math.round(_bdView.z * 100) + '%';
+  if (pct) pct.textContent = Math.round(state._bdView.z * 100) + '%';
   _bdPositionFormatBar();
   _bdQueueViewSave();
 }
 
 function _bdQueueViewSave() {
-  if (!_bdBoard || _bdSharedToken || _bdReadOnly) return; // viewport memory belongs to the owner
+  if (!state._bdBoard || state._bdSharedToken || state._bdReadOnly) return; // viewport memory belongs to the owner
   // Skip when nothing changed — opening a board shouldn't bump updated_at
-  if (_bdBoard.view_x === _bdView.x && _bdBoard.view_y === _bdView.y && _bdBoard.view_zoom === _bdView.z) return;
-  clearTimeout(_bdViewSaveTimer);
-  _bdViewSaveTimer = setTimeout(function() {
-    if (!_bdBoard) return;
-    _bdBoard.view_x = _bdView.x; _bdBoard.view_y = _bdView.y; _bdBoard.view_zoom = _bdView.z;
-    sbUpdateBoard(_bdBoard.id, { view_x: _bdView.x, view_y: _bdView.y, view_zoom: _bdView.z }, true);
+  if (state._bdBoard.view_x === state._bdView.x && state._bdBoard.view_y === state._bdView.y && state._bdBoard.view_zoom === state._bdView.z) return;
+  clearTimeout(state._bdViewSaveTimer);
+  state._bdViewSaveTimer = setTimeout(function() {
+    if (!state._bdBoard) return;
+    state._bdBoard.view_x = state._bdView.x; state._bdBoard.view_y = state._bdView.y; state._bdBoard.view_zoom = state._bdView.z;
+    db.sbUpdateBoard(state._bdBoard.id, { view_x: state._bdView.x, view_y: state._bdView.y, view_zoom: state._bdView.z }, true);
   }, 1000);
 }
 
 function _bdZoomAt(clientX, clientY, factor) {
   const rect = document.getElementById('bdViewport').getBoundingClientRect();
   const mx = clientX - rect.left, my = clientY - rect.top;
-  const newZ = Math.min(BD_MAX_ZOOM, Math.max(BD_MIN_ZOOM, _bdView.z * factor));
-  _bdView.x = mx - (mx - _bdView.x) * (newZ / _bdView.z);
-  _bdView.y = my - (my - _bdView.y) * (newZ / _bdView.z);
-  _bdView.z = newZ;
+  const newZ = Math.min(BD_MAX_ZOOM, Math.max(BD_MIN_ZOOM, state._bdView.z * factor));
+  state._bdView.x = mx - (mx - state._bdView.x) * (newZ / state._bdView.z);
+  state._bdView.y = my - (my - state._bdView.y) * (newZ / state._bdView.z);
+  state._bdView.z = newZ;
   _bdApplyView();
 }
 
@@ -515,9 +374,9 @@ function _bdZoomBtn(dir) {
 }
 
 function _bdZoomFit() {
-  if (!_bdItems.length) { _bdView = { x: 0, y: 0, z: 1 }; _bdApplyView(); return; }
+  if (!state._bdItems.length) { state._bdView = { x: 0, y: 0, z: 1 }; _bdApplyView(); return; }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  _bdItems.forEach(it => {
+  state._bdItems.forEach(it => {
     minX = Math.min(minX, it.x); minY = Math.min(minY, it.y);
     maxX = Math.max(maxX, it.x + it.w); maxY = Math.max(maxY, it.y + it.h);
   });
@@ -526,9 +385,9 @@ function _bdZoomFit() {
   const z = Math.min(BD_MAX_ZOOM, Math.max(BD_MIN_ZOOM, Math.min(
     (vp.width - pad * 2) / Math.max(1, maxX - minX),
     (vp.height - pad * 2) / Math.max(1, maxY - minY), 1.5)));
-  _bdView.z = z;
-  _bdView.x = (vp.width - (maxX - minX) * z) / 2 - minX * z;
-  _bdView.y = (vp.height - (maxY - minY) * z) / 2 - minY * z;
+  state._bdView.z = z;
+  state._bdView.x = (vp.width - (maxX - minX) * z) / 2 - minX * z;
+  state._bdView.y = (vp.height - (maxY - minY) * z) / 2 - minY * z;
   _bdApplyView();
 }
 
@@ -543,7 +402,7 @@ function _bdRotFor(id) {
 
 function _bdItemEl(it) {
   const el = document.createElement('div');
-  el.className = 'bd-item bd-kind-' + it.kind + (it.id === _bdSelectedId ? ' selected' : '');
+  el.className = 'bd-item bd-kind-' + it.kind + (it.id === state._bdSelectedId ? ' selected' : '');
   el.dataset.id = it.id;
   el.style.left = it.x + 'px';
   el.style.top = it.y + 'px';
@@ -562,7 +421,7 @@ function _bdItemEl(it) {
     el.innerHTML = '<div class="bd-text-content' + sizeCls + '" spellcheck="false">' + _bdTextHtml(c) + '</div>' + _bdHandlesHtml(it);
   } else if (it.kind === 'image') {
     el.style.height = it.h + 'px';
-    const url = _bdSignedUrls[c.path];
+    const url = state._bdSignedUrls[c.path];
     el.innerHTML =
       '<div class="bd-media-frame">' + (url
         ? '<img src="' + _esc(url) + '" draggable="false" alt="">'
@@ -584,7 +443,7 @@ function _bdItemEl(it) {
 }
 
 function _bdHandlesHtml(it) {
-  if (_bdReadOnly) return '';
+  if (state._bdReadOnly) return '';
   let extras = '';
   if (it.kind === 'video' && it.content && it.content.url) {
     extras += '<button class="bd-item-btn bd-open-link" title="Open link"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg></button>';
@@ -611,7 +470,7 @@ function _bdVideoInnerHtml(itemId, c) {
 }
 
 function _bdRefreshItem(id) {
-  const it = _bdItems.find(i => i.id === id);
+  const it = state._bdItems.find(i => i.id === id);
   const old = document.querySelector('.bd-item[data-id="' + id + '"]');
   if (!it || !old) return;
   old.replaceWith(_bdItemEl(it));
@@ -675,11 +534,11 @@ function _bdSerializeRich(node) {
 /* ---- FORMAT BAR ---- */
 
 function _bdShowFormatBar(el) {
-  _bdEditingEl = el;
+  state._bdEditingEl = el;
   const bar = document.getElementById('bdFormatBar');
   if (!bar) return;
   const itemEl = el.closest('.bd-item');
-  const it = itemEl && _bdItems.find(i => i.id === itemEl.dataset.id);
+  const it = itemEl && state._bdItems.find(i => i.id === itemEl.dataset.id);
   const size = (it && BD_TEXT_SIZES.indexOf(it.content.size) >= 0) ? it.content.size : 'body';
   bar.querySelectorAll('[data-size]').forEach(b => b.classList.toggle('active', b.dataset.size === size));
   bar.style.display = 'flex';
@@ -687,16 +546,16 @@ function _bdShowFormatBar(el) {
 }
 
 function _bdHideFormatBar() {
-  _bdEditingEl = null;
+  state._bdEditingEl = null;
   const bar = document.getElementById('bdFormatBar');
   if (bar) bar.style.display = 'none';
 }
 
 function _bdPositionFormatBar() {
-  if (!_bdEditingEl) return;
+  if (!state._bdEditingEl) return;
   const bar = document.getElementById('bdFormatBar');
   const vp = document.getElementById('bdViewport');
-  const itemEl = _bdEditingEl.closest('.bd-item');
+  const itemEl = state._bdEditingEl.closest('.bd-item');
   if (!bar || !vp || !itemEl) return;
   if (window.innerWidth < 640) {
     // Phone: the item is often under the keyboard; pin the bar to the top
@@ -719,16 +578,16 @@ function _bdPositionFormatBar() {
 function _bdClone(v) { return JSON.parse(JSON.stringify(v)); }
 
 function _bdPushUndo(op) {
-  _bdUndoStack.push(op);
-  if (_bdUndoStack.length > 100) _bdUndoStack.shift();
-  _bdRedoStack.length = 0;
+  state._bdUndoStack.push(op);
+  if (state._bdUndoStack.length > 100) state._bdUndoStack.shift();
+  state._bdRedoStack.length = 0;
   _bdSyncUndoButtons();
 }
 
 function _bdSyncUndoButtons() {
   const u = document.getElementById('bdUndoBtn'), r = document.getElementById('bdRedoBtn');
-  if (u) u.disabled = !_bdUndoStack.length;
-  if (r) r.disabled = !_bdRedoStack.length;
+  if (u) u.disabled = !state._bdUndoStack.length;
+  if (r) r.disabled = !state._bdRedoStack.length;
 }
 
 async function _bdApplyOp(op, reverse) {
@@ -740,7 +599,7 @@ async function _bdApplyOp(op, reverse) {
     else await _bdRemoveItemLocal(op.item.id);
   } else if (op.type === 'update') {
     const vals = _bdClone(reverse ? op.before : op.after);
-    const it = _bdItems.find(i => i.id === op.id);
+    const it = state._bdItems.find(i => i.id === op.id);
     if (!it) return;
     Object.assign(it, vals);
     _bdRefreshItem(op.id);
@@ -749,38 +608,38 @@ async function _bdApplyOp(op, reverse) {
 }
 
 async function _bdUndo() {
-  const op = _bdUndoStack.pop();
+  const op = state._bdUndoStack.pop();
   if (!op) return;
   await _bdApplyOp(op, true);
-  _bdRedoStack.push(op);
+  state._bdRedoStack.push(op);
   _bdSyncUndoButtons();
 }
 
 async function _bdRedo() {
-  const op = _bdRedoStack.pop();
+  const op = state._bdRedoStack.pop();
   if (!op) return;
   await _bdApplyOp(op, false);
-  _bdUndoStack.push(op);
+  state._bdUndoStack.push(op);
   _bdSyncUndoButtons();
 }
 
 // Re-insert a deleted/undone item with its original id. Routes through
 // sbAddBoardItem so shared-edit sessions restore via the RPC (p_id).
 async function _bdRestoreItem(item) {
-  if (!_sb) return;
+  if (!state._sb) return;
   const row = _bdClone(item);
-  const restored = await sbAddBoardItem({
+  const restored = await db.sbAddBoardItem({
     id: row.id, board_id: row.board_id, kind: row.kind,
     x: row.x, y: row.y, w: row.w, h: row.h, z: row.z, content: row.content
   });
   if (!restored) { _showSaveError('Undo failed'); return; }
-  _bdItems.push(restored);
-  _bdLiveSend({ board: _bdBoard && _bdBoard.id, type: 'upsert', item: restored });
-  if ((restored.z || 1) > _bdMaxZ) _bdMaxZ = restored.z;
+  state._bdItems.push(restored);
+  _bdLiveSend({ board: state._bdBoard && state._bdBoard.id, type: 'upsert', item: restored });
+  if ((restored.z || 1) > state._bdMaxZ) state._bdMaxZ = restored.z;
   const plane = document.getElementById('bdPlane');
   if (plane) plane.appendChild(_bdItemEl(restored));
   if (row.kind === 'image' && row.content && row.content.path) {
-    _bdOrphanPaths = _bdOrphanPaths.filter(p => p !== row.content.path);
+    state._bdOrphanPaths = state._bdOrphanPaths.filter(p => p !== row.content.path);
   }
 }
 
@@ -788,33 +647,33 @@ async function _bdRestoreItem(item) {
 // NOT deleted yet (undo needs them) — they go to the orphan list, purged
 // when the board is exited.
 async function _bdRemoveItemLocal(id) {
-  const it = _bdItems.find(i => i.id === id);
+  const it = state._bdItems.find(i => i.id === id);
   if (!it) return;
-  _bdItems = _bdItems.filter(i => i.id !== id);
+  state._bdItems = state._bdItems.filter(i => i.id !== id);
   const el = document.querySelector('.bd-item[data-id="' + id + '"]');
   if (el) el.remove();
-  if (_bdSelectedId === id) _bdSelectedId = null;
-  await sbDeleteBoardItem(id);
-  _bdLiveSend({ board: _bdBoard && _bdBoard.id, type: 'delete', id: id });
-  if (it.kind === 'image' && it.content && it.content.path) _bdOrphanPaths.push(it.content.path);
+  if (state._bdSelectedId === id) state._bdSelectedId = null;
+  await db.sbDeleteBoardItem(id);
+  _bdLiveSend({ board: state._bdBoard && state._bdBoard.id, type: 'delete', id: id });
+  if (it.kind === 'image' && it.content && it.content.path) state._bdOrphanPaths.push(it.content.path);
 }
 
 function _bdFlushOrphans() {
-  if (!_bdOrphanPaths.length || !_sb) return;
-  const paths = _bdOrphanPaths.splice(0);
-  _sb.storage.from('board-media').remove(paths).catch(function(e) { console.warn('Orphan cleanup failed', e); });
+  if (!state._bdOrphanPaths.length || !state._sb) return;
+  const paths = state._bdOrphanPaths.splice(0);
+  state._sb.storage.from('board-media').remove(paths).catch(function(e) { console.warn('Orphan cleanup failed', e); });
 }
 
 /* ---- SHARING ---- */
 
 function _bdShareLink() {
-  return location.origin + location.pathname + '#bshared/' + _bdBoard.share_token;
+  return location.origin + location.pathname + '#bshared/' + state._bdBoard.share_token;
 }
 
 function _bdSyncSharePopover() {
   const pop = document.getElementById('bdSharePopover');
-  if (!pop || !_bdBoard) return;
-  const mode = (_bdBoard.share_mode === 'view' || _bdBoard.share_mode === 'edit') ? _bdBoard.share_mode : 'none';
+  if (!pop || !state._bdBoard) return;
+  const mode = (state._bdBoard.share_mode === 'view' || state._bdBoard.share_mode === 'edit') ? state._bdBoard.share_mode : 'none';
   pop.querySelectorAll('.bd-share-opt').forEach(b => b.classList.toggle('active', b.dataset.share === mode));
   const links = document.getElementById('bdShareLinks');
   if (links) links.innerHTML = mode === 'none' ? '' : _shareLinkRowsHtml(mode, _bdShareLink(), _bdShareLink() + '/edit');
@@ -823,15 +682,15 @@ function _bdSyncSharePopover() {
 }
 
 async function _bdSetBoardShare(mode) {
-  if (mode !== 'none' && !_bdBoard.share_token) {
+  if (mode !== 'none' && !state._bdBoard.share_token) {
     _showSaveError('Sharing needs migration 017 — run it in Supabase first');
     return;
   }
-  const ok = await sbUpdateBoard(_bdBoard.id, { share_mode: mode }, true);
+  const ok = await db.sbUpdateBoard(state._bdBoard.id, { share_mode: mode }, true);
   if (!ok) return;
-  _bdBoard.share_mode = mode;
+  state._bdBoard.share_mode = mode;
   _bdSyncSharePopover();
-  if (mode === 'none') _bdLiveLeave(); else _bdLiveJoin(_bdBoard.id);
+  if (mode === 'none') _bdLiveLeave(); else _bdLiveJoin(state._bdBoard.id);
 }
 
 /* ---- EDITOR: SIGNED URLS ---- */
@@ -840,42 +699,42 @@ async function _bdSetBoardShare(mode) {
 // sessions (view or edit) download the blob under the shared-board
 // storage policy and use an object URL.
 async function _bdUrlForPath(path) {
-  if (!_sb) return null;
-  if (_bdSharedToken || _bdReadOnly) {
-    const res = await _sb.storage.from('board-media').download(path);
+  if (!state._sb) return null;
+  if (state._bdSharedToken || state._bdReadOnly) {
+    const res = await state._sb.storage.from('board-media').download(path);
     return res.data ? URL.createObjectURL(res.data) : null;
   }
-  const res = await _sb.storage.from('board-media').createSignedUrl(path, 60 * 60 * 12);
+  const res = await state._sb.storage.from('board-media').createSignedUrl(path, 60 * 60 * 12);
   return (res.data && res.data.signedUrl) || null;
 }
 
 async function _bdResolveSignedUrls() {
-  const paths = _bdItems.filter(i => i.kind === 'image' && i.content && i.content.path && !_bdSignedUrls[i.content.path])
+  const paths = state._bdItems.filter(i => i.kind === 'image' && i.content && i.content.path && !state._bdSignedUrls[i.content.path])
     .map(i => i.content.path);
-  if (!paths.length || !_sb) return;
-  if (_bdSharedToken || _bdReadOnly) {
+  if (!paths.length || !state._sb) return;
+  if (state._bdSharedToken || state._bdReadOnly) {
     await Promise.all(paths.map(async function(p) {
       const url = await _bdUrlForPath(p);
-      if (url) _bdSignedUrls[p] = url;
+      if (url) state._bdSignedUrls[p] = url;
     }));
   } else {
-    const res = await _sb.storage.from('board-media').createSignedUrls(paths, 60 * 60 * 12);
+    const res = await state._sb.storage.from('board-media').createSignedUrls(paths, 60 * 60 * 12);
     if (res.error || !res.data) { console.error('Signed URL batch failed', res.error); return; }
     res.data.forEach(function(entry, idx) {
-      if (entry.signedUrl) _bdSignedUrls[paths[idx]] = entry.signedUrl;
+      if (entry.signedUrl) state._bdSignedUrls[paths[idx]] = entry.signedUrl;
     });
   }
-  _bdItems.forEach(function(it) {
-    if (it.kind === 'image' && it.content && _bdSignedUrls[it.content.path]) _bdRefreshItem(it.id);
+  state._bdItems.forEach(function(it) {
+    if (it.kind === 'image' && it.content && state._bdSignedUrls[it.content.path]) _bdRefreshItem(it.id);
   });
 }
 
 /* ---- EDITOR: SAVE PLUMBING ---- */
 
-function _bdSetSaveState(state) {
+function _bdSetSaveState(mode) {
   const el = document.getElementById('bdSaveState');
   if (!el) return;
-  el.textContent = state === 'saving' ? 'Saving…' : (state === 'saved' ? 'Saved' : '');
+  el.textContent = mode === 'saving' ? 'Saving…' : (mode === 'saved' ? 'Saved' : '');
   if (state === 'saved') {
     clearTimeout(el._t);
     el._t = setTimeout(function() { if (el.textContent === 'Saved') el.textContent = ''; }, 1600);
@@ -883,62 +742,61 @@ function _bdSetSaveState(state) {
 }
 
 function _bdQueueItemSave(id, updates, isRetry) {
-  const pending = _bdPendingSaves[id] || { updates: {} };
+  const pending = state._bdPendingSaves[id] || { updates: {} };
   Object.assign(pending.updates, updates);
   if (isRetry) pending.retried = true;
   clearTimeout(pending.timer);
   pending.timer = setTimeout(async function() {
-    delete _bdPendingSaves[id];
+    delete state._bdPendingSaves[id];
     _bdSetSaveState('saving');
-    const ok = await sbUpdateBoardItem(id, pending.updates);
+    const ok = await db.sbUpdateBoardItem(id, pending.updates);
     if (ok) {
       _bdSetSaveState('saved');
-      const it = _bdItems.find(i => i.id === id);
-      if (it) _bdLiveSend({ board: _bdBoard && _bdBoard.id, type: 'upsert', item: it });
+      const it = state._bdItems.find(i => i.id === id);
+      if (it) _bdLiveSend({ board: state._bdBoard && state._bdBoard.id, type: 'upsert', item: it });
       return;
     }
     // One retry after a pause (flaky mobile networks); the toast already fired
     if (!pending.retried) setTimeout(function() { _bdQueueItemSave(id, pending.updates, true); }, 3000);
   }, 500);
-  _bdPendingSaves[id] = pending;
+  state._bdPendingSaves[id] = pending;
 }
 
 // Fire every debounced save now: navigation, tab hidden, page unload.
 function _bdFlushPendingSaves() {
-  Object.keys(_bdPendingSaves).forEach(function(id) {
-    const pending = _bdPendingSaves[id];
+  Object.keys(state._bdPendingSaves).forEach(function(id) {
+    const pending = state._bdPendingSaves[id];
     clearTimeout(pending.timer);
-    delete _bdPendingSaves[id];
-    sbUpdateBoardItem(id, pending.updates);
+    delete state._bdPendingSaves[id];
+    db.sbUpdateBoardItem(id, pending.updates);
   });
-  if (_bdViewSaveTimer) {
-    clearTimeout(_bdViewSaveTimer); _bdViewSaveTimer = null;
-    if (_bdBoard && !_bdSharedToken && (_bdBoard.view_x !== _bdView.x || _bdBoard.view_y !== _bdView.y || _bdBoard.view_zoom !== _bdView.z)) {
-      _bdBoard.view_x = _bdView.x; _bdBoard.view_y = _bdView.y; _bdBoard.view_zoom = _bdView.z;
-      sbUpdateBoard(_bdBoard.id, { view_x: _bdView.x, view_y: _bdView.y, view_zoom: _bdView.z }, true);
+  if (state._bdViewSaveTimer) {
+    clearTimeout(state._bdViewSaveTimer); state._bdViewSaveTimer = null;
+    if (state._bdBoard && !state._bdSharedToken && (state._bdBoard.view_x !== state._bdView.x || state._bdBoard.view_y !== state._bdView.y || state._bdBoard.view_zoom !== state._bdView.z)) {
+      state._bdBoard.view_x = state._bdView.x; state._bdBoard.view_y = state._bdView.y; state._bdBoard.view_zoom = state._bdView.z;
+      db.sbUpdateBoard(state._bdBoard.id, { view_x: state._bdView.x, view_y: state._bdView.y, view_zoom: state._bdView.z }, true);
     }
   }
 }
-document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') { _bdCommitActiveText(); _bdFlushPendingSaves(); } });
 
 /* ---- EDITOR: ITEM CREATION ---- */
 
 async function _bdCreateItem(kind, x, y, w, h, content) {
-  const row = await sbAddBoardItem({
-    board_id: _bdBoard.id, kind: kind,
+  const row = await db.sbAddBoardItem({
+    board_id: state._bdBoard.id, kind: kind,
     x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h),
-    z: ++_bdMaxZ, content: content
+    z: ++state._bdMaxZ, content: content
   });
   if (!row) return null;
-  _bdItems.push(row);
+  state._bdItems.push(row);
   document.getElementById('bdPlane').appendChild(_bdItemEl(row));
   _bdPushUndo({ type: 'create', item: _bdClone(row) });
-  _bdLiveSend({ board: _bdBoard.id, type: 'upsert', item: row });
+  _bdLiveSend({ board: state._bdBoard.id, type: 'upsert', item: row });
   return row;
 }
 
 async function _bdAddNoteAt(bx, by) {
-  const row = await _bdCreateItem('note', bx - 90, by - 90, 180, 180, { text: '', color: _bdStickyColor });
+  const row = await _bdCreateItem('note', bx - 90, by - 90, 180, 180, { text: '', color: state._bdStickyColor });
   _bdSetTool('select');
   if (row) { _bdSelect(row.id); _bdStartTextEdit(row.id); }
 }
@@ -956,12 +814,12 @@ async function _bdAddImageFiles(files, bx, by) {
     _bdSetSaveState('saving');
     try {
       const prepped = await _bdPrepareImage(file);
-      const ownerId = _bdSharedOwnerId || CREATOR._sbId;
-      const path = ownerId + '/' + _bdBoard.id + '/' + crypto.randomUUID() + '.' + prepped.ext;
-      const up = await _sb.storage.from('board-media').upload(path, prepped.blob, { contentType: prepped.type });
+      const ownerId = state._bdSharedOwnerId || state.CREATOR._sbId;
+      const path = ownerId + '/' + state._bdBoard.id + '/' + crypto.randomUUID() + '.' + prepped.ext;
+      const up = await state._sb.storage.from('board-media').upload(path, prepped.blob, { contentType: prepped.type });
       if (up.error) { _showSaveError('Upload failed: ' + (up.error.message || 'unknown error')); console.error(up.error); continue; }
       const url = await _bdUrlForPath(path);
-      if (url) _bdSignedUrls[path] = url;
+      if (url) state._bdSignedUrls[path] = url;
       const w = 320, h = Math.round(w * (prepped.natH / prepped.natW));
       await _bdCreateItem('image', bx - w / 2 + offset, by - h / 2 + offset, w, h,
         { path: path, caption: '', natW: prepped.natW, natH: prepped.natH });
@@ -1049,10 +907,10 @@ async function _bdAddVideoFromPopover() {
 /* ---- EDITOR: SELECTION & EDITING ---- */
 
 function _bdSelect(id) {
-  if (_bdSelectedId === id) return;
+  if (state._bdSelectedId === id) return;
   const prev = document.querySelector('.bd-item.selected');
   if (prev) prev.classList.remove('selected');
-  _bdSelectedId = id;
+  state._bdSelectedId = id;
   if (id) {
     const el = document.querySelector('.bd-item[data-id="' + id + '"]');
     if (el) el.classList.add('selected');
@@ -1075,7 +933,7 @@ function _bdCommitTextEdit(target) {
   if (!itemEl) return;
   target.setAttribute('contenteditable', 'false');
   const id = itemEl.dataset.id;
-  const it = _bdItems.find(i => i.id === id);
+  const it = state._bdItems.find(i => i.id === id);
   if (!it) return;
   const plain = target.innerText.replace(/\u00a0/g, ' ').trim();
   if (target.classList.contains('bd-caption')) {
@@ -1105,14 +963,14 @@ function _bdCommitTextEdit(target) {
 
 
 async function _bdDeleteItem(id) {
-  const it = _bdItems.find(i => i.id === id);
+  const it = state._bdItems.find(i => i.id === id);
   if (!it) return;
   _bdPushUndo({ type: 'delete', item: _bdClone(it) });
   await _bdRemoveItemLocal(id);
 }
 
 function _bdSetTool(tool) {
-  _bdTool = tool;
+  state._bdTool = tool;
   document.querySelectorAll('#bdToolbar .bd-tool[data-tool]').forEach(function(b) {
     b.classList.toggle('active', b.dataset.tool === tool);
   });
@@ -1129,17 +987,17 @@ function _bdSetTool(tool) {
 function _bdBindEditor() {
   const vp = document.getElementById('bdViewport');
   const toolbar = document.getElementById('bdToolbar');
-  _bdSetTool(_bdTool); // sync data-tool + toolbar state on fresh DOM
+  _bdSetTool(state._bdTool); // sync data-tool + toolbar state on fresh DOM
   _bdSyncUndoButtons();
 
   /* Two fingers: a pen stroke in progress is discarded, a drag/resize is
      committed where it is, a pan just stops. */
   _bdBindPinch(vp, function() {
-    if (_bdPtr && _bdPtr.mode === 'pen') {
-      _bdPtr = null; _bdPenPts = null;
+    if (state._bdPtr && state._bdPtr.mode === 'pen') {
+      state._bdPtr = null; state._bdPenPts = null;
       const live = document.getElementById('bdPenLive');
       if (live) live.innerHTML = '';
-    } else if (_bdPtr) {
+    } else if (state._bdPtr) {
       endGesture();
     }
   });
@@ -1170,21 +1028,21 @@ function _bdBindEditor() {
       const btn = e.target.closest('button');
       if (!btn) return;
       if (btn.dataset.penColor) {
-        _bdPenColor = btn.dataset.penColor;
+        state._bdPenColor = btn.dataset.penColor;
         btn.parentElement.querySelectorAll('.bd-dot').forEach(d => d.classList.toggle('active', d === btn));
       }
       if (btn.dataset.penWidth) {
-        _bdPenWidth = Number(btn.dataset.penWidth);
+        state._bdPenWidth = Number(btn.dataset.penWidth);
         btn.parentElement.querySelectorAll('.bd-width').forEach(d => d.classList.toggle('active', d === btn));
       }
       if (btn.dataset.stickyColor) {
-        _bdStickyColor = btn.dataset.stickyColor;
+        state._bdStickyColor = btn.dataset.stickyColor;
         btn.parentElement.querySelectorAll('.bd-dot').forEach(d => d.classList.toggle('active', d === btn));
         // Recolor the selected sticky too, if one is selected
-        const it = _bdItems.find(i => i.id === _bdSelectedId && i.kind === 'note');
+        const it = state._bdItems.find(i => i.id === state._bdSelectedId && i.kind === 'note');
         if (it) {
           const before = _bdClone(it.content);
-          it.content = Object.assign({}, it.content, { color: _bdStickyColor });
+          it.content = Object.assign({}, it.content, { color: state._bdStickyColor });
           _bdPushUndo({ type: 'update', id: it.id, before: { content: before }, after: { content: _bdClone(it.content) } });
           _bdRefreshItem(it.id);
           _bdQueueItemSave(it.id, { content: it.content });
@@ -1204,7 +1062,7 @@ function _bdBindEditor() {
   });
 
   /* Board title — renaming is owner-only */
-  if (!_bdSharedToken) {
+  if (!state._bdSharedToken) {
     const titleEl = document.getElementById('bdTitle');
     titleEl.addEventListener('click', function() {
       if (titleEl.getAttribute('contenteditable') !== 'true') {
@@ -1220,9 +1078,9 @@ function _bdBindEditor() {
       titleEl.setAttribute('contenteditable', 'false');
       const t = titleEl.textContent.trim() || 'Untitled Board';
       titleEl.textContent = t;
-      if (_bdBoard && t !== _bdBoard.title) {
-        _bdBoard.title = t;
-        sbUpdateBoard(_bdBoard.id, { title: t }, true);
+      if (state._bdBoard && t !== state._bdBoard.title) {
+        state._bdBoard.title = t;
+        db.sbUpdateBoard(state._bdBoard.id, { title: t }, true);
       }
     });
   }
@@ -1233,8 +1091,8 @@ function _bdBindEditor() {
     if (e.ctrlKey || e.metaKey) {
       _bdZoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
     } else {
-      _bdView.x -= e.deltaX;
-      _bdView.y -= e.deltaY;
+      state._bdView.x -= e.deltaX;
+      state._bdView.y -= e.deltaY;
       _bdApplyView();
     }
   }, { passive: false });
@@ -1250,82 +1108,82 @@ function _bdBindEditor() {
     // Item action buttons act on pointerdown's click, not as gestures
     if (e.target.closest('.bd-item-btn')) return;
 
-    if (e.button === 1 || (_bdTool === 'select' && !itemEl)) {
-      _bdPtr = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: _bdView.x, vy: _bdView.y };
-      if (_bdTool === 'select' && !e.target.closest('.bd-item')) _bdSelect(null);
+    if (e.button === 1 || (state._bdTool === 'select' && !itemEl)) {
+      state._bdPtr = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: state._bdView.x, vy: state._bdView.y };
+      if (state._bdTool === 'select' && !e.target.closest('.bd-item')) _bdSelect(null);
       _bdCapture(vp, e);
       return;
     }
 
-    if (_bdTool === 'pen') {
+    if (state._bdTool === 'pen') {
       const p = _bdScreenToBoard(e.clientX, e.clientY);
-      _bdPenPts = [[p.x, p.y]];
-      _bdPtr = { mode: 'pen' };
+      state._bdPenPts = [[p.x, p.y]];
+      state._bdPtr = { mode: 'pen' };
       const live = document.getElementById('bdPenLive');
-      live.innerHTML = '<path d="" fill="none" stroke="' + BD_PEN_COLORS[_bdPenColor] + '" stroke-width="' + _bdPenWidth + '" stroke-linecap="round" stroke-linejoin="round"/>';
+      live.innerHTML = '<path d="" fill="none" stroke="' + BD_PEN_COLORS[state._bdPenColor] + '" stroke-width="' + state._bdPenWidth + '" stroke-linecap="round" stroke-linejoin="round"/>';
       _bdCapture(vp, e);
       return;
     }
 
-    if (_bdTool === 'note' || _bdTool === 'text') {
+    if (state._bdTool === 'note' || state._bdTool === 'text') {
       const p = _bdScreenToBoard(e.clientX, e.clientY);
-      if (_bdTool === 'note') _bdAddNoteAt(p.x, p.y); else _bdAddTextAt(p.x, p.y);
+      if (state._bdTool === 'note') _bdAddNoteAt(p.x, p.y); else _bdAddTextAt(p.x, p.y);
       return;
     }
 
     if (itemEl) {
       const id = itemEl.dataset.id;
-      const it = _bdItems.find(i => i.id === id);
+      const it = state._bdItems.find(i => i.id === id);
       if (!it) return;
       _bdSelect(id);
       // Bring to front
-      if ((it.z || 1) < _bdMaxZ) {
-        it.z = ++_bdMaxZ;
+      if ((it.z || 1) < state._bdMaxZ) {
+        it.z = ++state._bdMaxZ;
         itemEl.style.zIndex = it.z;
         _bdQueueItemSave(id, { z: it.z });
       }
       const p = _bdScreenToBoard(e.clientX, e.clientY);
       const before = { x: it.x, y: it.y, w: it.w, h: it.h };
       if (e.target.closest('.bd-resize')) {
-        _bdPtr = { mode: 'resize', id: id, sx: p.x, sy: p.y, w: it.w, h: it.h, before: before };
+        state._bdPtr = { mode: 'resize', id: id, sx: p.x, sy: p.y, w: it.w, h: it.h, before: before };
       } else {
-        _bdPtr = { mode: 'drag', id: id, dx: p.x - it.x, dy: p.y - it.y, moved: false, before: before };
+        state._bdPtr = { mode: 'drag', id: id, dx: p.x - it.x, dy: p.y - it.y, moved: false, before: before };
       }
       _bdCapture(vp, e);
     }
   });
 
   vp.addEventListener('pointermove', function(e) {
-    if (!_bdPtr) return;
-    if (_bdPtr.mode === 'pan') {
-      _bdView.x = _bdPtr.vx + (e.clientX - _bdPtr.sx);
-      _bdView.y = _bdPtr.vy + (e.clientY - _bdPtr.sy);
+    if (!state._bdPtr) return;
+    if (state._bdPtr.mode === 'pan') {
+      state._bdView.x = state._bdPtr.vx + (e.clientX - state._bdPtr.sx);
+      state._bdView.y = state._bdPtr.vy + (e.clientY - state._bdPtr.sy);
       _bdApplyView();
       return;
     }
     const p = _bdScreenToBoard(e.clientX, e.clientY);
-    if (_bdPtr.mode === 'pen') {
-      const last = _bdPenPts[_bdPenPts.length - 1];
-      if (Math.hypot(p.x - last[0], p.y - last[1]) > 2 / _bdView.z) {
-        _bdPenPts.push([Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]);
+    if (state._bdPtr.mode === 'pen') {
+      const last = state._bdPenPts[state._bdPenPts.length - 1];
+      if (Math.hypot(p.x - last[0], p.y - last[1]) > 2 / state._bdView.z) {
+        state._bdPenPts.push([Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]);
         const path = document.querySelector('#bdPenLive path');
-        if (path) path.setAttribute('d', _bdPathD(_bdPenPts));
+        if (path) path.setAttribute('d', _bdPathD(state._bdPenPts));
       }
       return;
     }
-    const it = _bdItems.find(i => i.id === _bdPtr.id);
-    const el = document.querySelector('.bd-item[data-id="' + _bdPtr.id + '"]');
+    const it = state._bdItems.find(i => i.id === state._bdPtr.id);
+    const el = document.querySelector('.bd-item[data-id="' + state._bdPtr.id + '"]');
     if (!it || !el) return;
-    if (_bdPtr.mode === 'drag') {
-      it.x = p.x - _bdPtr.dx;
-      it.y = p.y - _bdPtr.dy;
+    if (state._bdPtr.mode === 'drag') {
+      it.x = p.x - state._bdPtr.dx;
+      it.y = p.y - state._bdPtr.dy;
       el.style.left = it.x + 'px';
       el.style.top = it.y + 'px';
-      _bdPtr.moved = true;
-    } else if (_bdPtr.mode === 'resize') {
+      state._bdPtr.moved = true;
+    } else if (state._bdPtr.mode === 'resize') {
       const minW = it.kind === 'note' ? 100 : 60;
-      let w = Math.max(minW, _bdPtr.w + (p.x - _bdPtr.sx));
-      let h = Math.max(40, _bdPtr.h + (p.y - _bdPtr.sy));
+      let w = Math.max(minW, state._bdPtr.w + (p.x - state._bdPtr.sx));
+      let h = Math.max(40, state._bdPtr.h + (p.y - state._bdPtr.sy));
       if (it.kind === 'image' && it.content.natW && it.content.natH) {
         h = w * (it.content.natH / it.content.natW); // images keep their aspect
       } else if (it.kind === 'video' && it.content.provider !== 'link') {
@@ -1334,16 +1192,16 @@ function _bdBindEditor() {
       it.w = w; it.h = h;
       el.style.width = w + 'px';
       if (it.kind !== 'text') el.style.height = h + 'px';
-      _bdPtr.moved = true;
+      state._bdPtr.moved = true;
     }
   });
 
   function endGesture(e) {
-    if (!_bdPtr) return;
-    const g = _bdPtr; _bdPtr = null;
-    if (g.mode === 'pen' && _bdPenPts) {
-      _bdSuppressClick = true; // stroke ending over a video shouldn't play it
-      const pts = _bdPenPts; _bdPenPts = null;
+    if (!state._bdPtr) return;
+    const g = state._bdPtr; state._bdPtr = null;
+    if (g.mode === 'pen' && state._bdPenPts) {
+      state._bdSuppressClick = true; // stroke ending over a video shouldn't play it
+      const pts = state._bdPenPts; state._bdPenPts = null;
       document.getElementById('bdPenLive').innerHTML = '';
       if (pts.length > 1) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1353,13 +1211,13 @@ function _bdBindEditor() {
         });
         const rel = pts.map(pt => [Math.round((pt[0] - minX) * 10) / 10, Math.round((pt[1] - minY) * 10) / 10]);
         _bdCreateItem('draw', minX, minY, Math.max(2, maxX - minX), Math.max(2, maxY - minY),
-          { points: rel, color: _bdPenColor, width: _bdPenWidth });
+          { points: rel, color: state._bdPenColor, width: state._bdPenWidth });
       }
       return;
     }
     if ((g.mode === 'drag' || g.mode === 'resize') && g.moved) {
-      _bdSuppressClick = true; // the click after a drag shouldn't trigger video play etc.
-      const it = _bdItems.find(i => i.id === g.id);
+      state._bdSuppressClick = true; // the click after a drag shouldn't trigger video play etc.
+      const it = state._bdItems.find(i => i.id === g.id);
       if (it) {
         const after = { x: Math.round(it.x), y: Math.round(it.y), w: Math.round(it.w), h: Math.round(it.h) };
         if (g.before) _bdPushUndo({ type: 'update', id: g.id, before: g.before, after: after });
@@ -1379,7 +1237,7 @@ function _bdBindEditor() {
       return;
     }
     // Double-click on empty canvas = quick sticky (Milanote habit)
-    if (!e.target.closest('.bd-item') && _bdTool === 'select') {
+    if (!e.target.closest('.bd-item') && state._bdTool === 'select') {
       const p = _bdScreenToBoard(e.clientX, e.clientY);
       _bdAddNoteAt(p.x, p.y);
     }
@@ -1393,7 +1251,7 @@ function _bdBindEditor() {
   });
   vp.addEventListener('focusout', function(e) {
     if (e.target.classList && (e.target.classList.contains('bd-text-content') || e.target.classList.contains('bd-caption'))) {
-      if (e.target === _bdEditingEl) _bdHideFormatBar();
+      if (e.target === state._bdEditingEl) _bdHideFormatBar();
       _bdCommitTextEdit(e.target);
     }
   });
@@ -1403,7 +1261,7 @@ function _bdBindEditor() {
   fmtBar.addEventListener('mousedown', function(e) { e.preventDefault(); });
   fmtBar.addEventListener('click', function(e) {
     const btn = e.target.closest('button');
-    if (!btn || !_bdEditingEl) return;
+    if (!btn || !state._bdEditingEl) return;
     if (btn.dataset.fmt === 'bold') document.execCommand('bold');
     else if (btn.dataset.fmt === 'underline') document.execCommand('underline');
     else if (btn.dataset.fmt === 'hilite') {
@@ -1412,13 +1270,13 @@ function _bdBindEditor() {
       document.execCommand('hiliteColor', false, cur === BD_HILITE_RGB ? 'transparent' : BD_HILITE);
       document.execCommand('styleWithCSS', false, false);
     } else if (btn.dataset.size) {
-      const itemEl = _bdEditingEl.closest('.bd-item');
-      const it = itemEl && _bdItems.find(i => i.id === itemEl.dataset.id);
+      const itemEl = state._bdEditingEl.closest('.bd-item');
+      const it = itemEl && state._bdItems.find(i => i.id === itemEl.dataset.id);
       if (!it) return;
       const before = _bdClone(it.content);
       it.content = Object.assign({}, it.content, { size: btn.dataset.size });
-      BD_TEXT_SIZES.forEach(s => _bdEditingEl.classList.remove('bd-ts-' + s));
-      _bdEditingEl.classList.add('bd-ts-' + btn.dataset.size);
+      BD_TEXT_SIZES.forEach(s => state._bdEditingEl.classList.remove('bd-ts-' + s));
+      state._bdEditingEl.classList.add('bd-ts-' + btn.dataset.size);
       fmtBar.querySelectorAll('[data-size]').forEach(b => b.classList.toggle('active', b === btn));
       _bdPushUndo({ type: 'update', id: it.id, before: { content: before }, after: { content: _bdClone(it.content) } });
       _bdQueueItemSave(it.id, { content: it.content });
@@ -1443,7 +1301,7 @@ function _bdBindEditor() {
 
   /* Item action buttons + video play (click, since pointerdown skips them) */
   vp.addEventListener('click', function(e) {
-    if (_bdSuppressClick) { _bdSuppressClick = false; return; }
+    if (state._bdSuppressClick) { state._bdSuppressClick = false; return; }
     const del = e.target.closest('.bd-item-delete');
     if (del) {
       const id = del.closest('.bd-item').dataset.id;
@@ -1453,21 +1311,21 @@ function _bdBindEditor() {
     const openLink = e.target.closest('.bd-open-link');
     if (openLink) {
       const id = openLink.closest('.bd-item').dataset.id;
-      const it = _bdItems.find(i => i.id === id);
+      const it = state._bdItems.find(i => i.id === id);
       if (it && _bdSafeUrl(it.content.url)) window.open(it.content.url, '_blank', 'noopener');
       return;
     }
     const thumb = e.target.closest('.bd-video-thumb');
     if (thumb) {
       const id = thumb.dataset.item;
-      const it = _bdItems.find(i => i.id === id);
+      const it = state._bdItems.find(i => i.id === id);
       if (!it) return;
       const src = _bdEmbedSrc(it.content);
       if (!src) return;
       thumb.outerHTML = '<iframe src="' + _esc(src) + '" frameborder="0" allow="autoplay; fullscreen" allowfullscreen style="width:100%;height:100%;display:block"></iframe>';
     }
     const linkCard = e.target.closest('.bd-link-card');
-    if (linkCard && _bdTool === 'select') {
+    if (linkCard && state._bdTool === 'select') {
       // Single click selects (handled on pointerdown); open via the ↗ button
     }
   });
@@ -1491,15 +1349,15 @@ function _bdBindEditor() {
   });
 
   /* Document-level: keyboard + paste (bound once, guarded by view visibility) */
-  if (!_bdListenersBound) {
-    _bdListenersBound = true;
+  if (!state._bdListenersBound) {
+    state._bdListenersBound = true;
     document.addEventListener('keydown', function(e) {
       if (!_bdEditorActive()) return;
       if (e.target.isContentEditable || /INPUT|TEXTAREA/.test(e.target.tagName)) {
         if (e.key === 'Escape') e.target.blur();
         return; // native text-editing undo applies while typing
       }
-      if (_bdReadOnly) return;
+      if (state._bdReadOnly) return;
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) _bdRedo(); else _bdUndo();
@@ -1510,11 +1368,11 @@ function _bdBindEditor() {
         _bdRedo();
         return;
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && _bdSelectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && state._bdSelectedId) {
         e.preventDefault();
-        _bdDeleteItem(_bdSelectedId);
+        _bdDeleteItem(state._bdSelectedId);
       } else if (e.key === 'Escape') {
-        if (_bdTool !== 'select') _bdSetTool('select');
+        if (state._bdTool !== 'select') _bdSetTool('select');
         else _bdSelect(null);
         const pop = document.getElementById('bdVideoPopover');
         if (pop) pop.style.display = 'none';
@@ -1524,7 +1382,7 @@ function _bdBindEditor() {
     });
     window.addEventListener('beforeunload', function() { _bdFlushPendingSaves(); _bdFlushOrphans(); });
     document.addEventListener('paste', async function(e) {
-      if (!_bdEditorActive() || _bdReadOnly) return;
+      if (!_bdEditorActive() || state._bdReadOnly) return;
       if (e.target.isContentEditable || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
       const vpEl = document.getElementById('bdViewport');
       if (!vpEl) return;
@@ -1546,30 +1404,30 @@ function _bdBindEditor() {
 
 async function renderSharedBoard(token, mode) {
   _bdFlushPendingSaves();
-  const loadToken = ++_bdLoadToken;
+  const loadToken = ++state._bdLoadToken;
   const cleanToken = String(token).split('?')[0].split('&')[0].trim();
-  _bdReadOnly = true;
-  _bdBoard = null;
-  _bdSharedToken = null;
-  _bdSharedOwnerId = null;
-  _bdSelectedId = null;
-  _bdSignedUrls = {};
-  _bdPtr = null;
-  _bdUndoStack = []; _bdRedoStack = [];
-  _bdEditingEl = null;
+  state._bdReadOnly = true;
+  state._bdBoard = null;
+  state._bdSharedToken = null;
+  state._bdSharedOwnerId = null;
+  state._bdSelectedId = null;
+  state._bdSignedUrls = {};
+  state._bdPtr = null;
+  state._bdUndoStack = []; state._bdRedoStack = [];
+  state._bdEditingEl = null;
   const container = document.getElementById('view-board-editor');
   container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:400px;border-radius:12px"></div></div>';
 
   let board = null, items = [];
-  if (_sb) {
-    const bRes = await _sb.rpc('get_shared_board', { p_token: cleanToken });
+  if (state._sb) {
+    const bRes = await state._sb.rpc('get_shared_board', { p_token: cleanToken });
     board = bRes.data && bRes.data[0];
     if (board) {
-      const iRes = await _sb.rpc('get_shared_board_items', { p_token: cleanToken });
+      const iRes = await state._sb.rpc('get_shared_board_items', { p_token: cleanToken });
       items = iRes.data || [];
     }
   }
-  if (loadToken !== _bdLoadToken) return;
+  if (loadToken !== state._bdLoadToken) return;
   if (!board) {
     container.innerHTML =
       '<div style="padding:64px 24px;text-align:center;color:var(--text-secondary)">' +
@@ -1578,23 +1436,23 @@ async function renderSharedBoard(token, mode) {
     return;
   }
 
-  _bdItems = items;
-  _bdView = { x: board.view_x || 0, y: board.view_y || 0, z: board.view_zoom || 1 };
-  _bdMaxZ = _bdItems.reduce((m, it) => Math.max(m, it.z || 1), 1);
+  state._bdItems = items;
+  state._bdView = { x: board.view_x || 0, y: board.view_y || 0, z: board.view_zoom || 1 };
+  state._bdMaxZ = state._bdItems.reduce((m, it) => Math.max(m, it.z || 1), 1);
 
   /* Edit link on an edit-shared board: run the real editor, with every
      write routed through the token-gated RPCs */
   if (mode === 'edit' && board.share_mode === 'edit') {
-    _bdReadOnly = false;
-    _bdSharedToken = cleanToken;
-    _bdSharedOwnerId = board.user_id;
-    _bdTool = 'select';
-    _bdBoard = { id: board.id, title: board.title, share_mode: 'edit', share_token: null,
+    state._bdReadOnly = false;
+    state._bdSharedToken = cleanToken;
+    state._bdSharedOwnerId = board.user_id;
+    state._bdTool = 'select';
+    state._bdBoard = { id: board.id, title: board.title, share_mode: 'edit', share_token: null,
                  view_x: board.view_x, view_y: board.view_y, view_zoom: board.view_zoom };
     container.innerHTML = _bdEditorShellHtml(true);
     _bdApplyView();
     const editPlane = document.getElementById('bdPlane');
-    _bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => editPlane.appendChild(_bdItemEl(it)));
+    state._bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => editPlane.appendChild(_bdItemEl(it)));
     _bdBindEditor();
     _bdResolveSignedUrls();
     _bdLiveJoin(board.id);
@@ -1608,7 +1466,7 @@ async function renderSharedBoard(token, mode) {
         '<span class="bd-shared-tag">Shared board · view only</span>' +
         '<div class="bd-zoom" style="margin-left:auto">' +
           '<button data-action="_bdZoomBtn" data-args="[-1]" title="Zoom out">−</button>' +
-          '<button class="bd-zoom-pct" id="bdZoomPct" data-action="_bdZoomFit" title="Fit to items">' + Math.round(_bdView.z * 100) + '%</button>' +
+          '<button class="bd-zoom-pct" id="bdZoomPct" data-action="_bdZoomFit" title="Fit to items">' + Math.round(state._bdView.z * 100) + '%</button>' +
           '<button data-action="_bdZoomBtn" data-args="[1]" title="Zoom in">+</button>' +
         '</div>' +
       '</div>' +
@@ -1618,11 +1476,11 @@ async function renderSharedBoard(token, mode) {
     '</div>';
 
   // Read-only sessions still hold the board row so live ops can be matched
-  _bdBoard = { id: board.id, title: board.title, share_mode: board.share_mode, share_token: null,
+  state._bdBoard = { id: board.id, title: board.title, share_mode: board.share_mode, share_token: null,
                view_x: board.view_x, view_y: board.view_y, view_zoom: board.view_zoom };
   _bdApplyView();
   const plane = document.getElementById('bdPlane');
-  _bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => plane.appendChild(_bdItemEl(it)));
+  state._bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => plane.appendChild(_bdItemEl(it)));
   _bdBindShared();
   _bdResolveSharedImages(loadToken);
   _bdLiveJoin(board.id);
@@ -1630,43 +1488,43 @@ async function renderSharedBoard(token, mode) {
 
 function _bdBindShared() {
   const vp = document.getElementById('bdViewport');
-  _bdBindPinch(vp, function() { _bdPtr = null; });
+  _bdBindPinch(vp, function() { state._bdPtr = null; });
 
   vp.addEventListener('wheel', function(e) {
     e.preventDefault();
     if (e.ctrlKey || e.metaKey) {
       _bdZoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.01));
     } else {
-      _bdView.x -= e.deltaX;
-      _bdView.y -= e.deltaY;
+      state._bdView.x -= e.deltaX;
+      state._bdView.y -= e.deltaY;
       _bdApplyView();
     }
   }, { passive: false });
 
   vp.addEventListener('pointerdown', function(e) {
-    _bdPtr = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: _bdView.x, vy: _bdView.y, moved: false };
+    state._bdPtr = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: state._bdView.x, vy: state._bdView.y, moved: false };
     _bdCapture(vp, e);
   });
   vp.addEventListener('pointermove', function(e) {
-    if (!_bdPtr || _bdPtr.mode !== 'pan') return;
-    _bdView.x = _bdPtr.vx + (e.clientX - _bdPtr.sx);
-    _bdView.y = _bdPtr.vy + (e.clientY - _bdPtr.sy);
-    if (Math.hypot(e.clientX - _bdPtr.sx, e.clientY - _bdPtr.sy) > 4) _bdPtr.moved = true;
+    if (!state._bdPtr || state._bdPtr.mode !== 'pan') return;
+    state._bdView.x = state._bdPtr.vx + (e.clientX - state._bdPtr.sx);
+    state._bdView.y = state._bdPtr.vy + (e.clientY - state._bdPtr.sy);
+    if (Math.hypot(e.clientX - state._bdPtr.sx, e.clientY - state._bdPtr.sy) > 4) state._bdPtr.moved = true;
     _bdApplyView();
   });
   function endPan() {
-    if (_bdPtr && _bdPtr.moved) _bdSuppressClick = true;
-    _bdPtr = null;
+    if (state._bdPtr && state._bdPtr.moved) state._bdSuppressClick = true;
+    state._bdPtr = null;
   }
   vp.addEventListener('pointerup', endPan);
   vp.addEventListener('pointercancel', endPan);
 
   // Videos stay playable in the shared view
   vp.addEventListener('click', function(e) {
-    if (_bdSuppressClick) { _bdSuppressClick = false; return; }
+    if (state._bdSuppressClick) { state._bdSuppressClick = false; return; }
     const thumb = e.target.closest('.bd-video-thumb');
     if (thumb) {
-      const it = _bdItems.find(i => i.id === thumb.dataset.item);
+      const it = state._bdItems.find(i => i.id === thumb.dataset.item);
       if (!it) return;
       const src = _bdEmbedSrc(it.content);
       if (!src) return;
@@ -1676,7 +1534,7 @@ function _bdBindShared() {
     const linkCard = e.target.closest('.bd-link-card');
     if (linkCard) {
       const itemEl = linkCard.closest('.bd-item');
-      const it = itemEl && _bdItems.find(i => i.id === itemEl.dataset.id);
+      const it = itemEl && state._bdItems.find(i => i.id === itemEl.dataset.id);
       if (it && _bdSafeUrl(it.content.url)) window.open(it.content.url, '_blank', 'noopener');
     }
   });
@@ -1686,18 +1544,24 @@ function _bdBindShared() {
 // the blobs directly (allowed by the shared-board storage policy) and
 // render object URLs.
 async function _bdResolveSharedImages(loadToken) {
-  if (!_sb) return;
-  const imgs = _bdItems.filter(i => i.kind === 'image' && i.content && i.content.path);
+  if (!state._sb) return;
+  const imgs = state._bdItems.filter(i => i.kind === 'image' && i.content && i.content.path);
   await Promise.all(imgs.map(async function(it) {
     try {
-      const res = await _sb.storage.from('board-media').download(it.content.path);
-      if (res.data && loadToken === _bdLoadToken) {
-        _bdSignedUrls[it.content.path] = URL.createObjectURL(res.data);
+      const res = await state._sb.storage.from('board-media').download(it.content.path);
+      if (res.data && loadToken === state._bdLoadToken) {
+        state._bdSignedUrls[it.content.path] = URL.createObjectURL(res.data);
         _bdRefreshItem(it.id);
       }
     } catch (e) { console.warn('Shared image load failed', e); }
   }));
 }
 
-/* ---- ACTION REGISTRY (boards.js) ---- */
-act({ _createNewBoard, _deleteBoard, _bdZoomBtn, _bdZoomFit, _bdAddVideoFromPopover });
+/* ---- SIDE EFFECTS ---- Registered from main.js in a fixed order, not at import time. */
+export function __init() {
+  document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') { _bdCommitActiveText(); _bdFlushPendingSaves(); } });
+}
+
+act({ _bdAddVideoFromPopover, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard });
+
+export { BD_HILITE, BD_HILITE_RGB, BD_MAX_ZOOM, BD_MIN_ZOOM, BD_PEN_COLORS, BD_STICKY_COLORS, BD_TEXT_SIZES, _bdAddImageFiles, _bdAddNoteAt, _bdAddTextAt, _bdAddVideoAt, _bdAddVideoFromPopover, _bdApplyOp, _bdApplyRemoteOp, _bdApplyView, _bdBindEditor, _bdBindPinch, _bdBindShared, _bdCaptionHtml, _bdCapture, _bdClone, _bdCommitActiveText, _bdCommitTextEdit, _bdCreateItem, _bdDeleteItem, _bdEditorActive, _bdEditorShellHtml, _bdEmbedSrc, _bdFlushOrphans, _bdFlushPendingSaves, _bdHandlesHtml, _bdHideFormatBar, _bdItemEl, _bdLiveJoin, _bdLiveLeave, _bdLiveSend, _bdNum, _bdParseVideoUrl, _bdPathD, _bdPositionFormatBar, _bdPrepareImage, _bdPushUndo, _bdQueueItemSave, _bdQueueViewSave, _bdRedo, _bdRefreshItem, _bdRemoveItemLocal, _bdResolveSharedImages, _bdResolveSignedUrls, _bdRestoreItem, _bdRotFor, _bdSafeUrl, _bdSanitizeHtml, _bdScreenToBoard, _bdSelect, _bdSerializeRich, _bdSetBoardShare, _bdSetSaveState, _bdSetTool, _bdShareLink, _bdShowFormatBar, _bdStartTextEdit, _bdSyncSharePopover, _bdSyncUndoButtons, _bdTextHtml, _bdUndo, _bdUrlForPath, _bdValidVid, _bdVideoInnerHtml, _bdZoomAt, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard, renderBoardEditor, renderBoards, renderSharedBoard };

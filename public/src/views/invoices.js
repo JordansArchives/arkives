@@ -1,29 +1,17 @@
-/* ============================================================
-   Arkives — Invoices view
-   List + clients book + two-pane editor (form left, live
-   document preview right). The document is Arkives-branded and
-   exports to PDF through the browser print dialog.
+// Arkives — Invoices: list, editor, clients, payments, PDF and the red template.
+import { state } from '../state.js';
+import { db } from '../lib/sb.js';
+import { _args, act } from '../lib/actions.js';
+import { _esc } from '../lib/esc.js';
+import { _mapInvoiceRow } from '../lib/sb.js';
+import { _showSaveError, _showSaveSuccess } from '../lib/toast.js';
+import { _localISODate } from './tasks.js';
 
-   State (INVOICE_DATA, CLIENTS, CREATOR) and Supabase CRUD live
-   in app.js; this file is view + document logic only. Loaded
-   after app.js in index.html.
-   ============================================================ */
-
-/* ---- VIEW STATE ---- */
-let _invEditorOpen = false;
-let _invEditingId = null;      // _sbId of the invoice being edited; null = new
-let _inv = null;               // working copy while the editor is open
-let _invNewClientOpen = false; // inline new-client form inside the editor
-let _invClientEditingId = null; // clients card: null = closed, '__new' = adding, else _sbId
-let _invFilter = 'all';        // all | draft | sent | overdue | paid
-let _invSearch = '';           // matches invoice number / bill-to
-let _invPayingId = null;       // invoice _sbId with the payment modal open
-let _invRowMenuId = null;      // invoice _sbId with the row-actions sheet open (phone)
 
 function resetInvoiceViewState() {
-  _invEditorOpen = false; _invEditingId = null; _inv = null;
-  _invNewClientOpen = false; _invClientEditingId = null;
-  _invFilter = 'all'; _invSearch = ''; _invPayingId = null; _invRowMenuId = null;
+  state._invEditorOpen = false; state._invEditingId = null; state._inv = null;
+  state._invNewClientOpen = false; state._invClientEditingId = null;
+  state._invFilter = 'all'; state._invSearch = ''; state._invPayingId = null; state._invRowMenuId = null;
   _invSyncPayModal();
   _invSyncRowMenu();
 }
@@ -34,12 +22,12 @@ function resetInvoiceViewState() {
 function _invSyncPayModal() {
   let host = document.getElementById('invModalHost');
   if (!host) {
-    if (!_invPayingId) return;
+    if (!state._invPayingId) return;
     host = document.createElement('div');
     host.id = 'invModalHost';
     document.body.appendChild(host);
   }
-  host.innerHTML = _invPayingId ? renderPayModal() : '';
+  host.innerHTML = state._invPayingId ? renderPayModal() : '';
 }
 
 /* ---- MONEY / DATE / TERMS HELPERS ---- */
@@ -92,7 +80,7 @@ function invTotal(inv) {
 
 // Which document design this account renders (profiles.invoice_template)
 function _invUsesRedDoc() {
-  return (CREATOR.invoiceTemplate || 'classic') === 'red';
+  return (state.CREATOR.invoiceTemplate || 'classic') === 'red';
 }
 
 function invBalance(inv) {
@@ -119,17 +107,17 @@ function invSuggestPrefix(name) {
 }
 
 function nextInvoiceNumber(client) {
-  const mode = CREATOR.invoiceNumbering || 'per_client';
+  const mode = state.CREATOR.invoiceNumbering || 'per_client';
   let prefix;
   if (mode === 'global' || !client) {
-    prefix = (CREATOR.invoicePrefix || 'INV').toUpperCase();
+    prefix = (state.CREATOR.invoicePrefix || 'INV').toUpperCase();
   } else {
     prefix = client.invoicePrefix || invSuggestPrefix(client.company || client.name);
   }
   const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp('^' + escaped + '-(\\d+)$');
   let max = 0;
-  (INVOICE_DATA || []).forEach(inv => {
+  (state.INVOICE_DATA || []).forEach(inv => {
     const m = String(inv.invoiceNumber || '').match(re);
     if (m) max = Math.max(max, parseInt(m[1], 10));
   });
@@ -144,15 +132,15 @@ function nextInvoiceNumber(client) {
 // without one from in-view actions that just want a repaint.
 function renderInvoices(sub) {
   if (typeof sub === 'string') _invApplyRoute(sub);
-  if (_invEditorOpen) { renderInvoiceEditor(); return; }
+  if (state._invEditorOpen) { renderInvoiceEditor(); return; }
   const container = document.getElementById('view-invoices');
 
-  const outstanding = INVOICE_DATA.filter(i => i.status === 'sent').reduce((s, i) => s + invBalance(i), 0);
-  const paidTotal = INVOICE_DATA.filter(i => i.status === 'paid').reduce((s, i) => s + invTotal(i), 0);
-  const overdueCount = INVOICE_DATA.filter(invIsOverdue).length;
-  const draftCount = INVOICE_DATA.filter(i => i.status === 'draft').length;
+  const outstanding = state.INVOICE_DATA.filter(i => i.status === 'sent').reduce((s, i) => s + invBalance(i), 0);
+  const paidTotal = state.INVOICE_DATA.filter(i => i.status === 'paid').reduce((s, i) => s + invTotal(i), 0);
+  const overdueCount = state.INVOICE_DATA.filter(invIsOverdue).length;
+  const draftCount = state.INVOICE_DATA.filter(i => i.status === 'draft').length;
 
-  const setupCard = _invoicingMigrationMissing ? `
+  const setupCard = state._invoicingMigrationMissing ? `
     <div class="tasks-setup-card" style="margin-bottom:20px">
       <h3>One-time setup needed</h3>
       <p>The invoicing upgrade isn't in Supabase yet. Run <code>migrations/011_invoicing.sql</code> in the Supabase SQL editor, then refresh this page. Existing invoices below are read-only until then.</p>
@@ -176,12 +164,12 @@ function renderInvoices(sub) {
       <div class="kpi-card">
         <span class="kpi-label">Outstanding</span>
         <span class="kpi-value">${fmtMoney(outstanding)}</span>
-        ${overdueCount ? `<span class="kpi-delta" style="color:var(--red)">${overdueCount} overdue</span>` : `<span class="kpi-delta">${INVOICE_DATA.filter(i => i.status === 'sent').length} sent</span>`}
+        ${overdueCount ? `<span class="kpi-delta" style="color:var(--red)">${overdueCount} overdue</span>` : `<span class="kpi-delta">${state.INVOICE_DATA.filter(i => i.status === 'sent').length} sent</span>`}
       </div>
       <div class="kpi-card">
         <span class="kpi-label">Collected</span>
         <span class="kpi-value">${fmtMoney(paidTotal)}</span>
-        <span class="kpi-delta up">${INVOICE_DATA.filter(i => i.status === 'paid').length} paid</span>
+        <span class="kpi-delta up">${state.INVOICE_DATA.filter(i => i.status === 'paid').length} paid</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">Drafts</span>
@@ -194,12 +182,12 @@ function renderInvoices(sub) {
       <div class="inv-list-controls">
         <div class="inv-chips">
           ${['all', 'draft', 'sent', 'overdue', 'paid'].map(f => {
-            const count = f === 'all' ? INVOICE_DATA.length : INVOICE_DATA.filter(i => invDisplayStatus(i) === f).length;
+            const count = f === 'all' ? state.INVOICE_DATA.length : state.INVOICE_DATA.filter(i => invDisplayStatus(i) === f).length;
             const label = f.charAt(0).toUpperCase() + f.slice(1);
-            return `<button class="inv-chip ${_invFilter === f ? 'active' : ''}" data-action="invSetFilter" data-args="${_args(f)}">${label} <em>${count}</em></button>`;
+            return `<button class="inv-chip ${state._invFilter === f ? 'active' : ''}" data-action="invSetFilter" data-args="${_args(f)}">${label} <em>${count}</em></button>`;
           }).join('')}
         </div>
-        <input type="search" class="inv-search" id="invSearch" placeholder="Search number or client" value="${_esc(_invSearch)}" data-input="invSearchInput" data-input-args="[&quot;$value&quot;]">
+        <input type="search" class="inv-search" id="invSearch" placeholder="Search number or client" value="${_esc(state._invSearch)}" data-input="invSearchInput" data-input-args="[&quot;$value&quot;]">
       </div>
       <div class="table-wrap">
         <table class="data-table">
@@ -226,19 +214,19 @@ function renderInvoices(sub) {
 }
 
 function _invApplyRoute(sub) {
-  if (!sub) { _invEditorOpen = false; _invEditingId = null; _inv = null; _invNewClientOpen = false; return; }
+  if (!sub) { state._invEditorOpen = false; state._invEditingId = null; state._inv = null; state._invNewClientOpen = false; return; }
   if (sub === 'new') {
     // Duplicate sets up _inv before changing the hash; keep it
-    if (_invEditorOpen && _invEditingId === null && _inv) return;
+    if (state._invEditorOpen && state._invEditingId === null && state._inv) return;
     _invStartNew();
     return;
   }
-  if (_invEditorOpen && _invEditingId === sub && _inv) return;
-  if (!_invStartEdit(sub)) { _invEditorOpen = false; _inv = null; }
+  if (state._invEditorOpen && state._invEditingId === sub && state._inv) return;
+  if (!_invStartEdit(sub)) { state._invEditorOpen = false; state._inv = null; }
 }
 
 function _invStartNew() {
-  _inv = {
+  state._inv = {
     _sbId: null, clientId: null,
     invoiceNumber: nextInvoiceNumber(null),
     billToName: '', billToAddress: '',
@@ -247,36 +235,36 @@ function _invStartNew() {
     tax: 0, amountPaid: 0, notes: '', includePaymentInfo: true,
     status: 'draft'
   };
-  _invEditingId = null; _invEditorOpen = true; _invNewClientOpen = false;
+  state._invEditingId = null; state._invEditorOpen = true; state._invNewClientOpen = false;
 }
 
 function _invStartEdit(sbId) {
-  const src = INVOICE_DATA.find(i => i._sbId === sbId);
+  const src = state.INVOICE_DATA.find(i => i._sbId === sbId);
   if (!src) return false;
-  _inv = JSON.parse(JSON.stringify(src));
+  state._inv = JSON.parse(JSON.stringify(src));
   // Legacy row (pre-builder): surface the stored amount as one flat line
-  if (!_inv.lineItems || !_inv.lineItems.length) {
-    _inv.lineItems = [{ type: 'flat', desc: _inv.description || 'Creator partnership', qty: 1, rate: 0, fee: Number(_inv.amount) || 0 }];
+  if (!state._inv.lineItems || !state._inv.lineItems.length) {
+    state._inv.lineItems = [{ type: 'flat', desc: state._inv.description || 'Creator partnership', qty: 1, rate: 0, fee: Number(state._inv.amount) || 0 }];
   }
-  if (!_inv.billToName) _inv.billToName = _inv.brand || '';
-  _invEditingId = sbId; _invEditorOpen = true; _invNewClientOpen = false;
+  if (!state._inv.billToName) state._inv.billToName = state._inv.brand || '';
+  state._invEditingId = sbId; state._invEditorOpen = true; state._invNewClientOpen = false;
   return true;
 }
 
 /* ---- ROW ACTIONS SHEET (phone) ----
    Under 640px the inline row buttons collapse into one "more" button
    that opens a bottom sheet mounted on <body>. */
-function invOpenRowMenu(sbId) { _invRowMenuId = sbId; _invSyncRowMenu(); }
-function invCloseRowMenu() { _invRowMenuId = null; _invSyncRowMenu(); }
+function invOpenRowMenu(sbId) { state._invRowMenuId = sbId; _invSyncRowMenu(); }
+function invCloseRowMenu() { state._invRowMenuId = null; _invSyncRowMenu(); }
 function _invSyncRowMenu() {
   let host = document.getElementById('invSheetHost');
   if (!host) {
-    if (!_invRowMenuId) return;
+    if (!state._invRowMenuId) return;
     host = document.createElement('div');
     host.id = 'invSheetHost';
     document.body.appendChild(host);
   }
-  const inv = _invRowMenuId && INVOICE_DATA.find(i => i._sbId === _invRowMenuId);
+  const inv = state._invRowMenuId && state.INVOICE_DATA.find(i => i._sbId === state._invRowMenuId);
   if (!inv) { host.innerHTML = ''; return; }
   const id = inv._sbId;
   const statusBtn = inv.status === 'draft'
@@ -301,9 +289,9 @@ function _invSyncRowMenu() {
 }
 
 function _invFilteredRows() {
-  let rows = INVOICE_DATA;
-  if (_invFilter !== 'all') rows = rows.filter(i => invDisplayStatus(i) === _invFilter);
-  const q = _invSearch.trim().toLowerCase();
+  let rows = state.INVOICE_DATA;
+  if (state._invFilter !== 'all') rows = rows.filter(i => invDisplayStatus(i) === state._invFilter);
+  const q = state._invSearch.trim().toLowerCase();
   if (q) rows = rows.filter(i =>
     String(i.invoiceNumber).toLowerCase().includes(q) ||
     String(i.billToName || i.brand).toLowerCase().includes(q));
@@ -313,7 +301,7 @@ function _invFilteredRows() {
 function _renderInvRows() {
   const rows = _invFilteredRows();
   if (!rows.length) {
-    const msg = INVOICE_DATA.length
+    const msg = state.INVOICE_DATA.length
       ? 'No invoices match this filter.'
       : 'No invoices yet. Click "+ New Invoice" to build your first one.';
     return `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:40px">${msg}</td></tr>`;
@@ -345,20 +333,20 @@ function _renderInvRows() {
   }).join('');
 }
 
-function invSetFilter(f) { _invFilter = f; renderInvoices(); }
+function invSetFilter(f) { state._invFilter = f; renderInvoices(); }
 
 // Only the tbody re-renders on search input so the field keeps focus
 function invSearchInput(v) {
-  _invSearch = v;
+  state._invSearch = v;
   const tb = document.getElementById('invTbody');
   if (tb) tb.innerHTML = _renderInvRows();
 }
 
 /* ---- CLIENTS BOOK (card on the list view) ---- */
 function renderClientsCard() {
-  const editing = _invClientEditingId;
+  const editing = state._invClientEditingId;
   const editingClient = editing && editing !== '__new'
-    ? CLIENTS.find(c => c._sbId === editing) : null;
+    ? state.CLIENTS.find(c => c._sbId === editing) : null;
 
   const form = editing ? `
     <div class="inv-client-form" id="invClientForm">
@@ -402,12 +390,12 @@ function renderClientsCard() {
         ${editing ? '' : `<button class="btn btn-sm" data-action="invAddClientFromCard">+ Add Client</button>`}
       </div>
       ${form}
-      ${CLIENTS.length ? `
+      ${state.CLIENTS.length ? `
       <div class="table-wrap">
         <table class="data-table">
           <thead><tr><th>Name</th><th>Company</th><th>Prefix</th><th>Address</th><th></th></tr></thead>
           <tbody>
-            ${CLIENTS.map(c => `
+            ${state.CLIENTS.map(c => `
               <tr>
                 <td style="font-weight:600">${_esc(c.name)}</td>
                 <td>${_esc(c.company || '—')}</td>
@@ -425,11 +413,11 @@ function renderClientsCard() {
 }
 
 function invAddClientFromCard() {
-  if (_invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
-  _invClientEditingId = '__new'; renderInvoices();
+  if (state._invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
+  state._invClientEditingId = '__new'; renderInvoices();
 }
-function invEditClient(id) { _invClientEditingId = id; renderInvoices(); }
-function invCancelClientForm() { _invClientEditingId = null; renderInvoices(); }
+function invEditClient(id) { state._invClientEditingId = id; renderInvoices(); }
+function invCancelClientForm() { state._invClientEditingId = null; renderInvoices(); }
 
 async function invSaveClient() {
   const name = document.getElementById('clName').value.trim();
@@ -441,93 +429,93 @@ async function invSaveClient() {
     invoicePrefix: document.getElementById('clPrefix').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12),
     billingAddress: document.getElementById('clAddress').value.trim()
   };
-  if (_invClientEditingId === '__new') {
-    const row = await sbAddClient(data);
-    if (row) CLIENTS.push({ _sbId: row.id, ...data });
+  if (state._invClientEditingId === '__new') {
+    const row = await db.sbAddClient(data);
+    if (row) state.CLIENTS.push({ _sbId: row.id, ...data });
   } else {
-    const ok = await sbUpdateClient(_invClientEditingId, {
+    const ok = await db.sbUpdateClient(state._invClientEditingId, {
       name: data.name, company: data.company, email: data.email,
       invoice_prefix: data.invoicePrefix, billing_address: data.billingAddress
     });
     if (ok) {
-      const c = CLIENTS.find(x => x._sbId === _invClientEditingId);
+      const c = state.CLIENTS.find(x => x._sbId === state._invClientEditingId);
       if (c) Object.assign(c, data);
     }
   }
-  CLIENTS.sort((a, b) => a.name.localeCompare(b.name));
-  _invClientEditingId = null;
+  state.CLIENTS.sort((a, b) => a.name.localeCompare(b.name));
+  state._invClientEditingId = null;
   renderInvoices();
 }
 
 async function invDeleteClient(id) {
-  const c = CLIENTS.find(x => x._sbId === id);
+  const c = state.CLIENTS.find(x => x._sbId === id);
   if (!c) return;
   if (!confirm('Delete client "' + c.name + '"? Existing invoices keep their billing snapshot.')) return;
-  const ok = await sbDeleteClient(id);
+  const ok = await db.sbDeleteClient(id);
   if (ok) {
-    CLIENTS = CLIENTS.filter(x => x._sbId !== id);
+    state.CLIENTS = state.CLIENTS.filter(x => x._sbId !== id);
     renderInvoices();
   }
 }
 
 /* ---- LIST ACTIONS ---- */
 async function invQuickStatus(sbId, status) {
-  const inv = INVOICE_DATA.find(i => i._sbId === sbId);
+  const inv = state.INVOICE_DATA.find(i => i._sbId === sbId);
   if (!inv) return;
-  const ok = await sbUpdateInvoice(sbId, { status });
+  const ok = await db.sbUpdateInvoice(sbId, { status });
   if (ok) { inv.status = status; renderInvoices(); }
 }
 
 function invRowPDF(sbId) {
-  const inv = INVOICE_DATA.find(i => i._sbId === sbId);
+  const inv = state.INVOICE_DATA.find(i => i._sbId === sbId);
   if (inv) invPrintDoc(inv);
 }
 
 async function invRowDelete(sbId) {
-  const inv = INVOICE_DATA.find(i => i._sbId === sbId);
+  const inv = state.INVOICE_DATA.find(i => i._sbId === sbId);
   if (!inv) return;
   if (!confirm('Delete invoice ' + inv.invoiceNumber + '? This can\'t be undone.')) return;
-  const ok = await sbDeleteInvoice(sbId);
+  const ok = await db.sbDeleteInvoice(sbId);
   if (ok) {
-    INVOICE_DATA = INVOICE_DATA.filter(i => i._sbId !== sbId);
+    state.INVOICE_DATA = state.INVOICE_DATA.filter(i => i._sbId !== sbId);
     renderInvoices();
   }
 }
 
 // Steps status back one: paid → sent, sent → draft
 async function invUndoStatus(sbId) {
-  const inv = INVOICE_DATA.find(i => i._sbId === sbId);
+  const inv = state.INVOICE_DATA.find(i => i._sbId === sbId);
   if (!inv) return;
   const prev = inv.status === 'paid' ? 'sent' : 'draft';
-  const ok = await sbUpdateInvoice(sbId, { status: prev });
+  const ok = await db.sbUpdateInvoice(sbId, { status: prev });
   if (ok) { inv.status = prev; renderInvoices(); }
 }
 
 // Opens the editor as a NEW invoice pre-filled from the source —
 // nothing is written until Save
 function invDuplicate(sbId) {
-  if (_invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
-  const src = INVOICE_DATA.find(i => i._sbId === sbId);
+  if (state._invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
+  const src = state.INVOICE_DATA.find(i => i._sbId === sbId);
   if (!src) return;
-  _inv = JSON.parse(JSON.stringify(src));
-  _inv._sbId = null;
-  const client = CLIENTS.find(c => c._sbId === _inv.clientId) || null;
-  _inv.invoiceNumber = nextInvoiceNumber(client);
-  _inv.date = _localISODate();
-  _inv.dueDate = INV_TERM_DAYS[_inv.paymentTerms] ? invTermDueDate(_inv.date, _inv.paymentTerms) : '';
-  _inv.status = 'draft';
-  _inv.amountPaid = 0;
-  if (!_inv.lineItems || !_inv.lineItems.length) {
-    _inv.lineItems = [{ type: 'flat', desc: _inv.description || '', qty: 1, rate: 0, fee: Number(_inv.amount) || 0 }];
+  state._inv = JSON.parse(JSON.stringify(src));
+  state._inv._sbId = null;
+  const client = state.CLIENTS.find(c => c._sbId === state._inv.clientId) || null;
+  state._inv.invoiceNumber = nextInvoiceNumber(client);
+  state._inv.date = _localISODate();
+  state._inv.dueDate = INV_TERM_DAYS[state._inv.paymentTerms] ? invTermDueDate(state._inv.date, state._inv.paymentTerms) : '';
+  state._inv.status = 'draft';
+  state._inv.amountPaid = 0;
+  if (!state._inv.lineItems || !state._inv.lineItems.length) {
+    state._inv.lineItems = [{ type: 'flat', desc: state._inv.description || '', qty: 1, rate: 0, fee: Number(state._inv.amount) || 0 }];
   }
-  _invEditingId = null; _invEditorOpen = true; _invNewClientOpen = false;
+  state._invEditingId = null; state._invEditorOpen = true; state._invNewClientOpen = false;
   if (location.hash !== '#invoices/new') location.hash = 'invoices/new';
   else renderInvoiceEditor();
 }
 
 /* ---- PAYMENT RECORDING ---- */
 function renderPayModal() {
-  const inv = INVOICE_DATA.find(i => i._sbId === _invPayingId);
+  const inv = state.INVOICE_DATA.find(i => i._sbId === state._invPayingId);
   if (!inv) return '';
   const balance = invBalance(inv);
   return `
@@ -550,16 +538,16 @@ function renderPayModal() {
 }
 
 function invOpenPay(sbId) {
-  _invPayingId = sbId;
+  state._invPayingId = sbId;
   renderInvoices();
   const el = document.getElementById('invPayAmount');
   if (el) { el.focus(); el.select(); }
 }
 
-function invClosePay() { _invPayingId = null; renderInvoices(); }
+function invClosePay() { state._invPayingId = null; renderInvoices(); }
 
 async function invRecordPayment() {
-  const inv = INVOICE_DATA.find(i => i._sbId === _invPayingId);
+  const inv = state.INVOICE_DATA.find(i => i._sbId === state._invPayingId);
   if (!inv) { invClosePay(); return; }
   const amt = parseFloat(document.getElementById('invPayAmount').value) || 0;
   if (amt <= 0) { _showSaveError('Enter an amount above zero'); return; }
@@ -568,7 +556,7 @@ async function invRecordPayment() {
   const settled = newPaid >= invTotal(inv) - 0.005;
   const updates = { amount_paid: newPaid };
   if (settled) updates.status = 'paid';
-  const ok = await sbUpdateInvoice(inv._sbId, updates);
+  const ok = await db.sbUpdateInvoice(inv._sbId, updates);
   if (!ok) return;
   inv.amountPaid = newPaid;
   if (settled) inv.status = 'paid';
@@ -580,7 +568,7 @@ function _invCsvString() {
   const esc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   const header = ['Invoice #', 'Bill To', 'Date', 'Due Date', 'Status', 'Total', 'Amount Paid', 'Balance', 'Terms', 'Notes'];
   const lines = [header.map(esc).join(',')];
-  INVOICE_DATA.forEach(inv => {
+  state.INVOICE_DATA.forEach(inv => {
     const st = invDisplayStatus(inv);
     lines.push([
       inv.invoiceNumber, inv.billToName || inv.brand, inv.date, inv.dueDate || '',
@@ -592,7 +580,7 @@ function _invCsvString() {
 }
 
 function invExportCSV() {
-  if (!INVOICE_DATA.length) { _showSaveError('No invoices to export'); return; }
+  if (!state.INVOICE_DATA.length) { _showSaveError('No invoices to export'); return; }
   const blob = new Blob([_invCsvString()], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -609,7 +597,7 @@ function invExportCSV() {
 // The editor lives at #invoices/new and #invoices/{id} so the browser
 // Back button leaves the editor instead of leaving Invoices.
 function invNew() {
-  if (_invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
+  if (state._invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
   _invStartNew();
   if (location.hash !== '#invoices/new') location.hash = 'invoices/new';
   else renderInvoiceEditor();
@@ -622,24 +610,24 @@ function invOpen(sbId) {
 }
 
 function invBack() {
-  _invEditorOpen = false; _invEditingId = null; _inv = null;
+  state._invEditorOpen = false; state._invEditingId = null; state._inv = null;
   if (location.hash !== '#invoices') location.hash = 'invoices';
   else renderInvoices();
 }
 
 function renderInvoiceEditor() {
   const container = document.getElementById('view-invoices');
-  const inv = _inv;
+  const inv = state._inv;
   const netLocked = !!INV_TERM_DAYS[inv.paymentTerms];
-  const hasBank = !!(CREATOR.bankName || CREATOR.bankAccountNumber);
+  const hasBank = !!(state.CREATOR.bankName || state.CREATOR.bankAccountNumber);
 
   const clientOptions = [
     `<option value="">— Select a client —</option>`,
-    ...CLIENTS.map(c => `<option value="${c._sbId}" ${inv.clientId === c._sbId ? 'selected' : ''}>${_esc(c.name)}${c.company ? ' · ' + _esc(c.company) : ''}</option>`),
+    ...state.CLIENTS.map(c => `<option value="${c._sbId}" ${inv.clientId === c._sbId ? 'selected' : ''}>${_esc(c.name)}${c.company ? ' · ' + _esc(c.company) : ''}</option>`),
     `<option value="__new">+ New client…</option>`
   ].join('');
 
-  const newClientForm = _invNewClientOpen ? `
+  const newClientForm = state._invNewClientOpen ? `
     <div class="inv-client-form">
       <div class="form-group"><label>Client Name</label><input type="text" id="invNcName" placeholder="Jane Smith"></div>
       <div class="form-group"><label>Company</label><input type="text" id="invNcCompany" placeholder="Acme Media LLC"></div>
@@ -654,7 +642,7 @@ function renderInvoiceEditor() {
     <div class="view-header">
       <div>
         <button class="btn btn-sm" data-action="invBack" style="margin-bottom:8px">← Invoices</button>
-        <h1 class="view-title">${_invEditingId ? 'Edit Invoice' : 'New Invoice'}</h1>
+        <h1 class="view-title">${state._invEditingId ? 'Edit Invoice' : 'New Invoice'}</h1>
       </div>
       <div class="gap-row">
         <button class="btn" data-action="invDownloadPDF">Download PDF</button>
@@ -741,7 +729,7 @@ function renderInvoiceEditor() {
           <textarea id="invNotes" rows="3" placeholder="Optional note to the client" data-input="invField" data-input-args="[&quot;notes&quot;,&quot;$value&quot;]">${_esc(inv.notes)}</textarea>
         </div>
 
-        ${_invEditingId ? `<button class="btn inv-delete-btn" data-action="invDelete">Delete Invoice</button>` : ''}
+        ${state._invEditingId ? `<button class="btn inv-delete-btn" data-action="invDelete">Delete Invoice</button>` : ''}
       </div>
 
       <div class="inv-preview-pane">
@@ -753,7 +741,7 @@ function renderInvoiceEditor() {
 }
 
 function _renderInvLineItems() {
-  return _inv.lineItems.map((li, i) => {
+  return state._inv.lineItems.map((li, i) => {
     const type = li.type || 'flat';
     const qtyLabel = type === 'hourly' ? 'Hours' : 'Days';
     const rateLabel = type === 'hourly' ? 'Rate / hr' : 'Rate / day';
@@ -765,7 +753,7 @@ function _renderInvLineItems() {
           <button class="inv-li-type ${type === 'hourly' ? 'active' : ''}" data-action="invLiType" data-args="${_args(i, 'hourly')}">Hourly</button>
           <button class="inv-li-type ${type === 'day' ? 'active' : ''}" data-action="invLiType" data-args="${_args(i, 'day')}">Day</button>
         </div>
-        ${_inv.lineItems.length > 1 ? `<button class="inv-li-remove" data-action="invRemoveLine" data-args="${_args(i)}" title="Remove">×</button>` : ''}
+        ${state._inv.lineItems.length > 1 ? `<button class="inv-li-remove" data-action="invRemoveLine" data-args="${_args(i)}" title="Remove">×</button>` : ''}
       </div>
       <div class="form-group">
         <input type="text" placeholder="Description" value="${_esc(li.desc)}" data-input="invLiField" data-input-args="${_args(i, 'desc', '$value')}">
@@ -793,49 +781,49 @@ function _renderInvLineItems() {
 /* ---- EDITOR FIELD HANDLERS ---- */
 function invField(key, val) {
   if (key === 'amountPaid' || key === 'tax') val = parseFloat(val) || 0;
-  _inv[key] = val;
+  state._inv[key] = val;
   if (key === 'paymentTerms') {
-    _inv.dueDate = INV_TERM_DAYS[val] ? invTermDueDate(_inv.date, val) : _inv.dueDate;
+    state._inv.dueDate = INV_TERM_DAYS[val] ? invTermDueDate(state._inv.date, val) : state._inv.dueDate;
     renderInvoiceEditor();
     return;
   }
-  if (key === 'date' && INV_TERM_DAYS[_inv.paymentTerms]) {
-    _inv.dueDate = invTermDueDate(val, _inv.paymentTerms);
+  if (key === 'date' && INV_TERM_DAYS[state._inv.paymentTerms]) {
+    state._inv.dueDate = invTermDueDate(val, state._inv.paymentTerms);
     const due = document.getElementById('invDue');
-    if (due) due.value = _inv.dueDate;
+    if (due) due.value = state._inv.dueDate;
   }
   _invUpdatePreview();
 }
 
 function invLiField(i, key, val) {
   if (key !== 'desc') val = parseFloat(val) || 0;
-  _inv.lineItems[i][key] = val;
+  state._inv.lineItems[i][key] = val;
   const amtEl = document.getElementById('invLiAmt-' + i);
-  if (amtEl) amtEl.textContent = fmtMoney(invLineAmount(_inv.lineItems[i]));
+  if (amtEl) amtEl.textContent = fmtMoney(invLineAmount(state._inv.lineItems[i]));
   _invUpdatePreview();
 }
 
 function invLiType(i, type) {
-  _inv.lineItems[i].type = type;
+  state._inv.lineItems[i].type = type;
   document.getElementById('invLineItems').innerHTML = _renderInvLineItems();
   _invUpdatePreview();
 }
 
 function invAddLine() {
-  _inv.lineItems.push({ type: 'flat', desc: '', qty: 1, rate: 0, fee: 0 });
+  state._inv.lineItems.push({ type: 'flat', desc: '', qty: 1, rate: 0, fee: 0 });
   document.getElementById('invLineItems').innerHTML = _renderInvLineItems();
   _invUpdatePreview();
 }
 
 function invRemoveLine(i) {
-  _inv.lineItems.splice(i, 1);
+  state._inv.lineItems.splice(i, 1);
   document.getElementById('invLineItems').innerHTML = _renderInvLineItems();
   _invUpdatePreview();
 }
 
 function _invUpdatePreview() {
   const el = document.getElementById('invDocPreview');
-  if (el && _inv) { el.innerHTML = renderInvoiceDoc(_inv); _invFitRedPreview(); }
+  if (el && state._inv) { el.innerHTML = renderInvoiceDoc(state._inv); _invFitRedPreview(); }
 }
 
 // The red doc is a fixed 612pt (816px) page; scale it down to the
@@ -851,16 +839,16 @@ function _invFitRedPreview() {
 
 /* ---- CLIENT PICKING (inside editor) ---- */
 function invPickClient(val) {
-  if (val === '__new') { _invNewClientOpen = true; renderInvoiceEditor(); return; }
-  _invNewClientOpen = false;
-  if (!val) { _inv.clientId = null; renderInvoiceEditor(); return; }
-  const c = CLIENTS.find(x => x._sbId === val);
+  if (val === '__new') { state._invNewClientOpen = true; renderInvoiceEditor(); return; }
+  state._invNewClientOpen = false;
+  if (!val) { state._inv.clientId = null; renderInvoiceEditor(); return; }
+  const c = state.CLIENTS.find(x => x._sbId === val);
   if (!c) return;
-  _inv.clientId = c._sbId;
-  _inv.billToName = c.company || c.name;
-  _inv.billToAddress = c.billingAddress || '';
+  state._inv.clientId = c._sbId;
+  state._inv.billToName = c.company || c.name;
+  state._inv.billToAddress = c.billingAddress || '';
   // Only auto-number unsaved invoices — an issued number never changes
-  if (!_invEditingId) _inv.invoiceNumber = nextInvoiceNumber(c);
+  if (!state._invEditingId) state._inv.invoiceNumber = nextInvoiceNumber(c);
   renderInvoiceEditor();
 }
 
@@ -874,19 +862,19 @@ async function invSaveNewClient() {
     invoicePrefix: '',
     billingAddress: document.getElementById('invNcAddress').value.trim()
   };
-  const row = await sbAddClient(data);
+  const row = await db.sbAddClient(data);
   if (!row) return;
   const client = { _sbId: row.id, ...data };
-  CLIENTS.push(client);
-  CLIENTS.sort((a, b) => a.name.localeCompare(b.name));
-  _invNewClientOpen = false;
+  state.CLIENTS.push(client);
+  state.CLIENTS.sort((a, b) => a.name.localeCompare(b.name));
+  state._invNewClientOpen = false;
   invPickClient(client._sbId);
 }
 
 /* ---- SAVE / DELETE ---- */
 async function invSave() {
-  if (_invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
-  const inv = _inv;
+  if (state._invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
+  const inv = state._inv;
   if (!inv.invoiceNumber.trim()) { _showSaveError('Invoice needs a number'); return; }
   if (!inv.billToName.trim()) { _showSaveError('Invoice needs a Bill To'); return; }
 
@@ -913,25 +901,25 @@ async function invSave() {
     ...(_invUsesRedDoc() ? { tax: Number(inv.tax) || 0 } : {})
   };
 
-  if (_invEditingId) {
-    const ok = await sbUpdateInvoice(_invEditingId, payload);
+  if (state._invEditingId) {
+    const ok = await db.sbUpdateInvoice(state._invEditingId, payload);
     if (!ok) return;
-    const idx = INVOICE_DATA.findIndex(i => i._sbId === _invEditingId);
-    if (idx !== -1) INVOICE_DATA[idx] = { ...INVOICE_DATA[idx], ..._mapInvoiceRow({ id: _invEditingId, ...payload }) };
+    const idx = state.INVOICE_DATA.findIndex(i => i._sbId === state._invEditingId);
+    if (idx !== -1) state.INVOICE_DATA[idx] = { ...state.INVOICE_DATA[idx], ..._mapInvoiceRow({ id: state._invEditingId, ...payload }) };
   } else {
-    const row = await sbAddInvoice(payload);
+    const row = await db.sbAddInvoice(payload);
     if (!row) return;
-    INVOICE_DATA.unshift(_mapInvoiceRow(row));
+    state.INVOICE_DATA.unshift(_mapInvoiceRow(row));
   }
   invBack();
 }
 
 async function invDelete() {
-  if (!_invEditingId) return;
-  if (!confirm('Delete invoice ' + _inv.invoiceNumber + '? This can\'t be undone.')) return;
-  const ok = await sbDeleteInvoice(_invEditingId);
+  if (!state._invEditingId) return;
+  if (!confirm('Delete invoice ' + state._inv.invoiceNumber + '? This can\'t be undone.')) return;
+  const ok = await db.sbDeleteInvoice(state._invEditingId);
   if (ok) {
-    INVOICE_DATA = INVOICE_DATA.filter(i => i._sbId !== _invEditingId);
+    state.INVOICE_DATA = state.INVOICE_DATA.filter(i => i._sbId !== state._invEditingId);
     invBack();
   }
 }
@@ -998,12 +986,12 @@ function fmtDocDateOrdinal(iso) {
 const INVR_ICONS = `<img src="invoice-red-icons.svg" alt="">`;
 
 function renderInvoiceDocRed(inv) {
-  const fromName = CREATOR.entity || CREATOR.brand || CREATOR.name || '';
+  const fromName = state.CREATOR.entity || state.CREATOR.brand || state.CREATOR.name || '';
   const subtotal = invSubtotal(inv);
   const tax = Number(inv.tax) || 0;
   const total = subtotal + tax;
   const paid = Number(inv.amountPaid) || 0;
-  const hasBank = !!(CREATOR.bankName || CREATOR.bankAccountNumber);
+  const hasBank = !!(state.CREATOR.bankName || state.CREATOR.bankAccountNumber);
   const showPay = inv.includePaymentInfo && hasBank;
   const termDays = INV_TERM_DAYS[inv.paymentTerms];
 
@@ -1034,11 +1022,11 @@ function renderInvoiceDocRed(inv) {
     <div class="invr-pay">
       <div class="invr-pay-label">Payment Info:</div>
       <div class="invr-pay-rows">
-        ${payRow('Bank:', CREATOR.bankName)}
-        ${payRow('Acc Name:', CREATOR.bankAccountHolder)}
-        ${payRow('Account #:', CREATOR.bankAccountNumber)}
-        ${payRow('Routing #:', CREATOR.bankRoutingNumber)}
-        ${payRow('Acc Type:', CREATOR.bankAccountType)}
+        ${payRow('Bank:', state.CREATOR.bankName)}
+        ${payRow('Acc Name:', state.CREATOR.bankAccountHolder)}
+        ${payRow('Account #:', state.CREATOR.bankAccountNumber)}
+        ${payRow('Routing #:', state.CREATOR.bankRoutingNumber)}
+        ${payRow('Acc Type:', state.CREATOR.bankAccountType)}
       </div>
     </div>` : '';
 
@@ -1065,7 +1053,7 @@ function renderInvoiceDocRed(inv) {
         <div class="invr-party-label">Payable To:</div>
         <div class="invr-party-body">
           <div>${_esc(fromName)}</div>
-          ${String(CREATOR.businessAddress || '').split('\n').filter(Boolean).map(l => `<div>${_esc(l)}</div>`).join('')}
+          ${String(state.CREATOR.businessAddress || '').split('\n').filter(Boolean).map(l => `<div>${_esc(l)}</div>`).join('')}
         </div>
       </div>
     </div>
@@ -1093,12 +1081,12 @@ function renderInvoiceDocRed(inv) {
 }
 
 function renderInvoiceDocClassic(inv) {
-  const fromName = CREATOR.entity || CREATOR.brand || CREATOR.name || '';
-  const brandMark = CREATOR.brand || fromName || 'Arkives';
+  const fromName = state.CREATOR.entity || state.CREATOR.brand || state.CREATOR.name || '';
+  const brandMark = state.CREATOR.brand || fromName || 'Arkives';
   const total = invTotal(inv);
   const paid = Number(inv.amountPaid) || 0;
   const balance = total - paid;
-  const hasBank = !!(CREATOR.bankName || CREATOR.bankAccountNumber);
+  const hasBank = !!(state.CREATOR.bankName || state.CREATOR.bankAccountNumber);
   const showPay = inv.includePaymentInfo && hasBank;
   const hasTerms = !!INV_TERM_DAYS[inv.paymentTerms];
 
@@ -1121,11 +1109,11 @@ function renderInvoiceDocClassic(inv) {
   const payBlock = showPay ? `
       <div class="inv-doc-pay">
         <div class="inv-doc-label">Payment Information</div>
-        ${CREATOR.bankName ? `<div class="inv-doc-pay-row"><span>Bank name</span><span>${_esc(CREATOR.bankName)}</span></div>` : ''}
-        ${CREATOR.bankAccountHolder ? `<div class="inv-doc-pay-row"><span>Account holder name</span><span>${_esc(CREATOR.bankAccountHolder)}</span></div>` : ''}
-        ${CREATOR.bankAccountNumber ? `<div class="inv-doc-pay-row"><span>Account number</span><span>${_esc(CREATOR.bankAccountNumber)}</span></div>` : ''}
-        ${CREATOR.bankRoutingNumber ? `<div class="inv-doc-pay-row"><span>Routing number</span><span>${_esc(CREATOR.bankRoutingNumber)}</span></div>` : ''}
-        ${CREATOR.bankAccountType ? `<div class="inv-doc-pay-row"><span>Account type</span><span>${_esc(CREATOR.bankAccountType)}</span></div>` : ''}
+        ${state.CREATOR.bankName ? `<div class="inv-doc-pay-row"><span>Bank name</span><span>${_esc(state.CREATOR.bankName)}</span></div>` : ''}
+        ${state.CREATOR.bankAccountHolder ? `<div class="inv-doc-pay-row"><span>Account holder name</span><span>${_esc(state.CREATOR.bankAccountHolder)}</span></div>` : ''}
+        ${state.CREATOR.bankAccountNumber ? `<div class="inv-doc-pay-row"><span>Account number</span><span>${_esc(state.CREATOR.bankAccountNumber)}</span></div>` : ''}
+        ${state.CREATOR.bankRoutingNumber ? `<div class="inv-doc-pay-row"><span>Routing number</span><span>${_esc(state.CREATOR.bankRoutingNumber)}</span></div>` : ''}
+        ${state.CREATOR.bankAccountType ? `<div class="inv-doc-pay-row"><span>Account type</span><span>${_esc(state.CREATOR.bankAccountType)}</span></div>` : ''}
       </div>` : '<div></div>';
 
   return `
@@ -1144,7 +1132,7 @@ function renderInvoiceDocClassic(inv) {
         <div class="inv-doc-label">From</div>
         <div class="inv-doc-party">
           <strong>${_esc(fromName)}</strong>
-          ${_invAddrLines(CREATOR.businessAddress)}
+          ${_invAddrLines(state.CREATOR.businessAddress)}
         </div>
         <div class="inv-doc-label" style="margin-top:22px">Bill To</div>
         <div class="inv-doc-party">
@@ -1231,7 +1219,7 @@ function invPrintDoc(inv) {
 }
 
 function invDownloadPDF() {
-  if (_inv) invPrintDoc(_inv);
+  if (state._inv) invPrintDoc(state._inv);
 }
 
 /* ============================================================
@@ -1239,7 +1227,7 @@ function invDownloadPDF() {
    Rendered inside renderSettings() (app.js).
    ============================================================ */
 function renderInvoicingSettings() {
-  const c = CREATOR || {};
+  const c = state.CREATOR || {};
   return `
     <div class="settings-card">
       <h3>Invoice Numbering</h3>
@@ -1303,7 +1291,7 @@ function renderInvoicingSettings() {
 }
 
 async function saveInvoicingSettings() {
-  if (_invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
+  if (state._invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
   const updates = {
     invoice_numbering: document.getElementById('setInvNumbering').value,
     invoice_prefix: (document.getElementById('setInvPrefix').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12)) || 'INV',
@@ -1314,16 +1302,16 @@ async function saveInvoicingSettings() {
     bank_routing_number: document.getElementById('setInvBankRouting').value.trim(),
     bank_account_type: document.getElementById('setInvBankType').value.trim()
   };
-  const ok = await sbUpdateProfile(updates);
+  const ok = await db.sbUpdateProfile(updates);
   if (!ok) return;
-  CREATOR.invoiceNumbering = updates.invoice_numbering;
-  CREATOR.invoicePrefix = updates.invoice_prefix;
-  CREATOR.businessAddress = updates.business_address;
-  CREATOR.bankName = updates.bank_name;
-  CREATOR.bankAccountHolder = updates.bank_account_holder;
-  CREATOR.bankAccountNumber = updates.bank_account_number;
-  CREATOR.bankRoutingNumber = updates.bank_routing_number;
-  CREATOR.bankAccountType = updates.bank_account_type;
+  state.CREATOR.invoiceNumbering = updates.invoice_numbering;
+  state.CREATOR.invoicePrefix = updates.invoice_prefix;
+  state.CREATOR.businessAddress = updates.business_address;
+  state.CREATOR.bankName = updates.bank_name;
+  state.CREATOR.bankAccountHolder = updates.bank_account_holder;
+  state.CREATOR.bankAccountNumber = updates.bank_account_number;
+  state.CREATOR.bankRoutingNumber = updates.bank_routing_number;
+  state.CREATOR.bankAccountType = updates.bank_account_type;
 }
 
 /* ---- DELEGATION HELPERS ---- */
@@ -1339,13 +1327,8 @@ function invRowMenuPick(kind, id) {
 }
 function invCloseRowMenuBackdrop(ev, el) { if (ev.target === el) invCloseRowMenu(); }
 function invClosePayBackdrop(ev, el) { if (ev.target === el) invClosePay(); }
-function invCancelNewClient() { _invNewClientOpen = false; renderInvoiceEditor(); }
+function invCancelNewClient() { state._invNewClientOpen = false; renderInvoiceEditor(); }
 
-/* ---- ACTION REGISTRY (invoices.js) ---- */
-act({
-  invExportCSV, invNew, invSetFilter, invSearchInput, invOpen, invOpenRowMenu, invCloseRowMenu, invRowMenuPick, invCloseRowMenuBackdrop,
-  invQuickStatus, invOpenPay, invUndoStatus, invDuplicate, invRowPDF, invRowDelete,
-  invSaveClient, invCancelClientForm, invAddClientFromCard, invEditClient, invDeleteClient, invSaveNewClient, invCancelNewClient,
-  invRecordPayment, invClosePay, invClosePayBackdrop, invBack, invDownloadPDF, invSave, invDelete,
-  invPickClient, invField, invAddLine, invLiType, invRemoveLine, invLiField, saveInvoicingSettings,
-});
+act({ invAddClientFromCard, invAddLine, invBack, invCancelClientForm, invCancelNewClient, invClosePay, invClosePayBackdrop, invCloseRowMenu, invCloseRowMenuBackdrop, invDelete, invDeleteClient, invDownloadPDF, invDuplicate, invEditClient, invExportCSV, invField, invLiField, invLiType, invNew, invOpen, invOpenPay, invOpenRowMenu, invPickClient, invQuickStatus, invRecordPayment, invRemoveLine, invRowDelete, invRowMenuPick, invRowPDF, invSave, invSaveClient, invSaveNewClient, invSearchInput, invSetFilter, invUndoStatus, saveInvoicingSettings });
+
+export { INVR_ICONS, INV_ORNAMENT_SVG, INV_TERM_DAYS, _invAddrLines, _invApplyRoute, _invCsvString, _invFilteredRows, _invFitRedPreview, _invLineSub, _invStartEdit, _invStartNew, _invSyncPayModal, _invSyncRowMenu, _invUpdatePreview, _invUsesRedDoc, _renderInvLineItems, _renderInvRows, fmtDocDate, fmtDocDateOrdinal, fmtMoney, fmtMoneyRed, invAddClientFromCard, invAddLine, invBack, invBalance, invCancelClientForm, invCancelNewClient, invClosePay, invClosePayBackdrop, invCloseRowMenu, invCloseRowMenuBackdrop, invDelete, invDeleteClient, invDisplayStatus, invDownloadPDF, invDuplicate, invEditClient, invExportCSV, invField, invIsOverdue, invLiField, invLiType, invLineAmount, invNew, invOpen, invOpenPay, invOpenRowMenu, invPickClient, invPrintDoc, invQuickStatus, invRecordPayment, invRemoveLine, invRowDelete, invRowMenuPick, invRowPDF, invSave, invSaveClient, invSaveNewClient, invSearchInput, invSetFilter, invSubtotal, invSuggestPrefix, invTermDueDate, invTermLabel, invTotal, invUndoStatus, nextInvoiceNumber, renderClientsCard, renderInvoiceDoc, renderInvoiceDocClassic, renderInvoiceDocRed, renderInvoiceEditor, renderInvoices, renderInvoicingSettings, renderPayModal, resetInvoiceViewState, saveInvoicingSettings };

@@ -44,16 +44,20 @@ Jordan wants maximum portability and zero build overhead. The app is a single-pa
 ```
 arkives/
 ├── public/                 # DEPLOYED SURFACE — the only folder that ships to arkives.xyz
-│   ├── index.html          # SPA shell — auth screen, sidebar, view containers
-│   ├── app.js              # data layer, auth, CRUD, all view renderers
+│   ├── index.html          # SPA shell — auth screen, sidebar, view containers, module preloads
+│   ├── theme.js            # the one classic script: applies the saved theme before first paint
+│   ├── src/                # the app, as native ES modules (no bundler; the browser resolves imports)
+│   │   ├── main.js         # entry: imports every module, runs the __init() hooks in order, exposes window.__arkives, boots
+│   │   ├── state.js        # every piece of shared mutable state, as properties of one `state` object
+│   │   ├── router.js       # hash routing, view switching, theme toggle, mobile nav
+│   │   ├── lib/            # actions (event delegation), sb (Supabase client + `db`), toast, esc, format, icons, storage, share
+│   │   └── views/          # one module per view: auth, dashboard, revenue, mediakit, analytics, inbox, calendar, tasks, settings, scripts, invoices, outreach, boards, contracts
 │   ├── style.css           # full design system, all component styles
-│   ├── toolkit-views.js    # Contracts view (Content Studio/Brand Voice cut July 2026)
-│   ├── boards.js           # Boards: Milanote-style storyboard canvas (state + CRUD + view)
-│   ├── analytics_cache.json # platform analytics snapshots (read by charts; P3.2 moves to Supabase)
-│   ├── paper-bg.png        # Light theme background texture
-│   └── paper-bg-dark.png   # Dark theme background texture
+│   ├── _headers            # Cloudflare response headers: enforced CSP (no inline scripts), frame and referrer policies
+│   └── (assets)            # manifest.webmanifest, favicon.svg, logo-*.svg/png, paper-tile*.webp, trip-sans-*.woff2, invoice-red-*
+├── tests/                  # checks.mjs (logic + static guards), smoke.mjs (13 views x 2 states x 2 widths), live.mjs (Realtime), _server.mjs
 ├── wrangler.jsonc          # Cloudflare Workers deploy config (assets = ./public)
-├── V1-AUDIT.md             # Productization punch list (P0-P4)
+├── ARCHITECTURE-AUDIT.md   # The audit and its roadmap, with a progress log (V1-AUDIT.md is superseded)
 ├── migrations/             # Supabase SQL migrations — NEVER deployed (private data in seeds)
 │   ├── 001_full_schema.sql     # Original tables
 │   ├── 002_anon_access_policies.sql  # DEPRECATED — superseded by 008
@@ -249,13 +253,16 @@ Add `https://arkives.xyz` to the allowed redirect URLs in:
 
 ### Quick Start
 1. Read this README first
-2. Read `app.js` lines 1-300 for data structures and Supabase config
-3. The `sbFetchAllData()` function (~line 575) is the master data loader
-4. All render functions follow the pattern: `renderXxx()` reads from global arrays → builds HTML → injects into `#view-xxx`
-5. CRUD functions are prefixed with `sb` (e.g., `sbAddDeal`, `sbUpdateDeal`)
+2. `public/src/state.js` lists every piece of shared state; `public/src/lib/sb.js` is the Supabase layer (`db.sbFetchAllData()` is the master loader)
+3. Views live in `public/src/views/*.js`; each `renderXxx()` reads `state.*` → builds HTML → injects into `#view-xxx`
+4. Reads and writes are `db.sbXxx(...)` (e.g. `db.sbAddTask`, `db.sbUpdateInvoice`); views never touch the Supabase client directly
+5. `window.__arkives` (state, db, every export of every module) is how the tests and the browser console reach the app
 
 ### Code Conventions
 - Pure vanilla JS — no React, no Vue, no framework
+- Native ES modules under `public/src/`, no bundler. Import what you use; `npm run lint` fails on anything undefined or unused
+- Shared mutable state lives on the `state` object (`import { state } from '../state.js'`), never as a module-level `let` another module needs. Module-private constants are `const`, exported
+- No side effects at import time. A module that needs listeners exports `__init()`, which `main.js` calls in a fixed order (dispatcher, Supabase client, auth listener, router, then the rest)
 - Template literals for HTML rendering
 - `var` in auth functions (broader compat), `const`/`let` elsewhere
 - Async/await for all Supabase operations
@@ -264,7 +271,7 @@ Add `https://arkives.xyz` to the allowed redirect URLs in:
 
 ### What NOT to do
 - Don't write `onclick="..."` or an inline `<script>`: the Content-Security-Policy forbids inline scripts, so it silently does nothing in production, and `npm test` fails on it
-- Don't introduce a build step for `public/` today (npm is dev tooling only; nothing in `node_modules` ships). The module conversion is a planned decision, see `ARCHITECTURE-AUDIT.md` Phase 2
+- Don't add a bundler or build step. The app ships as native ES modules straight from `public/src/` (decided 2026-09-04); npm is dev tooling only and nothing in `node_modules` ships
 - Don't add framework dependencies
 - Don't use `localStorage` directly — use `safeGet()`/`safeSet()`
 - Don't hardcode data — everything comes from Supabase
@@ -304,7 +311,7 @@ npm run serve        # serves public/ on :8741 with the production headers from 
 
 CI (`.github/workflows/ci.yml`) runs lint + test on every push and PR. Screenshots from the smoke run are uploaded as an artifact.
 
-**Adding a top-level function or variable in `public/*.js`?** Run `npm run globals` (or just `npm run lint`, which does it) so `no-undef` knows about it. The five files share one global scope at runtime; the generated list is how the linter sees that.
+**Modules.** The app is native ES modules with no bundler: `index.html` loads `src/main.js` as a module and preloads every other module so the browser fetches the whole graph at once. Shared mutable state is the `state` object in `src/state.js`; all Supabase I/O is the `db` object in `src/lib/sb.js`; side effects run from `__init()` hooks that `main.js` calls in order. `main.js` also publishes `window.__arkives` (state, db, every export), which is the seam the tests use: `__arkives.state.TASKS = [...]`, `__arkives.db.sbUpdateTask = async () => true`, `__arkives.navigate('tasks')`. Adding a module? Put it under `src/lib/` or `src/views/`, import it from `main.js` so it lands in `__arkives`, and add a `<link rel="modulepreload">` for it in `index.html` (`tests/checks.mjs` fails if a module is missing from the preload list).
 
 **Security headers.** `public/_headers` ships an enforced Content-Security-Policy with no `'unsafe-inline'` for scripts (switched from report-only on 2026-09-04 once the last inline handler was gone). The test server sends the same headers, so the smoke run exercises the app under the real policy, and `tests/checks.mjs` fails on any `on*=` attribute or inline `<script>` in `public/`, on any `data-action` name that has no registered handler, and on any constant `data-args` that is not a JSON array.
 

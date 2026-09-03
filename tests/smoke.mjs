@@ -21,27 +21,27 @@ const NOISE = /supabase|Failed to fetch|net::ERR|fetch|NetworkError|Load failed|
 
 // Stubs run in the page as functions (never eval: the page CSP forbids it).
 const POPULATED = () => {
-  CREATOR.name = 'Test Creator'; CREATOR.brand = 'Test Brand'; CREATOR.entity = 'Test LLC'; CREATOR.email = 't@example.com'; CREATOR._sbId = '00000000-0000-0000-0000-000000000001';
-  CREATOR.businessAddress = '1 Main St\nDenver, CO'; CREATOR.bankName = 'Bank'; CREATOR.bankAccountNumber = '123'; CREATOR.invoiceNumbering = 'per_client'; CREATOR.invoicePrefix = 'INV'; CREATOR.invoiceTemplate = 'classic';
-  CREATOR.platforms.instagram.handle = '@test'; CREATOR.platforms.instagram.followers = '270K'; CREATOR.platforms.instagram.followersNum = 270000; CREATOR.platforms.instagram._sbId = 'p1';
-  RATE_CARD.organic = [{ id: 'r1', name: 'Reel', rate: 15000, _sbId: 'rc1' }]; RATE_CARD.minimumRate = 15000;
-  DEALS = [{ _sbId: 'd1', brand: 'Acme "Quotes" & <Co>', status: 'Active', value: 12000, contact: 'Jane', email: 'j@acme.com', paid: 6000, invoiced: 12000, outstanding: 6000, lastContact: '2026-08-01', negotiationHistory: [] },
+  __arkives.state.CREATOR.name = 'Test Creator'; __arkives.state.CREATOR.brand = 'Test Brand'; __arkives.state.CREATOR.entity = 'Test LLC'; __arkives.state.CREATOR.email = 't@example.com'; __arkives.state.CREATOR._sbId = '00000000-0000-0000-0000-000000000001';
+  __arkives.state.CREATOR.businessAddress = '1 Main St\nDenver, CO'; __arkives.state.CREATOR.bankName = 'Bank'; __arkives.state.CREATOR.bankAccountNumber = '123'; __arkives.state.CREATOR.invoiceNumbering = 'per_client'; __arkives.state.CREATOR.invoicePrefix = 'INV'; __arkives.state.CREATOR.invoiceTemplate = 'classic';
+  __arkives.state.CREATOR.platforms.instagram.handle = '@test'; __arkives.state.CREATOR.platforms.instagram.followers = '270K'; __arkives.state.CREATOR.platforms.instagram.followersNum = 270000; __arkives.state.CREATOR.platforms.instagram._sbId = 'p1';
+  __arkives.state.RATE_CARD.organic = [{ id: 'r1', name: 'Reel', rate: 15000, _sbId: 'rc1' }]; __arkives.state.RATE_CARD.minimumRate = 15000;
+  __arkives.state.DEALS = [{ _sbId: 'd1', brand: 'Acme "Quotes" & <Co>', status: 'Active', value: 12000, contact: 'Jane', email: 'j@acme.com', paid: 6000, invoiced: 12000, outstanding: 6000, lastContact: '2026-08-01', negotiationHistory: [] },
            { _sbId: 'd2', brand: 'Beta', status: 'Lead', value: 0, contact: '', email: '', paid: 0, invoiced: 0, outstanding: 0, lastContact: '2026-08-20', negotiationHistory: [] }];
-  TASKS = [{ _sbId: 't1', title: 'Send <b>deck</b>', details: 'x', dueDate: '2026-09-04', starred: true, completed: false, completedAt: '', createdAt: '2026-09-01T00:00:00Z' },
+  __arkives.state.TASKS = [{ _sbId: 't1', title: 'Send <b>deck</b>', details: 'x', dueDate: '2026-09-04', starred: true, completed: false, completedAt: '', createdAt: '2026-09-01T00:00:00Z' },
            { _sbId: 't2', title: 'Done thing', details: '', dueDate: '', starred: false, completed: true, completedAt: '2026-09-02T00:00:00Z', createdAt: '2026-09-01T00:00:00Z' }];
-  INVOICE_DATA = [{ _sbId: 'i1', invoiceNumber: 'ACME-0001', brand: 'Acme', billToName: 'Acme Media', billToAddress: '2 St', date: '2026-08-01', dueDate: '2026-08-31', status: 'sent', lineItems: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 12000 }], amount: 12000, amountPaid: 0, tax: 0, notes: '', includePaymentInfo: true, paymentTerms: 'net30', clientId: 'c1', description: 'Reel' },
+  __arkives.state.INVOICE_DATA = [{ _sbId: 'i1', invoiceNumber: 'ACME-0001', brand: 'Acme', billToName: 'Acme Media', billToAddress: '2 St', date: '2026-08-01', dueDate: '2026-08-31', status: 'sent', lineItems: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 12000 }], amount: 12000, amountPaid: 0, tax: 0, notes: '', includePaymentInfo: true, paymentTerms: 'net30', clientId: 'c1', description: 'Reel' },
                   { _sbId: 'i2', invoiceNumber: 'ACME-0002', brand: 'Acme', billToName: 'Acme Media', billToAddress: '', date: '2026-09-01', dueDate: '', status: 'draft', lineItems: [{ type: 'hourly', desc: 'Edit', qty: 3, rate: 100, fee: 0 }], amount: 300, amountPaid: 0, tax: 0, notes: 'n', includePaymentInfo: false, paymentTerms: 'none', clientId: null, description: 'Edit' }];
-  CLIENTS = [{ _sbId: 'c1', name: 'Jane', company: 'Acme Media', email: 'j@acme.com', billingAddress: '2 St', invoicePrefix: 'ACME' }];
-  CALENDAR_EVENTS = [{ _sbId: 'e1', date: new Date().toISOString().slice(0,10), brand: 'Acme', type: 'Post', platform: 'instagram', status: 'scheduled' }];
-  INBOX_ITEMS = [{ _sbId: 'm1', id: 1, brand: '<img src=x onerror="window.__xss=1">', contact: 'Eve', email: 'e@x.com', subject: '<b>Hi</b>', time: 'today', snippet: 's', status: 'needs_reply', priority: 'medium', suggestedAction: 'reply', context: 'body' }];
-  MONTHLY_REVENUE = [{ _sbId: 'm', month: 'Aug 2026', earned: 5000 }];
-  CAMPAIGN_RESULTS = [{ _sbId: 'cr', brand: '<i>Acme</i>', views: 100000, ctr: 1.2, conversion: null, revenue: 12000 }];
-  OUTREACH_TARGETS = []; OUTREACH_LISTS = [];
+  __arkives.state.CLIENTS = [{ _sbId: 'c1', name: 'Jane', company: 'Acme Media', email: 'j@acme.com', billingAddress: '2 St', invoicePrefix: 'ACME' }];
+  __arkives.state.CALENDAR_EVENTS = [{ _sbId: 'e1', date: new Date().toISOString().slice(0,10), brand: 'Acme', type: 'Post', platform: 'instagram', status: 'scheduled' }];
+  __arkives.state.INBOX_ITEMS = [{ _sbId: 'm1', id: 1, brand: '<img src=x onerror="window.__xss=1">', contact: 'Eve', email: 'e@x.com', subject: '<b>Hi</b>', time: 'today', snippet: 's', status: 'needs_reply', priority: 'medium', suggestedAction: 'reply', context: 'body' }];
+  __arkives.state.MONTHLY_REVENUE = [{ _sbId: 'm', month: 'Aug 2026', earned: 5000 }];
+  __arkives.state.CAMPAIGN_RESULTS = [{ _sbId: 'cr', brand: '<i>Acme</i>', views: 100000, ctr: 1.2, conversion: null, revenue: 12000 }];
+  __arkives.state.OUTREACH_TARGETS = []; __arkives.state.OUTREACH_LISTS = [];
 };
 const EMPTY = () => {
-  CREATOR._sbId = '00000000-0000-0000-0000-000000000001';
-  DEALS = []; TASKS = []; INVOICE_DATA = []; CLIENTS = []; CALENDAR_EVENTS = []; INBOX_ITEMS = []; MONTHLY_REVENUE = []; CAMPAIGN_RESULTS = [];
-  OUTREACH_TARGETS = []; OUTREACH_LISTS = [];
+  __arkives.state.CREATOR._sbId = '00000000-0000-0000-0000-000000000001';
+  __arkives.state.DEALS = []; __arkives.state.TASKS = []; __arkives.state.INVOICE_DATA = []; __arkives.state.CLIENTS = []; __arkives.state.CALENDAR_EVENTS = []; __arkives.state.INBOX_ITEMS = []; __arkives.state.MONTHLY_REVENUE = []; __arkives.state.CAMPAIGN_RESULTS = [];
+  __arkives.state.OUTREACH_TARGETS = []; __arkives.state.OUTREACH_LISTS = [];
 };
 
 
@@ -70,7 +70,7 @@ for (const state of ['populated', 'empty']) {
     const flagged = [];
     for (const v of VIEWS) {
       currentView = v;
-      await page.evaluate((v) => { location.hash = v; navigate(v); }, v);
+      await page.evaluate((v) => { location.hash = v; __arkives.navigate(v); }, v);
       await page.waitForTimeout(v === 'boards' || v === 'scripts' ? 1200 : 300);
       const m = await page.evaluate(() => {
         const hdr = document.querySelector('.mobile-header');
@@ -108,11 +108,11 @@ for (const state of ['populated', 'empty']) {
         const c = document.getElementById('view-script-editor');
         document.querySelectorAll('.view').forEach(v => { v.style.display = 'none'; });
         c.style.display = 'block';
-        _currentScriptId = 'S1'; _sharedScriptToken = null;
-        _currentScriptRow = { id: 'S1', title: 'Phone script', share_mode: 'none', share_token: 't' };
-        _currentScenes = [{ id: 'a', script_text: 'Open on the journal', scene_description: 'Overhead, warm key light', thumbnail_data: '' },
+        __arkives.state._currentScriptId = 'S1'; __arkives.state._sharedScriptToken = null;
+        __arkives.state._currentScriptRow = { id: 'S1', title: 'Phone script', share_mode: 'none', share_token: 't' };
+        __arkives.state._currentScenes = [{ id: 'a', script_text: 'Open on the journal', scene_description: 'Overhead, warm key light', thumbnail_data: '' },
                           { id: 'b', script_text: 'Match cut to iPad', scene_description: 'Medium shot', thumbnail_data: '' }];
-        _renderEditorUI(c, _currentScriptRow, _currentScenes, false);
+        __arkives._renderEditorUI(c, __arkives.state._currentScriptRow, __arkives.state._currentScenes, false);
         const row = c.querySelector('.script-scene-row');
         const cols = getComputedStyle(row).gridTemplateColumns.split(' ').length;
         const hdr = getComputedStyle(c.querySelector('.script-scene-header')).display;
@@ -127,12 +127,12 @@ for (const state of ['populated', 'empty']) {
     if (state === 'populated' && vp.name === 'desktop') {
       currentView = 'modals';
       const hit = await page.evaluate(() => {
-        location.hash = 'tasks'; navigate('tasks'); openEditTaskModal('t1');
+        location.hash = 'tasks'; __arkives.navigate('tasks'); __arkives.openEditTaskModal('t1');
         const a = document.elementFromPoint(60, 300)?.className || '';
-        closeEditTaskModal();
-        location.hash = 'calendar'; navigate('calendar'); openAddEventModal();
+        __arkives.closeEditTaskModal();
+        location.hash = 'calendar'; __arkives.navigate('calendar'); __arkives.openAddEventModal();
         const b = document.elementFromPoint(60, 300)?.className || '';
-        closeAddEventModal();
+        __arkives.closeAddEventModal();
         return { a, b };
       });
       if (!/modal/.test(hit.a)) flagged.push(`task modal does not cover sidebar (hit: ${hit.a})`);

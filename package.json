@@ -2,11 +2,10 @@
   "name": "arkives",
   "version": "0.1.0",
   "private": true,
-  "description": "Arkives — creator partnership CRM (vanilla JS + Supabase, served from public/ on Cloudflare Workers)",
+  "description": "Arkives — creator partnership CRM (vanilla JS as native ES modules + Supabase, served from public/ on Cloudflare Workers, no bundler)",
   "type": "module",
   "scripts": {
-    "globals": "node tools/app-globals.mjs",
-    "lint": "npm run globals && eslint .",
+    "lint": "eslint .",
     "test": "npm run test:checks && npm run test:smoke",
     "test:checks": "node tests/checks.mjs",
     "test:smoke": "node tests/smoke.mjs",

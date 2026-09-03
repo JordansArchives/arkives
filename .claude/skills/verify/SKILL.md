@@ -28,11 +28,11 @@ cd <scratchpad> && npm install playwright
 document.getElementById('loaderOverlay')?.remove();
 document.getElementById('authScreen').style.display = 'none';
 document.getElementById('appShell').style.display = '';
-// stub globals: CREATOR (+ fields), CLIENTS, INVOICE_DATA, DEALS, TASKS...
+// stub state (assign on window.__arkives.state): CREATOR (+ fields), CLIENTS, INVOICE_DATA, DEALS, TASKS...
 location.hash = '#invoices'; navigate('invoices');
 ```
 
-All views render from globals in app.js: `navigate('<view>')` after stubbing state exercises the real render path. Settings tabs: `switchSettingsTab('<tab>')`.
+All views render from `__arkives.state` (the app is native ES modules; nothing is a bare global anymore): `__arkives.navigate('<view>')` after stubbing state exercises the real render path. Settings tabs: `__arkives.switchSettingsTab('<tab>')`. Override I/O with `__arkives.db.sbXxx = async () => ...`.
 
 ## Gotchas
 

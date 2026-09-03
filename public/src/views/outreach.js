@@ -1,32 +1,18 @@
-/* ============================================================
-   Arkives — Outreach view (Analytics → Outreach tab)
-   Prospecting book: brands / companies / platforms /
-   opportunities the user wants to work with. Custom lists rail +
-   filterable table + right-side detail drawer with a projects
-   (past work) editor.
+// Arkives — Outreach: prospecting targets and lists.
+import { state } from '../state.js';
+import { db } from '../lib/sb.js';
+import { _args, act } from '../lib/actions.js';
+import { _esc } from '../lib/esc.js';
+import { SKETCHY_ICONS } from '../lib/icons.js';
+import { _mapOutreachRow } from '../lib/sb.js';
+import { _showSaveError } from '../lib/toast.js';
 
-   State (OUTREACH_TARGETS, OUTREACH_LISTS) and Supabase CRUD
-   live in app.js; this file is view logic only. Loaded after
-   app.js in index.html.
-   ============================================================ */
-
-/* ---- VIEW STATE ---- */
-let _outSelectedList = 'all';   // 'all' | list _sbId
-let _outTypeFilter = 'all';     // all | brand | company | platform | opportunity
-let _outStatusFilter = 'all';   // all | not_contacted | contacted | in_talks | worked_together | passed
-let _outSearch = '';            // matches name / website / pitch / notes
-let _outSort = { key: 'name', dir: 1 };
-let _outDrawerId = null;        // null = closed, '__new' = adding, else target _sbId
-let _outDraft = null;           // working copy while the drawer is open
-let _outDirty = false;          // unsaved edits in the drawer
-let _outAddingList = false;     // inline new-list input open in the rail
-let _outListEditingId = null;   // list _sbId being renamed inline
 
 function resetOutreachViewState() {
-  _outSelectedList = 'all'; _outTypeFilter = 'all'; _outStatusFilter = 'all';
-  _outSearch = ''; _outSort = { key: 'name', dir: 1 };
-  _outDrawerId = null; _outDraft = null; _outDirty = false;
-  _outAddingList = false; _outListEditingId = null;
+  state._outSelectedList = 'all'; state._outTypeFilter = 'all'; state._outStatusFilter = 'all';
+  state._outSearch = ''; state._outSort = { key: 'name', dir: 1 };
+  state._outDrawerId = null; state._outDraft = null; state._outDirty = false;
+  state._outAddingList = false; state._outListEditingId = null;
   _outSyncDrawer();
 }
 
@@ -68,7 +54,7 @@ function outWebsiteHref(w) {
 }
 
 function _outMigrationGuard() {
-  if (_outreachMigrationMissing) {
+  if (state._outreachMigrationMissing) {
     _showSaveError('Run migrations/012_outreach.sql in Supabase first');
     return true;
   }
@@ -79,13 +65,13 @@ function _outMigrationGuard() {
 function renderOutreach() {
   const container = document.getElementById('view-outreach');
 
-  const total = OUTREACH_TARGETS.length;
-  const inTalks = OUTREACH_TARGETS.filter(t => t.status === 'in_talks').length;
-  const worked = OUTREACH_TARGETS.filter(t => t.status === 'worked_together').length;
-  const projectCount = OUTREACH_TARGETS.reduce((s, t) => s + (t.projects || []).length, 0);
-  const agreedTotal = OUTREACH_TARGETS.reduce((s, t) => s + outAgreedTotal(t), 0);
+  const total = state.OUTREACH_TARGETS.length;
+  const inTalks = state.OUTREACH_TARGETS.filter(t => t.status === 'in_talks').length;
+  const worked = state.OUTREACH_TARGETS.filter(t => t.status === 'worked_together').length;
+  const projectCount = state.OUTREACH_TARGETS.reduce((s, t) => s + (t.projects || []).length, 0);
+  const agreedTotal = state.OUTREACH_TARGETS.reduce((s, t) => s + outAgreedTotal(t), 0);
 
-  const setupCard = _outreachMigrationMissing ? `
+  const setupCard = state._outreachMigrationMissing ? `
     <div class="tasks-setup-card" style="margin-bottom:20px">
       <h3>One-time setup needed</h3>
       <p>The Outreach tables aren't in Supabase yet. Run <code>migrations/012_outreach.sql</code> in the Supabase SQL editor, then refresh this page.</p>
@@ -106,12 +92,12 @@ function renderOutreach() {
       <div class="kpi-card">
         <span class="kpi-label">Targets</span>
         <span class="kpi-value">${total}</span>
-        <span class="kpi-delta">${OUTREACH_LISTS.length} list${OUTREACH_LISTS.length === 1 ? '' : 's'}</span>
+        <span class="kpi-delta">${state.OUTREACH_LISTS.length} list${state.OUTREACH_LISTS.length === 1 ? '' : 's'}</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">In Talks</span>
         <span class="kpi-value">${inTalks}</span>
-        <span class="kpi-delta">${OUTREACH_TARGETS.filter(t => t.status === 'contacted').length} contacted</span>
+        <span class="kpi-delta">${state.OUTREACH_TARGETS.filter(t => t.status === 'contacted').length} contacted</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">Worked With</span>
@@ -132,10 +118,10 @@ function renderOutreach() {
           <div class="out-chips">${_outChipsHTML()}</div>
           <div class="out-controls-right">
             <select class="out-status-filter" data-change="outSetStatusFilter" data-change-args="[&quot;$value&quot;]">
-              <option value="all" ${_outStatusFilter === 'all' ? 'selected' : ''}>All statuses</option>
-              ${OUT_STATUS_ORDER.map(s => `<option value="${s}" ${_outStatusFilter === s ? 'selected' : ''}>${OUT_STATUSES[s]}</option>`).join('')}
+              <option value="all" ${state._outStatusFilter === 'all' ? 'selected' : ''}>All statuses</option>
+              ${OUT_STATUS_ORDER.map(s => `<option value="${s}" ${state._outStatusFilter === s ? 'selected' : ''}>${OUT_STATUSES[s]}</option>`).join('')}
             </select>
-            <input type="search" class="out-search" id="outSearch" placeholder="Search targets" value="${_esc(_outSearch)}" data-input="outSearchInput" data-input-args="[&quot;$value&quot;]">
+            <input type="search" class="out-search" id="outSearch" placeholder="Search targets" value="${_esc(state._outSearch)}" data-input="outSearchInput" data-input-args="[&quot;$value&quot;]">
           </div>
         </div>
         <div class="table-wrap">
@@ -161,15 +147,15 @@ function renderOutreach() {
 }
 
 function _outThHTML(key, label) {
-  const active = _outSort.key === key;
-  const arrow = active ? (_outSort.dir === 1 ? ' ▲' : ' ▼') : '';
+  const active = state._outSort.key === key;
+  const arrow = active ? (state._outSort.dir === 1 ? ' ▲' : ' ▼') : '';
   return `<th class="out-th-sort ${active ? 'active' : ''}" data-action="outSortBy" data-args="${_args(key)}">${label}<span class="out-sort-arrow">${arrow}</span></th>`;
 }
 
 /* ---- LISTS RAIL ---- */
 function _outRailHTML() {
   const listRow = (l) => {
-    if (_outListEditingId === l._sbId) {
+    if (state._outListEditingId === l._sbId) {
       return `
         <div class="out-rail-item editing">
           <input type="text" id="outListRename" maxlength="100" value="${_esc(l.name)}"
@@ -178,9 +164,9 @@ function _outRailHTML() {
           <button class="btn btn-sm" data-action="outCancelListEdit" data-stop>&times;</button>
         </div>`;
     }
-    const count = OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(l._sbId)).length;
+    const count = state.OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(l._sbId)).length;
     return `
-      <div class="out-rail-item ${_outSelectedList === l._sbId ? 'active' : ''}" data-action="outSelectList" data-args="${_args(l._sbId)}">
+      <div class="out-rail-item ${state._outSelectedList === l._sbId ? 'active' : ''}" data-action="outSelectList" data-args="${_args(l._sbId)}">
         <span class="out-rail-name">${_esc(l.name)}</span>
         <span class="out-rail-count">${count}</span>
         <span class="out-rail-actions" data-action="stop" data-args="[&quot;$event&quot;]">
@@ -192,12 +178,12 @@ function _outRailHTML() {
 
   return `
     <div class="out-rail-title">Lists</div>
-    <div class="out-rail-item ${_outSelectedList === 'all' ? 'active' : ''}" data-action="outSelectList" data-args="[&quot;all&quot;]">
+    <div class="out-rail-item ${state._outSelectedList === 'all' ? 'active' : ''}" data-action="outSelectList" data-args="[&quot;all&quot;]">
       <span class="out-rail-name">All targets</span>
-      <span class="out-rail-count">${OUTREACH_TARGETS.length}</span>
+      <span class="out-rail-count">${state.OUTREACH_TARGETS.length}</span>
     </div>
-    ${OUTREACH_LISTS.map(listRow).join('')}
-    ${_outAddingList ? `
+    ${state.OUTREACH_LISTS.map(listRow).join('')}
+    ${state._outAddingList ? `
       <div class="out-rail-item editing">
         <input type="text" id="outNewListName" maxlength="100" placeholder="List name"
           data-keydown="outAddListKey" data-keydown-args="[&quot;$event&quot;]" data-action="stop" data-args="[&quot;$event&quot;]">
@@ -208,17 +194,17 @@ function _outRailHTML() {
   `;
 }
 
-function outSelectList(id) { _outSelectedList = id; renderOutreach(); }
+function outSelectList(id) { state._outSelectedList = id; renderOutreach(); }
 
 function outShowAddList() {
   if (_outMigrationGuard()) return;
-  _outAddingList = true;
+  state._outAddingList = true;
   renderOutreach();
   const input = document.getElementById('outNewListName');
   if (input) input.focus();
 }
 
-function outHideAddList() { _outAddingList = false; renderOutreach(); }
+function outHideAddList() { state._outAddingList = false; renderOutreach(); }
 
 function outAddListKey(e) {
   if (e.key === 'Enter') outAddList();
@@ -229,21 +215,21 @@ async function outAddList() {
   const input = document.getElementById('outNewListName');
   const name = input ? input.value.trim() : '';
   if (!name) { _showSaveError('List needs a name'); return; }
-  const row = await sbAddOutreachList(name, OUTREACH_LISTS.length);
+  const row = await db.sbAddOutreachList(name, state.OUTREACH_LISTS.length);
   if (!row) return;
-  OUTREACH_LISTS.push({ _sbId: row.id, name: row.name, sortOrder: row.sort_order || 0 });
-  _outAddingList = false;
+  state.OUTREACH_LISTS.push({ _sbId: row.id, name: row.name, sortOrder: row.sort_order || 0 });
+  state._outAddingList = false;
   renderOutreach();
 }
 
 function outEditList(id) {
-  _outListEditingId = id;
+  state._outListEditingId = id;
   renderOutreach();
   const input = document.getElementById('outListRename');
   if (input) { input.focus(); input.select(); }
 }
 
-function outCancelListEdit() { _outListEditingId = null; renderOutreach(); }
+function outCancelListEdit() { state._outListEditingId = null; renderOutreach(); }
 
 function outRenameListKey(e, id) {
   if (e.key === 'Enter') outRenameList(id);
@@ -254,51 +240,51 @@ async function outRenameList(id) {
   const input = document.getElementById('outListRename');
   const name = input ? input.value.trim() : '';
   if (!name) { _showSaveError('List needs a name'); return; }
-  const ok = await sbUpdateOutreachList(id, { name: name });
+  const ok = await db.sbUpdateOutreachList(id, { name: name });
   if (!ok) return;
-  const l = OUTREACH_LISTS.find(x => x._sbId === id);
+  const l = state.OUTREACH_LISTS.find(x => x._sbId === id);
   if (l) l.name = name;
-  _outListEditingId = null;
+  state._outListEditingId = null;
   renderOutreach();
 }
 
 async function outDeleteList(id) {
-  const l = OUTREACH_LISTS.find(x => x._sbId === id);
+  const l = state.OUTREACH_LISTS.find(x => x._sbId === id);
   if (!l) return;
-  const count = OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(id)).length;
+  const count = state.OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(id)).length;
   if (!confirm('Delete list "' + l.name + '"? Its ' + count + ' target' + (count === 1 ? '' : 's') + ' stay in your book.')) return;
-  const ok = await sbDeleteOutreachList(id);
+  const ok = await db.sbDeleteOutreachList(id);
   if (!ok) return;
-  OUTREACH_LISTS = OUTREACH_LISTS.filter(x => x._sbId !== id);
+  state.OUTREACH_LISTS = state.OUTREACH_LISTS.filter(x => x._sbId !== id);
   // Sweep membership off targets (DB rows keep a stale id otherwise)
-  const affected = OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(id));
+  const affected = state.OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(id));
   for (const t of affected) {
     t.listIds = t.listIds.filter(x => x !== id);
-    sbUpdateOutreachTarget(t._sbId, { list_ids: t.listIds });
+    db.sbUpdateOutreachTarget(t._sbId, { list_ids: t.listIds });
   }
-  if (_outSelectedList === id) _outSelectedList = 'all';
+  if (state._outSelectedList === id) state._outSelectedList = 'all';
   renderOutreach();
 }
 
 /* ---- FILTERS / TABLE ---- */
 function _outChipsHTML() {
-  const inList = _outSelectedList === 'all'
-    ? OUTREACH_TARGETS
-    : OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(_outSelectedList));
+  const inList = state._outSelectedList === 'all'
+    ? state.OUTREACH_TARGETS
+    : state.OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(state._outSelectedList));
   const plurals = { brand: 'Brands', company: 'Companies', platform: 'Platforms', opportunity: 'Opportunities' };
   const chips = [['all', 'All']].concat(Object.keys(OUT_TYPES).map(k => [k, plurals[k]]));
   return chips.map(([k, label]) => {
     const count = k === 'all' ? inList.length : inList.filter(t => t.type === k).length;
-    return `<button class="out-chip ${_outTypeFilter === k ? 'active' : ''}" data-action="outSetType" data-args="${_args(k)}">${label} <em>${count}</em></button>`;
+    return `<button class="out-chip ${state._outTypeFilter === k ? 'active' : ''}" data-action="outSetType" data-args="${_args(k)}">${label} <em>${count}</em></button>`;
   }).join('');
 }
 
 function _outFilteredRows() {
-  let rows = OUTREACH_TARGETS;
-  if (_outSelectedList !== 'all') rows = rows.filter(t => (t.listIds || []).includes(_outSelectedList));
-  if (_outTypeFilter !== 'all') rows = rows.filter(t => t.type === _outTypeFilter);
-  if (_outStatusFilter !== 'all') rows = rows.filter(t => t.status === _outStatusFilter);
-  const q = _outSearch.trim().toLowerCase();
+  let rows = state.OUTREACH_TARGETS;
+  if (state._outSelectedList !== 'all') rows = rows.filter(t => (t.listIds || []).includes(state._outSelectedList));
+  if (state._outTypeFilter !== 'all') rows = rows.filter(t => t.type === state._outTypeFilter);
+  if (state._outStatusFilter !== 'all') rows = rows.filter(t => t.status === state._outStatusFilter);
+  const q = state._outSearch.trim().toLowerCase();
   if (q) {
     rows = rows.filter(t =>
       t.name.toLowerCase().includes(q) ||
@@ -306,8 +292,8 @@ function _outFilteredRows() {
       t.pitch.toLowerCase().includes(q) ||
       t.notes.toLowerCase().includes(q));
   }
-  const dir = _outSort.dir;
-  const key = _outSort.key;
+  const dir = state._outSort.dir;
+  const key = state._outSort.key;
   return rows.slice().sort((a, b) => {
     let cmp = 0;
     if (key === 'name') cmp = a.name.localeCompare(b.name);
@@ -322,7 +308,7 @@ function _outFilteredRows() {
 function _outRowsHTML() {
   const rows = _outFilteredRows();
   if (!rows.length) {
-    const msg = OUTREACH_TARGETS.length
+    const msg = state.OUTREACH_TARGETS.length
       ? 'No targets match this view.'
       : 'No targets yet. Click "+ New Target" to add the first brand you want to work with.';
     return `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">${msg}</td></tr>`;
@@ -346,18 +332,18 @@ function _outRowsHTML() {
   }).join('');
 }
 
-function outSetType(k) { _outTypeFilter = k; renderOutreach(); }
-function outSetStatusFilter(v) { _outStatusFilter = v; renderOutreach(); }
+function outSetType(k) { state._outTypeFilter = k; renderOutreach(); }
+function outSetStatusFilter(v) { state._outStatusFilter = v; renderOutreach(); }
 
 function outSortBy(key) {
-  if (_outSort.key === key) _outSort.dir = -_outSort.dir;
-  else _outSort = { key: key, dir: 1 };
+  if (state._outSort.key === key) state._outSort.dir = -state._outSort.dir;
+  else state._outSort = { key: key, dir: 1 };
   renderOutreach();
 }
 
 // Only the tbody re-renders on search input so the field keeps focus
 function outSearchInput(v) {
-  _outSearch = v;
+  state._outSearch = v;
   const tb = document.getElementById('outTbody');
   if (tb) tb.innerHTML = _outRowsHTML();
 }
@@ -369,34 +355,34 @@ function outSearchInput(v) {
 function _outSyncDrawer() {
   let host = document.getElementById('outDrawerHost');
   if (!host) {
-    if (!_outDrawerId) return;
+    if (!state._outDrawerId) return;
     host = document.createElement('div');
     host.id = 'outDrawerHost';
     document.body.appendChild(host);
   }
-  host.innerHTML = _outDrawerId ? _outDrawerHTML() : '';
+  host.innerHTML = state._outDrawerId ? _outDrawerHTML() : '';
 }
 
 function outNew() {
   if (_outMigrationGuard()) return;
-  _outDrawerId = '__new';
-  _outDraft = {
-    name: '', type: _outTypeFilter === 'all' ? 'brand' : _outTypeFilter,
+  state._outDrawerId = '__new';
+  state._outDraft = {
+    name: '', type: state._outTypeFilter === 'all' ? 'brand' : state._outTypeFilter,
     website: '', pitch: '', status: 'not_contacted', initiatedBy: 'none',
     projects: [], notes: '',
-    listIds: _outSelectedList === 'all' ? [] : [_outSelectedList]
+    listIds: state._outSelectedList === 'all' ? [] : [state._outSelectedList]
   };
-  _outDirty = false;
+  state._outDirty = false;
   _outSyncDrawer();
   const el = document.getElementById('outFieldName');
   if (el) el.focus();
 }
 
 function outOpen(sbId) {
-  const t = OUTREACH_TARGETS.find(x => x._sbId === sbId);
+  const t = state.OUTREACH_TARGETS.find(x => x._sbId === sbId);
   if (!t) return;
-  _outDrawerId = sbId;
-  _outDraft = {
+  state._outDrawerId = sbId;
+  state._outDraft = {
     name: t.name, type: t.type, website: t.website, pitch: t.pitch,
     status: t.status, initiatedBy: t.initiatedBy,
     projects: (t.projects || []).map(p => ({
@@ -407,19 +393,19 @@ function outOpen(sbId) {
     })),
     notes: t.notes, listIds: (t.listIds || []).slice()
   };
-  _outDirty = false;
+  state._outDirty = false;
   _outSyncDrawer();
 }
 
 function outClose() {
-  if (_outDirty && !confirm('Discard unsaved changes?')) return;
-  _outDrawerId = null; _outDraft = null; _outDirty = false;
+  if (state._outDirty && !confirm('Discard unsaved changes?')) return;
+  state._outDrawerId = null; state._outDraft = null; state._outDirty = false;
   _outSyncDrawer();
 }
 
 function _outDrawerHTML() {
-  const d = _outDraft;
-  const isNew = _outDrawerId === '__new';
+  const d = state._outDraft;
+  const isNew = state._outDrawerId === '__new';
   const href = outWebsiteHref(d.website);
   return `
     <div class="out-drawer-backdrop" data-action="outClose"></div>
@@ -467,9 +453,9 @@ function _outDrawerHTML() {
         </div>
         <div class="form-group">
           <label>Lists</label>
-          ${OUTREACH_LISTS.length ? `
+          ${state.OUTREACH_LISTS.length ? `
             <div class="out-list-checks">
-              ${OUTREACH_LISTS.map(l => `
+              ${state.OUTREACH_LISTS.map(l => `
                 <label class="out-check">
                   <input type="checkbox" ${d.listIds.includes(l._sbId) ? 'checked' : ''} data-change="outDraftListToggle" data-change-args="${_args(l._sbId, '$checked')}">
                   <span>${_esc(l.name)}</span>
@@ -507,42 +493,42 @@ function _outDrawerHTML() {
 
 /* ---- DRAWER FIELD HANDLERS ---- */
 function outDraftField(key, val) {
-  if (!_outDraft) return;
-  _outDraft[key] = val;
-  _outDirty = true;
+  if (!state._outDraft) return;
+  state._outDraft[key] = val;
+  state._outDirty = true;
 }
 
 function outDraftInitiated(k) {
-  if (!_outDraft) return;
-  _outDraft.initiatedBy = k;
-  _outDirty = true;
+  if (!state._outDraft) return;
+  state._outDraft.initiatedBy = k;
+  state._outDirty = true;
   _outSyncDrawer();
 }
 
 function outDraftListToggle(listId, checked) {
-  if (!_outDraft) return;
-  if (checked && !_outDraft.listIds.includes(listId)) _outDraft.listIds.push(listId);
-  if (!checked) _outDraft.listIds = _outDraft.listIds.filter(x => x !== listId);
-  _outDirty = true;
+  if (!state._outDraft) return;
+  if (checked && !state._outDraft.listIds.includes(listId)) state._outDraft.listIds.push(listId);
+  if (!checked) state._outDraft.listIds = state._outDraft.listIds.filter(x => x !== listId);
+  state._outDirty = true;
 }
 
 function outDraftProject(i, key, val) {
-  if (!_outDraft || !_outDraft.projects[i]) return;
-  _outDraft.projects[i][key] = val;
-  _outDirty = true;
+  if (!state._outDraft || !state._outDraft.projects[i]) return;
+  state._outDraft.projects[i][key] = val;
+  state._outDirty = true;
 }
 
 function outAddProject() {
-  if (!_outDraft) return;
-  _outDraft.projects.push({ name: '', budget: '', rate: '', notes: '' });
-  _outDirty = true;
+  if (!state._outDraft) return;
+  state._outDraft.projects.push({ name: '', budget: '', rate: '', notes: '' });
+  state._outDirty = true;
   _outSyncDrawer();
 }
 
 function outRemoveProject(i) {
-  if (!_outDraft) return;
-  _outDraft.projects.splice(i, 1);
-  _outDirty = true;
+  if (!state._outDraft) return;
+  state._outDraft.projects.splice(i, 1);
+  state._outDirty = true;
   _outSyncDrawer();
 }
 
@@ -565,30 +551,30 @@ function _outCleanProjects(projects) {
 }
 
 async function outSave() {
-  if (_outMigrationGuard() || !_outDraft) return;
-  const name = _outDraft.name.trim();
+  if (_outMigrationGuard() || !state._outDraft) return;
+  const name = state._outDraft.name.trim();
   if (!name) { _showSaveError('Target needs a name'); return; }
 
   const payload = {
     name: name,
-    type: _outDraft.type,
-    website: _outDraft.website.trim(),
-    pitch: _outDraft.pitch,
-    status: _outDraft.status,
-    initiated_by: _outDraft.initiatedBy,
-    projects: _outCleanProjects(_outDraft.projects),
-    notes: _outDraft.notes,
-    list_ids: _outDraft.listIds
+    type: state._outDraft.type,
+    website: state._outDraft.website.trim(),
+    pitch: state._outDraft.pitch,
+    status: state._outDraft.status,
+    initiated_by: state._outDraft.initiatedBy,
+    projects: _outCleanProjects(state._outDraft.projects),
+    notes: state._outDraft.notes,
+    list_ids: state._outDraft.listIds
   };
 
-  if (_outDrawerId === '__new') {
-    const row = await sbAddOutreachTarget(payload);
+  if (state._outDrawerId === '__new') {
+    const row = await db.sbAddOutreachTarget(payload);
     if (!row) return;
-    OUTREACH_TARGETS.push(_mapOutreachRow(row));
+    state.OUTREACH_TARGETS.push(_mapOutreachRow(row));
   } else {
-    const ok = await sbUpdateOutreachTarget(_outDrawerId, payload);
+    const ok = await db.sbUpdateOutreachTarget(state._outDrawerId, payload);
     if (!ok) return;
-    const t = OUTREACH_TARGETS.find(x => x._sbId === _outDrawerId);
+    const t = state.OUTREACH_TARGETS.find(x => x._sbId === state._outDrawerId);
     if (t) {
       t.name = payload.name; t.type = payload.type; t.website = payload.website;
       t.pitch = payload.pitch; t.status = payload.status; t.initiatedBy = payload.initiated_by;
@@ -596,26 +582,22 @@ async function outSave() {
       t.updatedAt = new Date().toISOString();
     }
   }
-  _outDrawerId = null; _outDraft = null; _outDirty = false;
+  state._outDrawerId = null; state._outDraft = null; state._outDirty = false;
   renderOutreach();
 }
 
 async function outDelete() {
-  if (!_outDrawerId || _outDrawerId === '__new') return;
-  const t = OUTREACH_TARGETS.find(x => x._sbId === _outDrawerId);
+  if (!state._outDrawerId || state._outDrawerId === '__new') return;
+  const t = state.OUTREACH_TARGETS.find(x => x._sbId === state._outDrawerId);
   if (!t) return;
   if (!confirm('Delete "' + t.name + '" from your outreach book? This can\'t be undone.')) return;
-  const ok = await sbDeleteOutreachTarget(t._sbId);
+  const ok = await db.sbDeleteOutreachTarget(t._sbId);
   if (!ok) return;
-  OUTREACH_TARGETS = OUTREACH_TARGETS.filter(x => x._sbId !== t._sbId);
-  _outDrawerId = null; _outDraft = null; _outDirty = false;
+  state.OUTREACH_TARGETS = state.OUTREACH_TARGETS.filter(x => x._sbId !== t._sbId);
+  state._outDrawerId = null; state._outDraft = null; state._outDirty = false;
   renderOutreach();
 }
 
-/* ---- ACTION REGISTRY (outreach.js) ---- */
-act({
-  outNew, outOpen, outClose, outSave, outDelete, outSetStatusFilter, outSearchInput, outSortBy, outSetType,
-  outSelectList, outShowAddList, outHideAddList, outAddList, outAddListKey, outEditList, outDeleteList,
-  outRenameList, outRenameListKey, outCancelListEdit,
-  outDraftField, outDraftInitiated, outDraftListToggle, outDraftProject, outAddProject, outRemoveProject,
-});
+act({ outAddList, outAddListKey, outAddProject, outCancelListEdit, outClose, outDelete, outDeleteList, outDraftField, outDraftInitiated, outDraftListToggle, outDraftProject, outEditList, outHideAddList, outNew, outOpen, outRemoveProject, outRenameList, outRenameListKey, outSave, outSearchInput, outSelectList, outSetStatusFilter, outSetType, outShowAddList, outSortBy });
+
+export { OUT_INITIATED, OUT_INITIATED_SHORT, OUT_STATUSES, OUT_STATUS_ORDER, OUT_TYPES, _outChipsHTML, _outCleanProjects, _outDrawerHTML, _outFilteredRows, _outMigrationGuard, _outNumOrNull, _outRailHTML, _outRowsHTML, _outSyncDrawer, _outThHTML, outAddList, outAddListKey, outAddProject, outAgreedTotal, outCancelListEdit, outClose, outDelete, outDeleteList, outDraftField, outDraftInitiated, outDraftListToggle, outDraftProject, outEditList, outFmtShortDate, outHideAddList, outMoney, outNew, outOpen, outRemoveProject, outRenameList, outRenameListKey, outSave, outSearchInput, outSelectList, outSetStatusFilter, outSetType, outShowAddList, outSortBy, outWebsiteHref, renderOutreach, resetOutreachViewState };
