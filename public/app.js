@@ -445,6 +445,8 @@ const SKETCHY_ICONS = {
   plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.2v15.6"/><path d="M4.2 12h15.6"/></svg>',
   trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 6.2h17.6"/><path d="M8.2 6.2V4.2c0-1.1.9-2 2-2h3.6c1.1 0 2 .9 2 2v2"/><path d="M5.2 6.2l1 14c.1 1 .9 1.8 2 1.8h7.6c1 0 1.9-.8 2-1.8l1-14"/><path d="M10.2 10.8v6"/><path d="M13.8 10.8v6"/></svg>',
   share: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4"/><path d="M15.4 6.5l-6.8 4"/></svg>',
+  arrowUp: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19.8V4.4"/><path d="M5.3 11.1L12 4.2l6.7 6.9"/></svg>',
+  arrowDown: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.2v15.4"/><path d="M18.7 12.9L12 19.8l-6.7-6.9"/></svg>',
   chevronLeft: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>',
 };
 
@@ -4365,8 +4367,12 @@ function _renderSceneRow(scene, idx, readOnly) {
 
   /* Actions */
   if (!readOnly) {
+    var sid = _esc(scene.id);
+    var last = idx >= _currentScenes.length - 1;
     html += '<div class="script-col-actions">';
-    html += '<button class="script-row-action" onclick="_deleteSceneRow(\'' + scene.id + '\')" title="Delete scene">' + SKETCHY_ICONS.trash + '</button>';
+    html += '<button class="script-row-action script-row-move" onclick="_moveScene(\'' + sid + '\', -1)" title="Move up"' + (idx === 0 ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowUp + '</button>';
+    html += '<button class="script-row-action script-row-move" onclick="_moveScene(\'' + sid + '\', 1)" title="Move down"' + (last ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowDown + '</button>';
+    html += '<button class="script-row-action" onclick="_deleteSceneRow(\'' + sid + '\')" title="Delete scene">' + SKETCHY_ICONS.trash + '</button>';
     html += '</div>';
   }
 
@@ -4460,6 +4466,18 @@ async function _addScene() {
     console.error('add scene err:', res.error);
     _showSaveError('Could not add scene');
   }
+}
+
+// Up/down reordering: works on touch, where HTML5 drag-and-drop does not
+async function _moveScene(sceneId, dir) {
+  var i = _currentScenes.findIndex(function(s) { return s.id === sceneId; });
+  var j = i + dir;
+  if (i < 0 || j < 0 || j >= _currentScenes.length) return;
+  await _flushScriptSaves();
+  var moved = _currentScenes.splice(i, 1)[0];
+  _currentScenes.splice(j, 0, moved);
+  await sbReorderScenes(_currentScenes);
+  _scriptRerender();
 }
 
 async function _deleteSceneRow(sceneId) {

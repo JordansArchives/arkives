@@ -10,7 +10,8 @@
     "test": "npm run test:checks && npm run test:smoke",
     "test:checks": "node tests/checks.mjs",
     "test:smoke": "node tests/smoke.mjs",
-    "serve": "python3 -m http.server 8741 --directory public"
+    "serve": "python3 -m http.server 8741 --directory public",
+    "test:live": "node tests/live.mjs"
   },
   "devDependencies": {
     "eslint": "^9.39.0",

@@ -7101,3 +7101,44 @@ a.mk-platform-link:hover {
 @media (hover: none) {
   .script-card-delete, .board-card-delete { opacity: 1; }
 }
+
+/* ============================================================
+   PHASE 3: Boards on touch, Scripts on the phone
+   ============================================================ */
+.bd-tool:disabled { opacity: 0.3; cursor: default; }
+.bd-tool:disabled:hover { background: none; color: var(--text-secondary); }
+
+/* Scene row actions: up / down / delete stacked; always visible on touch */
+.script-col-actions { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; padding: 10px 2px; }
+.script-row-action:disabled { opacity: 0.2 !important; cursor: default; }
+@media (hover: none) {
+  .script-row-action { opacity: 1; }
+  .script-thumb-remove { opacity: 1; }
+}
+
+/* Under 640px each scene is a card: number + actions on top, then script,
+   scene, thumbnail full width. The five-column grid is unreadable there. */
+@media (max-width: 640px) {
+  .script-scene-header { display: none; }
+  .script-scene-row, #view-shared-script .script-scene-row {
+    grid-template-columns: 1fr;
+    grid-template-areas: "num" "script" "scene" "thumb";
+    padding: 12px 12px 8px;
+    row-gap: 8px;
+    min-height: 0;
+  }
+  .script-scene-row > .script-col-num { grid-area: num; justify-self: start; display: flex; align-items: center; gap: 10px; padding: 0; }
+  .script-scene-row > .script-col-script { grid-area: script; padding: 0; }
+  .script-scene-row > .script-col-scene { grid-area: scene; padding: 0; }
+  .script-scene-row > .script-col-thumb { grid-area: thumb; padding: 0; }
+  .script-scene-row > .script-col-actions { grid-area: num; justify-self: end; flex-direction: row; padding: 0; gap: 8px; }
+  .script-col-script::before, .script-col-scene::before {
+    content: "Script"; display: block; font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;
+  }
+  .script-col-scene::before { content: "Scene"; }
+  .script-cell-textarea { width: 100%; font-size: 16px; }
+  .script-thumb-preview, .script-thumb-upload { max-width: 100%; }
+  .script-thumb-preview img { width: 100%; max-height: 200px; object-fit: cover; }
+  .script-row-action { min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+}

@@ -43,6 +43,8 @@ let _bdReadOnly = false;      // shared (#bshared/token) view
 let _bdSharedToken = null;    // set in a shared EDIT session — routes all writes through the 019 RPCs
 let _bdSharedOwnerId = null;  // board owner's profile id (shared edit needs it for upload paths)
 let _bdEditingEl = null;      // .bd-text-content currently in edit mode (format bar target)
+let _bdPointers = new Map();  // active touch pointers (two-finger pan / pinch)
+let _bdPinch = null;          // in-progress pinch: {dist, mx, my}
 
 const BD_STICKY_COLORS = {
   yellow: '#F7E9A9', red: '#F3C8C6', teal: '#C9E0D4', white: '#FFFFFF'
@@ -179,6 +181,7 @@ async function sbDeleteBoardItem(itemId) {
 
 async function renderBoards() {
   _bdFlushPendingSaves();
+  _bdLiveLeave();
   _bdReadOnly = false;
   _bdFlushOrphans();
   const container = document.getElementById('view-boards');
@@ -269,6 +272,7 @@ async function renderBoardEditor(boardId) {
   _bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => plane.appendChild(_bdItemEl(it)));
   _bdBindEditor();
   _bdResolveSignedUrls();
+  if (_bdBoard.share_mode === 'view' || _bdBoard.share_mode === 'edit') _bdLiveJoin(_bdBoard.id); else _bdLiveLeave();
 }
 
 /* The full editor shell, used by the owner editor and by shared EDIT
@@ -313,6 +317,9 @@ function _bdEditorShellHtml(shared) {
           '<div class="bd-tool-sep"></div>' +
           '<button class="bd-tool" data-action="image" title="Add image (or drag & drop / paste)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 4.1h17.6v15.8H3.2z"/><circle cx="8.6" cy="9" r="1.7"/><path d="M20.7 15.2l-4.8-4.9-9.7 9.6"/></svg></button>' +
           '<button class="bd-tool" data-action="video" title="Add video link"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 5.1h17.6v13.8H3.2z"/><path d="M10.1 9.1l4.9 2.9-4.9 2.9z"/></svg></button>' +
+          '<div class="bd-tool-sep"></div>' +
+          '<button class="bd-tool" data-action="undo" id="bdUndoBtn" title="Undo (Ctrl+Z)" disabled><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.9 14.1L4.2 9.4l4.7-4.7"/><path d="M4.5 9.4h9.3c3.3 0 6 2.7 6 6s-2.7 6-6 6H8.1"/></svg></button>' +
+          '<button class="bd-tool" data-action="redo" id="bdRedoBtn" title="Redo (Ctrl+Shift+Z)" disabled><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.1 14.1l4.7-4.7-4.7-4.7"/><path d="M19.5 9.4h-9.3c-3.3 0-6 2.7-6 6s2.7 6 6 6h5.7"/></svg></button>' +
         '</div>' +
         '<div class="bd-tool-options" id="bdPenOptions" style="display:none">' + penDots +
           '<div class="bd-opt-sep"></div>' +
@@ -338,6 +345,119 @@ function _bdEditorShellHtml(shared) {
         '<div class="bd-drop-hint" id="bdDropHint">Drop images to add them</div>' +
       '</div>' +
     '</div>');
+}
+
+// Pointer capture can throw for synthetic or already-released pointers
+function _bdCapture(el, e) { try { el.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ } }
+
+/* ---- TOUCH: two-finger pan + pinch zoom ----
+   Pointer events deliver each finger separately. When a second finger
+   lands, whatever single-finger gesture was in progress ends (the caller
+   says how) and the pair drives the viewport until one lifts. Capture
+   phase, so the single-pointer handlers never see the second finger. */
+function _bdBindPinch(vp, cancelSingle) {
+  vp.addEventListener('pointerdown', function(e) {
+    if (e.pointerType !== 'touch') return;
+    _bdPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (_bdPointers.size >= 2) {
+      if (!_bdPinch && cancelSingle) cancelSingle();
+      const pts = [..._bdPointers.values()].slice(0, 2);
+      _bdPinch = { dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), mx: (pts[0].x + pts[1].x) / 2, my: (pts[0].y + pts[1].y) / 2 };
+      try { _bdCapture(vp, e); } catch (_) { /* not all targets allow capture */ }
+      e.stopPropagation();
+    }
+  }, true);
+  vp.addEventListener('pointermove', function(e) {
+    if (e.pointerType !== 'touch' || !_bdPointers.has(e.pointerId)) return;
+    _bdPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!_bdPinch || _bdPointers.size < 2) return;
+    const pts = [..._bdPointers.values()].slice(0, 2);
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    const mx = (pts[0].x + pts[1].x) / 2, my = (pts[0].y + pts[1].y) / 2;
+    if (_bdPinch.dist > 0 && dist > 0) _bdZoomAt(mx, my, dist / _bdPinch.dist);
+    _bdView.x += mx - _bdPinch.mx;
+    _bdView.y += my - _bdPinch.my;
+    _bdApplyView();
+    _bdPinch = { dist: dist, mx: mx, my: my };
+    e.stopPropagation();
+  }, true);
+  function lift(e) {
+    if (e.pointerType !== 'touch') return;
+    _bdPointers.delete(e.pointerId);
+    if (_bdPinch && _bdPointers.size < 2) {
+      // The remaining finger does nothing until it lifts too
+      _bdPinch = null; _bdPtr = null; _bdSuppressClick = true;
+      e.stopPropagation();
+    }
+  }
+  vp.addEventListener('pointerup', lift, true);
+  vp.addEventListener('pointercancel', lift, true);
+}
+
+/* Commit whatever sticky/caption is being typed into (tab hidden, app
+   switch on a phone): focusout does not always fire in those cases. */
+function _bdCommitActiveText() {
+  const el = document.activeElement;
+  if (el && el.isContentEditable && el.closest && el.closest('.bd-item') &&
+      (el.classList.contains('bd-text-content') || el.classList.contains('bd-caption'))) {
+    if (el === _bdEditingEl) _bdHideFormatBar();
+    _bdCommitTextEdit(el);
+  }
+}
+
+/* ---- LIVE SYNC (shared boards) ----
+   While a board is shared, every client on it (the owner and anyone with
+   the link) joins a Broadcast channel and announces the item ops it just
+   saved; the others apply them locally. No tables, no policies: the
+   token-gated RPCs still do the persistence, this only keeps screens in
+   step. If Realtime is unavailable, nothing else changes. */
+let _bdChannel = null;
+function _bdLiveJoin(boardId) {
+  _bdLiveLeave();
+  if (!_sb || !boardId || typeof _sb.channel !== 'function') return;
+  try {
+    _bdChannel = _sb.channel('board:' + boardId, { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'op' }, function(msg) { _bdApplyRemoteOp(msg && msg.payload); })
+      .subscribe();
+  } catch (e) { console.warn('live sync unavailable', e); _bdChannel = null; }
+}
+function _bdLiveLeave() {
+  if (_bdChannel && _sb) { try { _sb.removeChannel(_bdChannel); } catch (_) { /* already gone */ } }
+  _bdChannel = null;
+}
+function _bdLiveSend(op) {
+  if (!_bdChannel || !op || !op.board) return;
+  try { _bdChannel.send({ type: 'broadcast', event: 'op', payload: op }); } catch (_) { /* best effort */ }
+}
+async function _bdApplyRemoteOp(op) {
+  if (!op || !_bdBoard || op.board !== _bdBoard.id) return;
+  const plane = document.getElementById('bdPlane');
+  if (!plane) return;
+  if (op.type === 'delete' && op.id) {
+    _bdItems = _bdItems.filter(i => i.id !== op.id);
+    const el = document.querySelector('.bd-item[data-id="' + op.id + '"]');
+    if (el) el.remove();
+    if (_bdSelectedId === op.id) _bdSelectedId = null;
+    return;
+  }
+  if (op.type === 'upsert' && op.item && op.item.id) {
+    const it = op.item;
+    const idx = _bdItems.findIndex(i => i.id === it.id);
+    if (idx >= 0) {
+      // Never clobber text someone here is in the middle of typing
+      if (document.querySelector('.bd-item[data-id="' + it.id + '"] [contenteditable="true"]')) return;
+      _bdItems[idx] = it;
+      _bdRefreshItem(it.id);
+    } else {
+      _bdItems.push(it);
+      plane.appendChild(_bdItemEl(it));
+    }
+    if ((it.z || 1) > _bdMaxZ) _bdMaxZ = it.z;
+    if (it.kind === 'image' && it.content && it.content.path && !_bdSignedUrls[it.content.path]) {
+      const url = await _bdUrlForPath(it.content.path);
+      if (url) { _bdSignedUrls[it.content.path] = url; _bdRefreshItem(it.id); }
+    }
+  }
 }
 
 /* ---- EDITOR: COORDS & VIEWPORT ---- */
@@ -368,7 +488,7 @@ function _bdApplyView() {
 }
 
 function _bdQueueViewSave() {
-  if (!_bdBoard || _bdSharedToken) return; // viewport memory belongs to the owner
+  if (!_bdBoard || _bdSharedToken || _bdReadOnly) return; // viewport memory belongs to the owner
   // Skip when nothing changed — opening a board shouldn't bump updated_at
   if (_bdBoard.view_x === _bdView.x && _bdBoard.view_y === _bdView.y && _bdBoard.view_zoom === _bdView.z) return;
   clearTimeout(_bdViewSaveTimer);
@@ -578,6 +698,12 @@ function _bdPositionFormatBar() {
   const vp = document.getElementById('bdViewport');
   const itemEl = _bdEditingEl.closest('.bd-item');
   if (!bar || !vp || !itemEl) return;
+  if (window.innerWidth < 640) {
+    // Phone: the item is often under the keyboard; pin the bar to the top
+    bar.style.left = '8px'; bar.style.right = '8px'; bar.style.top = '8px';
+    return;
+  }
+  bar.style.right = '';
   const vpRect = vp.getBoundingClientRect();
   const r = itemEl.getBoundingClientRect();
   const x = Math.max(8, Math.min(r.left - vpRect.left, vpRect.width - 260));
@@ -596,6 +722,13 @@ function _bdPushUndo(op) {
   _bdUndoStack.push(op);
   if (_bdUndoStack.length > 100) _bdUndoStack.shift();
   _bdRedoStack.length = 0;
+  _bdSyncUndoButtons();
+}
+
+function _bdSyncUndoButtons() {
+  const u = document.getElementById('bdUndoBtn'), r = document.getElementById('bdRedoBtn');
+  if (u) u.disabled = !_bdUndoStack.length;
+  if (r) r.disabled = !_bdRedoStack.length;
 }
 
 async function _bdApplyOp(op, reverse) {
@@ -620,6 +753,7 @@ async function _bdUndo() {
   if (!op) return;
   await _bdApplyOp(op, true);
   _bdRedoStack.push(op);
+  _bdSyncUndoButtons();
 }
 
 async function _bdRedo() {
@@ -627,6 +761,7 @@ async function _bdRedo() {
   if (!op) return;
   await _bdApplyOp(op, false);
   _bdUndoStack.push(op);
+  _bdSyncUndoButtons();
 }
 
 // Re-insert a deleted/undone item with its original id. Routes through
@@ -640,6 +775,7 @@ async function _bdRestoreItem(item) {
   });
   if (!restored) { _showSaveError('Undo failed'); return; }
   _bdItems.push(restored);
+  _bdLiveSend({ board: _bdBoard && _bdBoard.id, type: 'upsert', item: restored });
   if ((restored.z || 1) > _bdMaxZ) _bdMaxZ = restored.z;
   const plane = document.getElementById('bdPlane');
   if (plane) plane.appendChild(_bdItemEl(restored));
@@ -659,6 +795,7 @@ async function _bdRemoveItemLocal(id) {
   if (el) el.remove();
   if (_bdSelectedId === id) _bdSelectedId = null;
   await sbDeleteBoardItem(id);
+  _bdLiveSend({ board: _bdBoard && _bdBoard.id, type: 'delete', id: id });
   if (it.kind === 'image' && it.content && it.content.path) _bdOrphanPaths.push(it.content.path);
 }
 
@@ -694,6 +831,7 @@ async function _bdSetBoardShare(mode) {
   if (!ok) return;
   _bdBoard.share_mode = mode;
   _bdSyncSharePopover();
+  if (mode === 'none') _bdLiveLeave(); else _bdLiveJoin(_bdBoard.id);
 }
 
 /* ---- EDITOR: SIGNED URLS ---- */
@@ -753,7 +891,12 @@ function _bdQueueItemSave(id, updates, isRetry) {
     delete _bdPendingSaves[id];
     _bdSetSaveState('saving');
     const ok = await sbUpdateBoardItem(id, pending.updates);
-    if (ok) { _bdSetSaveState('saved'); return; }
+    if (ok) {
+      _bdSetSaveState('saved');
+      const it = _bdItems.find(i => i.id === id);
+      if (it) _bdLiveSend({ board: _bdBoard && _bdBoard.id, type: 'upsert', item: it });
+      return;
+    }
     // One retry after a pause (flaky mobile networks); the toast already fired
     if (!pending.retried) setTimeout(function() { _bdQueueItemSave(id, pending.updates, true); }, 3000);
   }, 500);
@@ -776,7 +919,7 @@ function _bdFlushPendingSaves() {
     }
   }
 }
-document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _bdFlushPendingSaves(); });
+document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') { _bdCommitActiveText(); _bdFlushPendingSaves(); } });
 
 /* ---- EDITOR: ITEM CREATION ---- */
 
@@ -790,6 +933,7 @@ async function _bdCreateItem(kind, x, y, w, h, content) {
   _bdItems.push(row);
   document.getElementById('bdPlane').appendChild(_bdItemEl(row));
   _bdPushUndo({ type: 'create', item: _bdClone(row) });
+  _bdLiveSend({ board: _bdBoard.id, type: 'upsert', item: row });
   return row;
 }
 
@@ -986,12 +1130,27 @@ function _bdBindEditor() {
   const vp = document.getElementById('bdViewport');
   const toolbar = document.getElementById('bdToolbar');
   _bdSetTool(_bdTool); // sync data-tool + toolbar state on fresh DOM
+  _bdSyncUndoButtons();
+
+  /* Two fingers: a pen stroke in progress is discarded, a drag/resize is
+     committed where it is, a pan just stops. */
+  _bdBindPinch(vp, function() {
+    if (_bdPtr && _bdPtr.mode === 'pen') {
+      _bdPtr = null; _bdPenPts = null;
+      const live = document.getElementById('bdPenLive');
+      if (live) live.innerHTML = '';
+    } else if (_bdPtr) {
+      endGesture();
+    }
+  });
 
   /* Toolbar */
   toolbar.addEventListener('click', function(e) {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.tool) { _bdSetTool(btn.dataset.tool); return; }
+    if (btn.dataset.action === 'undo') { _bdUndo(); return; }
+    if (btn.dataset.action === 'redo') { _bdRedo(); return; }
     if (btn.dataset.action === 'image') { document.getElementById('bdFileInput').click(); return; }
     if (btn.dataset.action === 'video') {
       const pop = document.getElementById('bdVideoPopover');
@@ -1094,7 +1253,7 @@ function _bdBindEditor() {
     if (e.button === 1 || (_bdTool === 'select' && !itemEl)) {
       _bdPtr = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: _bdView.x, vy: _bdView.y };
       if (_bdTool === 'select' && !e.target.closest('.bd-item')) _bdSelect(null);
-      vp.setPointerCapture(e.pointerId);
+      _bdCapture(vp, e);
       return;
     }
 
@@ -1104,7 +1263,7 @@ function _bdBindEditor() {
       _bdPtr = { mode: 'pen' };
       const live = document.getElementById('bdPenLive');
       live.innerHTML = '<path d="" fill="none" stroke="' + BD_PEN_COLORS[_bdPenColor] + '" stroke-width="' + _bdPenWidth + '" stroke-linecap="round" stroke-linejoin="round"/>';
-      vp.setPointerCapture(e.pointerId);
+      _bdCapture(vp, e);
       return;
     }
 
@@ -1132,7 +1291,7 @@ function _bdBindEditor() {
       } else {
         _bdPtr = { mode: 'drag', id: id, dx: p.x - it.x, dy: p.y - it.y, moved: false, before: before };
       }
-      vp.setPointerCapture(e.pointerId);
+      _bdCapture(vp, e);
     }
   });
 
@@ -1438,6 +1597,7 @@ async function renderSharedBoard(token, mode) {
     _bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => editPlane.appendChild(_bdItemEl(it)));
     _bdBindEditor();
     _bdResolveSignedUrls();
+    _bdLiveJoin(board.id);
     return;
   }
 
@@ -1457,15 +1617,20 @@ async function renderSharedBoard(token, mode) {
       '</div>' +
     '</div>';
 
+  // Read-only sessions still hold the board row so live ops can be matched
+  _bdBoard = { id: board.id, title: board.title, share_mode: board.share_mode, share_token: null,
+               view_x: board.view_x, view_y: board.view_y, view_zoom: board.view_zoom };
   _bdApplyView();
   const plane = document.getElementById('bdPlane');
   _bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => plane.appendChild(_bdItemEl(it)));
   _bdBindShared();
   _bdResolveSharedImages(loadToken);
+  _bdLiveJoin(board.id);
 }
 
 function _bdBindShared() {
   const vp = document.getElementById('bdViewport');
+  _bdBindPinch(vp, function() { _bdPtr = null; });
 
   vp.addEventListener('wheel', function(e) {
     e.preventDefault();
@@ -1480,7 +1645,7 @@ function _bdBindShared() {
 
   vp.addEventListener('pointerdown', function(e) {
     _bdPtr = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: _bdView.x, vy: _bdView.y, moved: false };
-    vp.setPointerCapture(e.pointerId);
+    _bdCapture(vp, e);
   });
   vp.addEventListener('pointermove', function(e) {
     if (!_bdPtr || _bdPtr.mode !== 'pan') return;

@@ -107,6 +107,74 @@ const results = await page.evaluate(async () => {
   // Invoice dates are local-calendar
   T('Net 30 lands on the local calendar day', invTermDueDate('2026-09-03', 'net30') === '2026-10-03', invTermDueDate('2026-09-03', 'net30'));
 
+  // ---- Boards on touch ----
+  window.sbUpdateBoardItem = async () => true;
+  window.sbUpdateBoard = async () => true;
+  _bdBoard = { id: 'B1', title: 'Board', share_mode: 'none', share_token: 'tk', view_x: 0, view_y: 0, view_zoom: 1 };
+  _bdView = { x: 0, y: 0, z: 1 }; _bdItems = []; _bdSelectedId = null; _bdReadOnly = false; _bdSharedToken = null;
+  _bdUndoStack = []; _bdRedoStack = [];
+  const bc = document.getElementById('view-board-editor');
+  bc.style.display = 'block';
+  bc.innerHTML = _bdEditorShellHtml(false);
+  _bdApplyView(); _bdBindEditor();
+  const vp = document.getElementById('bdViewport');
+  const rect = vp.getBoundingClientRect();
+  const pe = (type, id, x, y) => vp.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', clientX: rect.left + x, clientY: rect.top + y, bubbles: true, isPrimary: id === 1 }));
+  // Two fingers land 100px apart, spread to 200px: zoom should roughly double
+  pe('pointerdown', 1, 100, 100); pe('pointerdown', 2, 200, 100);
+  pe('pointermove', 1, 50, 100); pe('pointermove', 2, 250, 100);
+  const zAfterSpread = _bdView.z;
+  pe('pointerup', 1, 50, 100); pe('pointerup', 2, 250, 100);
+  T('pinch spread zooms in', zAfterSpread > 1.8 && zAfterSpread < 2.2, zAfterSpread);
+  T('pinch ends cleanly', _bdPinch === null && _bdPointers.size === 0 && _bdPtr === null);
+  // Two fingers moving together pan
+  _bdView = { x: 0, y: 0, z: 1 }; _bdApplyView();
+  pe('pointerdown', 3, 100, 100); pe('pointerdown', 4, 200, 100);
+  pe('pointermove', 3, 130, 140); pe('pointermove', 4, 230, 140);
+  pe('pointerup', 3, 130, 140); pe('pointerup', 4, 230, 140);
+  T('two-finger drag pans', Math.round(_bdView.x) === 30 && Math.round(_bdView.y) === 40 && Math.abs(_bdView.z - 1) < 0.001, JSON.stringify(_bdView));
+  // A single touch still pans (bubble handler untouched)
+  _bdView = { x: 0, y: 0, z: 1 }; _bdApplyView();
+  pe('pointerdown', 5, 100, 100); pe('pointermove', 5, 120, 110); pe('pointerup', 5, 120, 110);
+  T('single finger still pans', Math.round(_bdView.x) === 20 && Math.round(_bdView.y) === 10, JSON.stringify(_bdView));
+  // Undo / redo buttons follow the stacks
+  const ub = document.getElementById('bdUndoBtn'), rb = document.getElementById('bdRedoBtn');
+  T('undo/redo buttons start disabled', ub && rb && ub.disabled && rb.disabled);
+  _bdItems = [{ id: 'n1', board_id: 'B1', kind: 'note', x: 0, y: 0, w: 100, h: 100, z: 1, content: { text: 'a', color: 'yellow' } }];
+  document.getElementById('bdPlane').appendChild(_bdItemEl(_bdItems[0]));
+  _bdPushUndo({ type: 'update', id: 'n1', before: { x: 0 }, after: { x: 50 } });
+  T('undo enabled after an op', !ub.disabled && rb.disabled);
+  await _bdUndo();
+  T('redo enabled after undo', ub.disabled && !rb.disabled && _bdItems[0].x === 0);
+  await _bdRedo();
+  T('redo re-applies', _bdItems[0].x === 50 && !ub.disabled);
+  // Remote ops apply to state + DOM, but never over an item being edited
+  await _bdApplyRemoteOp({ board: 'B1', type: 'upsert', item: { id: 'r1', board_id: 'B1', kind: 'text', x: 5, y: 5, w: 200, h: 40, z: 2, content: { text: 'from afar', size: 'body' } } });
+  T('remote upsert adds item', _bdItems.some(i => i.id === 'r1') && !!document.querySelector('.bd-item[data-id="r1"]'));
+  await _bdApplyRemoteOp({ board: 'OTHER', type: 'delete', id: 'r1' });
+  T('remote op for another board ignored', _bdItems.some(i => i.id === 'r1'));
+  const ed = document.querySelector('.bd-item[data-id="r1"] .bd-text-content'); ed.setAttribute('contenteditable', 'true');
+  await _bdApplyRemoteOp({ board: 'B1', type: 'upsert', item: { id: 'r1', board_id: 'B1', kind: 'text', x: 5, y: 5, w: 200, h: 40, z: 2, content: { text: 'clobber', size: 'body' } } });
+  T('remote upsert skips an item being edited', _bdItems.find(i => i.id === 'r1').content.text === 'from afar');
+  ed.setAttribute('contenteditable', 'false');
+  await _bdApplyRemoteOp({ board: 'B1', type: 'delete', id: 'r1' });
+  T('remote delete removes item', !_bdItems.some(i => i.id === 'r1') && !document.querySelector('.bd-item[data-id="r1"]'));
+  T('crafted remote item is rendered inert', (() => { _bdApplyRemoteOp({ board: 'B1', type: 'upsert', item: { id: 'x1', board_id: 'B1', kind: 'video', x: 0, y: 0, w: 10, h: 10, z: 1, content: { url: 'https://a', provider: 'youtube', vid: '"><img src=x onerror=window.__x=1>' } } }); return !window.__x; })());
+
+  // ---- Scripts: move up/down ----
+  const reorders = [];
+  window.sbReorderScenes = async (scenes) => { reorders.push(scenes.map(s => s.id)); };
+  window._flushScriptSaves = async () => {};
+  _currentScriptId = 'S2'; _sharedScriptToken = null;
+  _currentScriptRow = { id: 'S2', title: 'T', share_mode: 'none' };
+  _currentScenes = [{ id: 'a', script_text: '', scene_description: '' }, { id: 'b', script_text: '', scene_description: '' }, { id: 'c', script_text: '', scene_description: '' }];
+  await _moveScene('c', -1);
+  T('move up reorders and persists', JSON.stringify(reorders[0]) === '["a","c","b"]' && _currentScenes[1].id === 'c', JSON.stringify(reorders));
+  await _moveScene('a', -1);
+  T('move up at top is a no-op', reorders.length === 1);
+  const rowsHtml = document.getElementById('view-script-editor').innerHTML;
+  T('first row has Move up disabled, last has Move down disabled', /title="Move up" disabled/.test(rowsHtml) && /title="Move down" disabled/.test(rowsHtml));
+
   return { out, xss: !!window.__x };
 });
 await browser.close();

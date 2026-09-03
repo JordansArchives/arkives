@@ -88,6 +88,29 @@ for (const state of ['populated', 'empty']) {
       if (['dashboard', 'tasks', 'invoices', 'boards'].includes(v)) await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-${v}.png`) });
     }
 
+    if (state === 'populated' && vp.name === 'phone') {
+      // Script editor at phone width: rows stack as cards, header hidden
+      currentView = 'script-editor-phone';
+      const m = await page.evaluate(() => {
+        const c = document.getElementById('view-script-editor');
+        document.querySelectorAll('.view').forEach(v => { v.style.display = 'none'; });
+        c.style.display = 'block';
+        _currentScriptId = 'S1'; _sharedScriptToken = null;
+        _currentScriptRow = { id: 'S1', title: 'Phone script', share_mode: 'none', share_token: 't' };
+        _currentScenes = [{ id: 'a', script_text: 'Open on the journal', scene_description: 'Overhead, warm key light', thumbnail_data: '' },
+                          { id: 'b', script_text: 'Match cut to iPad', scene_description: 'Medium shot', thumbnail_data: '' }];
+        _renderEditorUI(c, _currentScriptRow, _currentScenes, false);
+        const row = c.querySelector('.script-scene-row');
+        const cols = getComputedStyle(row).gridTemplateColumns.split(' ').length;
+        const hdr = getComputedStyle(c.querySelector('.script-scene-header')).display;
+        const ta = c.querySelector('.script-cell-textarea');
+        return { cols, hdr, taWidth: Math.round(ta.getBoundingClientRect().width), vw: window.innerWidth };
+      });
+      if (m.cols !== 1) flagged.push(`script rows not stacked on phone (${m.cols} columns)`);
+      if (m.hdr !== 'none') flagged.push('script column header visible on phone');
+      if (m.taWidth < m.vw * 0.7) flagged.push(`script textarea only ${m.taWidth}px wide on a ${m.vw}px phone`);
+      await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-script-editor.png`) });
+    }
     if (state === 'populated' && vp.name === 'desktop') {
       currentView = 'modals';
       const hit = await page.evaluate(() => {
