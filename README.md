@@ -278,7 +278,7 @@ Add `https://arkives.xyz` to the allowed redirect URLs in:
 
 ## Fresh Install (schema only, no personal data)
 
-Run in the Supabase SQL Editor, in this order: `001` → `006` → `007` → `008` → `009`.
+Run in the Supabase SQL Editor, in this order: `001` → `020` → `005` → `007` → `008` → `009` → `010` → `011` → `012` → `013` → `015` → `016` → `017` → `018` → `019`. (`020` early because `001` leaves `profiles.id` without a default; on a fresh database `006` is redundant with `009`.)
 Never run `003`, `004`, or the `full_migration` files on a fresh install: they contain Jordan's personal business data.
 
 ## Multi-Tenancy Rules (added 2026-07-13)
@@ -286,3 +286,24 @@ Never run `003`, `004`, or the `full_migration` files on a fresh install: they c
 - Every table is user-scoped via RLS (`008`). Never write queries or policies that assume a single user.
 - RLS does the scoping, DB defaults do the stamping: `user_id` columns default to `current_profile_id()`. Inserts should not pass it manually.
 - Jordan's PERSONAL business rules (Higgsfield exclusivity, $15K minimum, flat-rate NET 30, no rev-share) are per-tenant DATA in his own rows, not app logic. Do not hardcode them into the product.
+
+---
+
+## Development (added 2026-09-03)
+
+No build step. `public/` is what ships. Tooling lives outside it:
+
+```bash
+npm install          # eslint, globals, playwright-core (no browser download; uses installed Chrome)
+npm run lint         # regenerates tools/app-globals.json, then ESLint over public/ tools/ tests/
+npm test             # tests/checks.mjs (logic, stubbed Supabase) + tests/smoke.mjs (13 views x populated/empty x desktop/phone)
+npm run serve        # python static server on :8741 for manual poking
+```
+
+CI (`.github/workflows/ci.yml`) runs lint + test on every push and PR. Screenshots from the smoke run are uploaded as an artifact.
+
+**Adding a top-level function or variable in `public/*.js`?** Run `npm run globals` (or just `npm run lint`, which does it) so `no-undef` knows about it. The five files share one global scope at runtime; the generated list is how the linter sees that.
+
+**Migrations still run by hand** in the Supabase SQL editor. `migrations/020_share_hardening.sql` must be applied (it is idempotent and safe before or after deploy). `introspect.sql` at the repo root is a read-only schema dump for checking drift.
+
+See `ARCHITECTURE-AUDIT.md` for the roadmap this tooling belongs to.
