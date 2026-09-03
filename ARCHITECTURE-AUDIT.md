@@ -444,3 +444,24 @@ Read directly by the lead: `app.js` lines 1-1050 (client, auth, loader, CRUD, ro
 Four parallel read-only audits covered security (all migrations, every `innerHTML` site, auth flow, headers, storage policies), CSS and mobile (token census, dead-CSS script, breakpoint map, headless Chrome at 390 by 844 for the layout claims, contrast ratios computed), the data layer (query census, call graph of `sb*` functions, write-path policy per file, per-file dependency list), and views plus dead code plus docs (call graph of 341 functions, schema-vs-code column diff, README claim by claim, V1-AUDIT reconciliation). Their headline claims were re-verified by the lead against the source before inclusion.
 
 Not done: no live database access (no service-role key was stored; Appendix A covers it), no accounts created on production, no real-device testing (the CSS claims are headless Chrome at phone dimensions, which does not reproduce iOS Safari's dynamic viewport; those items are marked by reasoning from the CSS, not by measurement).
+
+---
+
+## Progress log
+
+**2026-09-03, same day as the audit.** Phases 0, 1, 3, and the mechanical half of 4 shipped as local commits on `main` (not pushed; pushing deploys). Every commit was verified with the repo's own harness: `npm run lint`, `npm test` (58 logic checks with Supabase stubbed, plus a smoke run of 13 views in populated and empty state at desktop and phone width), and `npm run test:live` for Realtime.
+
+| Commit | Phase | What shipped |
+|---|---|---|
+| `9371112` | 0 | Migration `020` (share-RPC content validation, thumbnail validation, per-board upload cap, profiles drift). Render-side escaping for every path in F1 through F3. Forgot-password flow and `onAuthStateChange`. Boot in one round trip, no 8s race, four dead loads gone. Scripts autosave rebuilt on state with flush-before-repaint and a load token. Error toast color, Supabase errors checked in 14 places. Local-date invoice terms. Mobile header fix, theme persistence, `100dvh` and safe areas, body-mounted modals, touch-visible delete buttons, paper texture 7MB to 180KB, `_headers` with report-only CSP, pinned CDN scripts with integrity hashes, PWA manifest. |
+| `302cdb7` | 1 | `package.json`, ESLint that runs (app globals generated mechanically), `tests/checks.mjs`, `tests/smoke.mjs`, GitHub Actions CI, README development section and corrected fresh-install order. Vite deferred to Phase 2 (see the note in Section 11). |
+| `03d2a70` | 3a | Boards: two-finger pan and pinch zoom, undo and redo buttons, format bar placement on phones, text commit on tab hide, live sync for shared boards over Realtime Broadcast (verified end to end). Scripts: stacked scene cards under 640px, move up and down buttons. |
+| `3277072` | 3b | Invoices: `#invoices/new` and `#invoices/{id}` routes, row actions as a bottom sheet on phones. Tasks: optimistic toggles with revert, delete with Undo toast, 44px targets. Focus ring, reduced motion, muted-text contrast, 16px inputs on phones, bottom tab bar for the four daily tools. |
+| `31b269e` | 4a | Dead CSS purge: 506 rules, 2,303 lines, pixel-verified across 53 screenshots. |
+
+**Not done, in recommended order:**
+1. **Jordan:** run `migrations/020_share_hardening.sql` in the Supabase SQL editor, then push `main` (push deploys). Confirm `https://arkives.xyz` is the Site URL in Supabase Auth so the password-reset redirect lands. Delete the three test auth users. Optionally paste `introspect.sql` and hand back the JSON.
+2. **Phase 2 (modules):** Vite plus native ES modules, `lib/` extraction, per-domain stores, router with `mount` and `unmount`, inline handlers to delegation view by view, then flip the CSP from report-only to enforced. This is the one change that can break the whole app if half-done; do it in a dedicated session with the harness green at every step.
+3. **Phase 3 leftovers:** script thumbnails to a Storage bucket (migration `021` mirroring `016` and `019`), pointer-based scene reorder, board rollback on failed save (retry is in place).
+4. **Phase 4 remainder:** tokens for space, radius, shadow, and type; the component set (`.sheet`, `.row`, `.btn` variants, `.card`, `.toast`, `.empty`, `.field`); modal accessibility (`role="dialog"`, focus trap, Escape).
+5. **Phase 5 (consumer gate):** account deletion, onboarding, share-token rotation, contract defaults blanked and loaded at boot, Dashboard and Revenue from invoices, Inbox hidden or connected, Analytics manual entry, server-side invoice numbering, README rewrite, cost model.
