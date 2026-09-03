@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-09-03).** This punch list is reconciled item by item in `ARCHITECTURE-AUDIT.md` (Appendix B). Read that file first; this one is kept for history.
+
 # Arkives v1 Audit: Punch List
 
 > ## RECONCILIATION NOTE (2026-07-13). Read this first.
