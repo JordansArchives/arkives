@@ -55,6 +55,31 @@ const BD_TEXT_SIZES = ['small', 'body', 'large', 'title'];
 const BD_HILITE = '#F7E9A9';
 const BD_HILITE_RGB = 'rgb(247, 233, 169)';
 
+/* ---- CONTENT GUARDS ----
+   Item content can arrive from a stranger through an edit link (the RPCs
+   validate shape too, since 020), so nothing from content goes into markup
+   without a check or an escape. */
+function _bdNum(v, dflt, min, max) {
+  const n = Number(v);
+  if (!isFinite(n)) return dflt;
+  return Math.min(max === undefined ? Infinity : max, Math.max(min === undefined ? -Infinity : min, n));
+}
+function _bdValidVid(c) {
+  if (!c) return false;
+  if (c.provider === 'youtube') return /^[A-Za-z0-9_-]{11}$/.test(String(c.vid || ''));
+  if (c.provider === 'vimeo') return /^[0-9]{1,20}$/.test(String(c.vid || ''));
+  return false;
+}
+function _bdSafeUrl(u) {
+  return typeof u === 'string' && /^https?:\/\/\S+$/i.test(u) ? u : null;
+}
+function _bdEmbedSrc(c) {
+  if (!_bdValidVid(c)) return null;
+  return c.provider === 'youtube'
+    ? 'https://www.youtube.com/embed/' + c.vid + '?autoplay=1'
+    : 'https://player.vimeo.com/video/' + c.vid + '?autoplay=1';
+}
+
 /* ---- SUPABASE CRUD ---- */
 
 async function sbFetchBoards() {
@@ -153,6 +178,7 @@ async function sbDeleteBoardItem(itemId) {
 /* ---- BOARD LIST VIEW ---- */
 
 async function renderBoards() {
+  _bdFlushPendingSaves();
   _bdReadOnly = false;
   _bdFlushOrphans();
   const container = document.getElementById('view-boards');
@@ -208,6 +234,7 @@ function _bdEditorActive() {
 }
 
 async function renderBoardEditor(boardId) {
+  _bdFlushPendingSaves();
   const token = ++_bdLoadToken;
   _bdReadOnly = false;
   _bdSharedToken = null;
@@ -418,7 +445,7 @@ function _bdItemEl(it) {
     const url = _bdSignedUrls[c.path];
     el.innerHTML =
       '<div class="bd-media-frame">' + (url
-        ? '<img src="' + url + '" draggable="false" alt="">'
+        ? '<img src="' + _esc(url) + '" draggable="false" alt="">'
         : '<div class="bd-media-loading">…</div>') + '</div>' +
       _bdCaptionHtml(c.caption) + _bdHandlesHtml(it);
   } else if (it.kind === 'video') {
@@ -430,7 +457,7 @@ function _bdItemEl(it) {
     const pts = c.points || [];
     el.innerHTML =
       '<svg width="100%" height="100%" viewBox="0 0 ' + Math.max(1, it.w) + ' ' + Math.max(1, it.h) + '" style="overflow:visible;display:block">' +
-      '<path d="' + _bdPathD(pts) + '" fill="none" stroke="' + (BD_PEN_COLORS[c.color] || BD_PEN_COLORS.ink) + '" stroke-width="' + (c.width || 3) + '" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '<path d="' + _bdPathD(pts) + '" fill="none" stroke="' + (BD_PEN_COLORS[c.color] || BD_PEN_COLORS.ink) + '" stroke-width="' + _bdNum(c.width, 3, 1, 40) + '" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
       _bdHandlesHtml(it);
   }
   return el;
@@ -452,11 +479,11 @@ function _bdCaptionHtml(caption) {
 }
 
 function _bdVideoInnerHtml(itemId, c) {
-  if (c.provider === 'youtube') {
-    return '<div class="bd-video-thumb" data-item="' + itemId + '"><img src="https://i.ytimg.com/vi/' + c.vid + '/hqdefault.jpg" draggable="false" alt=""><div class="bd-play">▶</div></div>';
+  if (c.provider === 'youtube' && _bdValidVid(c)) {
+    return '<div class="bd-video-thumb" data-item="' + _esc(itemId) + '"><img src="https://i.ytimg.com/vi/' + _esc(c.vid) + '/hqdefault.jpg" draggable="false" alt=""><div class="bd-play">▶</div></div>';
   }
-  if (c.provider === 'vimeo') {
-    return '<div class="bd-video-thumb bd-video-dark" data-item="' + itemId + '"><div class="bd-play">▶</div><span class="bd-video-domain">vimeo</span></div>';
+  if (c.provider === 'vimeo' && _bdValidVid(c)) {
+    return '<div class="bd-video-thumb bd-video-dark" data-item="' + _esc(itemId) + '"><div class="bd-play">▶</div><span class="bd-video-domain">vimeo</span></div>';
   }
   let domain = '';
   try { domain = new URL(c.url).hostname.replace('www.', ''); } catch (e) { domain = c.url; }
@@ -471,7 +498,9 @@ function _bdRefreshItem(id) {
 }
 
 function _bdPathD(pts) {
-  if (!pts || pts.length < 2) return '';
+  pts = Array.isArray(pts) ? pts.map(function(p) { return [Number(p && p[0]), Number(p && p[1])]; })
+    .filter(function(p) { return isFinite(p[0]) && isFinite(p[1]); }) : [];
+  if (pts.length < 2) return '';
   if (pts.length < 3) return 'M' + pts[0][0] + ' ' + pts[0][1] + ' L' + pts[1][0] + ' ' + pts[1][1];
   let d = 'M' + pts[0][0] + ' ' + pts[0][1];
   for (let i = 1; i < pts.length - 1; i++) {
@@ -715,18 +744,39 @@ function _bdSetSaveState(state) {
   }
 }
 
-function _bdQueueItemSave(id, updates) {
+function _bdQueueItemSave(id, updates, isRetry) {
   const pending = _bdPendingSaves[id] || { updates: {} };
   Object.assign(pending.updates, updates);
+  if (isRetry) pending.retried = true;
   clearTimeout(pending.timer);
   pending.timer = setTimeout(async function() {
     delete _bdPendingSaves[id];
     _bdSetSaveState('saving');
     const ok = await sbUpdateBoardItem(id, pending.updates);
-    if (ok) _bdSetSaveState('saved');
+    if (ok) { _bdSetSaveState('saved'); return; }
+    // One retry after a pause (flaky mobile networks); the toast already fired
+    if (!pending.retried) setTimeout(function() { _bdQueueItemSave(id, pending.updates, true); }, 3000);
   }, 500);
   _bdPendingSaves[id] = pending;
 }
+
+// Fire every debounced save now: navigation, tab hidden, page unload.
+function _bdFlushPendingSaves() {
+  Object.keys(_bdPendingSaves).forEach(function(id) {
+    const pending = _bdPendingSaves[id];
+    clearTimeout(pending.timer);
+    delete _bdPendingSaves[id];
+    sbUpdateBoardItem(id, pending.updates);
+  });
+  if (_bdViewSaveTimer) {
+    clearTimeout(_bdViewSaveTimer); _bdViewSaveTimer = null;
+    if (_bdBoard && !_bdSharedToken && (_bdBoard.view_x !== _bdView.x || _bdBoard.view_y !== _bdView.y || _bdBoard.view_zoom !== _bdView.z)) {
+      _bdBoard.view_x = _bdView.x; _bdBoard.view_y = _bdView.y; _bdBoard.view_zoom = _bdView.z;
+      sbUpdateBoard(_bdBoard.id, { view_x: _bdView.x, view_y: _bdView.y, view_zoom: _bdView.z }, true);
+    }
+  }
+}
+document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _bdFlushPendingSaves(); });
 
 /* ---- EDITOR: ITEM CREATION ---- */
 
@@ -824,6 +874,7 @@ function _bdPrepareImage(file) {
 }
 
 function _bdParseVideoUrl(url) {
+  if (!_bdSafeUrl(url)) return null;
   const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/);
   if (yt) return { url: url, provider: 'youtube', vid: yt[1], caption: '' };
   const vm = url.match(/vimeo\.com\/(\d+)/);
@@ -832,7 +883,8 @@ function _bdParseVideoUrl(url) {
 }
 
 async function _bdAddVideoAt(url, bx, by) {
-  const content = _bdParseVideoUrl(url.trim());
+  const content = _bdParseVideoUrl(String(url || '').trim());
+  if (!content) { _showSaveError('Paste a link that starts with http:// or https://'); return; }
   const w = content.provider === 'link' ? 260 : 340;
   const h = content.provider === 'link' ? 64 : Math.round(340 * 9 / 16);
   const row = await _bdCreateItem('video', bx - w / 2, by - h / 2, w, h, content);
@@ -1243,7 +1295,7 @@ function _bdBindEditor() {
     if (openLink) {
       const id = openLink.closest('.bd-item').dataset.id;
       const it = _bdItems.find(i => i.id === id);
-      if (it && it.content.url) window.open(it.content.url, '_blank', 'noopener');
+      if (it && _bdSafeUrl(it.content.url)) window.open(it.content.url, '_blank', 'noopener');
       return;
     }
     const thumb = e.target.closest('.bd-video-thumb');
@@ -1251,10 +1303,9 @@ function _bdBindEditor() {
       const id = thumb.dataset.item;
       const it = _bdItems.find(i => i.id === id);
       if (!it) return;
-      const src = it.content.provider === 'youtube'
-        ? 'https://www.youtube.com/embed/' + it.content.vid + '?autoplay=1'
-        : 'https://player.vimeo.com/video/' + it.content.vid + '?autoplay=1';
-      thumb.outerHTML = '<iframe src="' + src + '" frameborder="0" allow="autoplay; fullscreen" allowfullscreen style="width:100%;height:100%;display:block"></iframe>';
+      const src = _bdEmbedSrc(it.content);
+      if (!src) return;
+      thumb.outerHTML = '<iframe src="' + _esc(src) + '" frameborder="0" allow="autoplay; fullscreen" allowfullscreen style="width:100%;height:100%;display:block"></iframe>';
     }
     const linkCard = e.target.closest('.bd-link-card');
     if (linkCard && _bdTool === 'select') {
@@ -1312,7 +1363,7 @@ function _bdBindEditor() {
         if (sharePop) sharePop.style.display = 'none';
       }
     });
-    window.addEventListener('beforeunload', function() { _bdFlushOrphans(); });
+    window.addEventListener('beforeunload', function() { _bdFlushPendingSaves(); _bdFlushOrphans(); });
     document.addEventListener('paste', async function(e) {
       if (!_bdEditorActive() || _bdReadOnly) return;
       if (e.target.isContentEditable || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
@@ -1335,6 +1386,7 @@ function _bdBindEditor() {
    downloaded with the anon key under the shared-board storage policy. */
 
 async function renderSharedBoard(token, mode) {
+  _bdFlushPendingSaves();
   const loadToken = ++_bdLoadToken;
   const cleanToken = String(token).split('?')[0].split('&')[0].trim();
   _bdReadOnly = true;
@@ -1451,17 +1503,16 @@ function _bdBindShared() {
     if (thumb) {
       const it = _bdItems.find(i => i.id === thumb.dataset.item);
       if (!it) return;
-      const src = it.content.provider === 'youtube'
-        ? 'https://www.youtube.com/embed/' + it.content.vid + '?autoplay=1'
-        : 'https://player.vimeo.com/video/' + it.content.vid + '?autoplay=1';
-      thumb.outerHTML = '<iframe src="' + src + '" frameborder="0" allow="autoplay; fullscreen" allowfullscreen style="width:100%;height:100%;display:block"></iframe>';
+      const src = _bdEmbedSrc(it.content);
+      if (!src) return;
+      thumb.outerHTML = '<iframe src="' + _esc(src) + '" frameborder="0" allow="autoplay; fullscreen" allowfullscreen style="width:100%;height:100%;display:block"></iframe>';
       return;
     }
     const linkCard = e.target.closest('.bd-link-card');
     if (linkCard) {
       const itemEl = linkCard.closest('.bd-item');
       const it = itemEl && _bdItems.find(i => i.id === itemEl.dataset.id);
-      if (it && it.content.url) window.open(it.content.url, '_blank', 'noopener');
+      if (it && _bdSafeUrl(it.content.url)) window.open(it.content.url, '_blank', 'noopener');
     }
   });
 }

@@ -68,7 +68,7 @@ function invTermDueDate(dateStr, terms) {
   const d = new Date(dateStr + 'T00:00:00');
   if (isNaN(d)) return '';
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return _localISODate(d);
 }
 
 /* ---- AMOUNT MATH ---- */
@@ -98,7 +98,7 @@ function invBalance(inv) {
 }
 
 function invIsOverdue(inv) {
-  return inv.status === 'sent' && inv.dueDate && inv.dueDate < todayISO();
+  return inv.status === 'sent' && inv.dueDate && inv.dueDate < _localISODate();
 }
 
 function invDisplayStatus(inv) {
@@ -429,7 +429,7 @@ function invDuplicate(sbId) {
   _inv._sbId = null;
   const client = CLIENTS.find(c => c._sbId === _inv.clientId) || null;
   _inv.invoiceNumber = nextInvoiceNumber(client);
-  _inv.date = todayISO();
+  _inv.date = _localISODate();
   _inv.dueDate = INV_TERM_DAYS[_inv.paymentTerms] ? invTermDueDate(_inv.date, _inv.paymentTerms) : '';
   _inv.status = 'draft';
   _inv.amountPaid = 0;
@@ -512,7 +512,7 @@ function invExportCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'arkives-invoices-' + todayISO() + '.csv';
+  a.download = 'arkives-invoices-' + _localISODate() + '.csv';
   a.click();
   URL.revokeObjectURL(url);
   _showSaveSuccess();
@@ -527,7 +527,7 @@ function invNew() {
     _sbId: null, clientId: null,
     invoiceNumber: nextInvoiceNumber(null),
     billToName: '', billToAddress: '',
-    date: todayISO(), paymentTerms: 'none', dueDate: '',
+    date: _localISODate(), paymentTerms: 'none', dueDate: '',
     lineItems: [{ type: 'flat', desc: '', qty: 1, rate: 0, fee: 0 }],
     tax: 0, amountPaid: 0, notes: '', includePaymentInfo: true,
     status: 'draft'
@@ -827,7 +827,7 @@ async function invSave() {
     line_items: inv.lineItems,
     amount: invTotal(inv),
     amount_paid: Number(inv.amountPaid) || 0,
-    date: inv.date || todayISO(),
+    date: inv.date || _localISODate(),
     due_date: inv.dueDate || null,
     status: inv.status || 'draft',
     description: summary,

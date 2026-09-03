@@ -1,0 +1,14 @@
+{
+  "name": "Arkives",
+  "short_name": "Arkives",
+  "description": "Creator partnership CRM",
+  "start_url": "/#dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F5F1ED",
+  "theme_color": "#F5F1ED",
+  "icons": [
+    { "src": "logo-black.png", "sizes": "any", "type": "image/png", "purpose": "any" },
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -56,10 +56,11 @@ async function saveContractDefaults() {
     if (el2) CONTRACT_DEFAULTS[k2] = Number(el2.value) || 0;
   }
   try {
-    await _sb.from('user_settings').upsert({
+    var res = await _sb.from('user_settings').upsert({
       user_id: CREATOR._sbId, key: 'contract_defaults',
       value: JSON.stringify(CONTRACT_DEFAULTS)
     }, { onConflict: 'user_id,key' });
+    if (res.error) throw res.error;
     showToast('Contract defaults saved');
   } catch(e) {
     console.error('saveContractDefaults:', e);
@@ -106,7 +107,7 @@ function renderContracts() {
 
   // Build deal options for pre-fill dropdown
   const dealOpts = (typeof DEALS !== 'undefined' && DEALS.length)
-    ? DEALS.map((d, i) => `<option value="${i}">${d.brand || 'Untitled'} — ${d.campaign || d.scope || 'No campaign'}</option>`).join('')
+    ? DEALS.map((d, i) => `<option value="${i}">${_esc(d.brand || 'Untitled')} — ${_esc(d.campaign || d.scope || 'No campaign')}</option>`).join('')
     : '';
 
   const platformCheckboxes = ['Instagram', 'TikTok', 'YouTube', 'X (Twitter)', 'LinkedIn'].map(p =>
@@ -397,7 +398,6 @@ function renderContracts() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             Generate Contract
           </button>
-          <button class="btn btn-secondary" onclick="generateNegotiationNotes()">AI Negotiation Notes</button>
         </div>
       </div>
 
@@ -1038,34 +1038,3 @@ function downloadContractPDF() {
   showToast('PDF downloaded');
 }
 
-/* ---- CONTRACT: AI Negotiation Notes ---- */
-async function generateNegotiationNotes() {
-  const brand = document.getElementById("cBrandShort")?.value || document.getElementById("cBrandName")?.value;
-  const amount = document.getElementById("cAmount")?.value;
-  const deliverable = document.getElementById("cDeliverable")?.value;
-
-  if (!brand) { showToast("Enter a brand name first"); return; }
-
-  const previewEl = document.getElementById("contractPreviewContent");
-  previewEl.innerHTML = '<div class="loading-pulse">Generating negotiation notes...</div>';
-
-  try {
-    const res = await fetch((typeof API_BASE !== 'undefined' ? API_BASE : '') + '/api/generate-content', {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content_type: "negotiation",
-        topic: brand + ' partnership — ' + deliverable + ' at $' + amount,
-        context: 'Brand: ' + brand + ', Deliverable: ' + deliverable + ', Current quote: $' + amount + '. Generate negotiation talking points, value justification, and counter-offer strategies.'
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      previewEl.innerHTML = '<div class="contract-document" style="padding:24px"><div class="contract-section-body">' + data.data.content.replace(/\n/g, '<br>') + '</div></div>';
-    } else {
-      previewEl.innerHTML = '<p class="text-error">Failed: ' + data.error + '</p>';
-    }
-  } catch (e) {
-    previewEl.innerHTML = '<p class="text-error">Error: ' + e.message + '</p>';
-  }
-}

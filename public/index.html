@@ -4,7 +4,26 @@
 
 
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<script>
+  // Theme before first paint: the saved choice, else the OS preference.
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('arkives-theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') {
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<meta name="theme-color" content="#F5F1ED" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141311" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Arkives">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="logo-black.png">
 <title>Arkives — Creator Partnership CRM</title>
 <meta name="description" content="Arkives — Creator partnership CRM for managing brand deals, invoicing, analytics, and content planning.">
 <meta name="author" content="Arkives">
@@ -13,9 +32,10 @@
 <link rel="preconnect" href="https://api.fontshare.com">
 <link href="https://api.fontshare.com/v2/css?f[]=general-sans@400,500,600,700&f[]=instrument-serif@400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<!-- Pinned + integrity-checked. Bump deliberately: update the version AND the hash together. -->
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk" crossorigin="anonymous"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.114.0/dist/umd/supabase.js" integrity="sha384-UxmVkfpcoSCBn4QrHwxxZVlCbloMpP/2Ay2ByWcNy6TcMxC3JUgqa8Geipyl0tP7" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -50,7 +70,33 @@
         </div>
         <div id="loginError" class="auth-error" style="display:none"></div>
         <button type="submit" class="auth-btn" id="loginBtn">Sign In</button>
+        <p class="auth-switch"><a href="#" onclick="showForgot(event)">Forgot password?</a></p>
         <p class="auth-switch">Don't have an account? <a href="#" onclick="showSignUp(event)">Sign Up</a></p>
+      </form>
+
+      <!-- Forgot password (hidden) -->
+      <form id="forgotForm" class="auth-form" style="display:none" onsubmit="handleForgot(event)">
+        <div class="auth-field">
+          <label for="forgotEmail">Email</label>
+          <input type="email" id="forgotEmail" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div id="forgotError" class="auth-error" style="display:none"></div>
+        <button type="submit" class="auth-btn" id="forgotBtn">Send reset link</button>
+        <p class="auth-switch"><a href="#" onclick="showLogin(event)">Back to Sign In</a></p>
+      </form>
+
+      <!-- New password after a reset link (hidden) -->
+      <form id="recoveryForm" class="auth-form" style="display:none" onsubmit="handleSetPassword(event)">
+        <div class="auth-field">
+          <label for="recoveryPassword">New password</label>
+          <input type="password" id="recoveryPassword" placeholder="Min 6 characters" required autocomplete="new-password" minlength="6">
+        </div>
+        <div class="auth-field">
+          <label for="recoveryConfirm">Confirm new password</label>
+          <input type="password" id="recoveryConfirm" placeholder="Confirm password" required autocomplete="new-password" minlength="6">
+        </div>
+        <div id="recoveryError" class="auth-error" style="display:none"></div>
+        <button type="submit" class="auth-btn" id="recoveryBtn">Set new password</button>
       </form>
 
       <!-- Sign Up Form (hidden) -->
@@ -76,7 +122,7 @@
       <div id="authConfirmMsg" class="auth-confirm" style="display:none">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#2A6B5A" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         <h3>Check your email</h3>
-        <p>We sent a confirmation link. Click it to activate your account, then come back here to sign in.</p>
+        <p id="authConfirmText">We sent a confirmation link. Click it to activate your account, then come back here to sign in.</p>
         <a href="#" onclick="showLogin(event)" class="auth-back-link">Back to Sign In</a>
       </div>
     </div>
@@ -227,11 +273,11 @@
   </main>
 </div>
 
-<script src="app.js"></script>
-<script src="invoices.js"></script>
-<script src="outreach.js"></script>
-<script src="boards.js"></script>
-<script src="toolkit-views.js"></script>
+<script defer src="app.js"></script>
+<script defer src="invoices.js"></script>
+<script defer src="outreach.js"></script>
+<script defer src="boards.js"></script>
+<script defer src="toolkit-views.js"></script>
 
 </body>
 </html>

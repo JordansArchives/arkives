@@ -3,8 +3,6 @@
    App Logic, Data, Routing, Charts
    =========================================== */
 
-const API_BASE = "__PORT_8000__";
-
 /* ---- DATA ---- */
 let CREATOR = {
   name: "", brand: "", entity: "", email: "", niche: "",
@@ -61,13 +59,6 @@ function formatCurrency(num, allowZero) {
   return "$" + num.toLocaleString("en-US");
 }
 
-function daysSince(dateStr) {
-  if (!dateStr) return 999;
-  const d = new Date(dateStr);
-  const now = new Date();
-  return Math.floor((now - d) / (1000 * 60 * 60 * 24));
-}
-
 function todayStr() {
   const d = new Date();
   return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
@@ -103,12 +94,6 @@ function todayISO() {
   return d.toISOString().split("T")[0];
 }
 
-function daysClass(days) {
-  if (days <= 3) return "recent";
-  if (days >= 7) return "overdue";
-  return "";
-}
-
 let DEALS = [];
 
 
@@ -137,7 +122,6 @@ try {
         detectSessionInUrl: true
       }
     });
-    console.log('Supabase client created successfully');
   } else {
     console.error('Supabase library not loaded. typeof supabase:', typeof supabase);
   }
@@ -148,6 +132,26 @@ try {
 
 /* ---- AUTH STATE ---- */
 let _authUser = null;
+let _booted = false;             // hashchange is ignored until init has run once
+let _rerenderWhenLoaded = false; // set when the boot fetch outlived its grace period
+
+/* ---- AUTH EVENTS ---- */
+// PASSWORD_RECOVERY: the user arrived from a reset-password email; show
+// the new-password form. SIGNED_OUT: the session was revoked, expired, or
+// its refresh failed; go back to the login screen instead of leaving a
+// dead app where every save fails.
+if (_sb) {
+  _sb.auth.onAuthStateChange(function(event, session) {
+    if (event === 'PASSWORD_RECOVERY') {
+      _authUser = session ? session.user : null;
+      showAuthScreen();
+      showRecovery();
+    } else if (event === 'SIGNED_OUT') {
+      var appEl = document.getElementById('appShell');
+      if (appEl && appEl.style.display !== 'none') { resetAllState(); showAuthScreen(); }
+    }
+  });
+}
 
 async function checkSession() {
   if (!_sb) return null;
@@ -176,22 +180,81 @@ function showApp() {
   if (appEl) appEl.style.display = '';
 }
 
-function showLogin(e) {
-  if (e) e.preventDefault();
-  document.getElementById('loginForm').style.display = '';
-  document.getElementById('signupForm').style.display = 'none';
-  document.getElementById('authConfirmMsg').style.display = 'none';
-  document.getElementById('loginError').style.display = 'none';
-  document.getElementById('signupError').style.display = 'none';
+// One auth panel visible at a time: login, signup, forgot, recovery, or
+// the "check your email" confirmation.
+function _authShow(id) {
+  ['loginForm', 'signupForm', 'forgotForm', 'recoveryForm', 'authConfirmMsg'].forEach(function(p) {
+    var el = document.getElementById(p);
+    if (el) el.style.display = (p === id) ? '' : 'none';
+  });
+  ['loginError', 'signupError', 'forgotError', 'recoveryError'].forEach(function(p) {
+    var el = document.getElementById(p);
+    if (el) el.style.display = 'none';
+  });
+}
+function showLogin(e) { if (e) e.preventDefault(); _authShow('loginForm'); }
+function showSignUp(e) { if (e) e.preventDefault(); _authShow('signupForm'); }
+function showForgot(e) { if (e) e.preventDefault(); _authShow('forgotForm'); }
+function showRecovery() { _authShow('recoveryForm'); }
+function _authConfirm(text) {
+  _authShow('authConfirmMsg');
+  var msg = document.getElementById('authConfirmText');
+  if (msg) msg.textContent = text;
 }
 
-function showSignUp(e) {
-  if (e) e.preventDefault();
-  document.getElementById('loginForm').style.display = 'none';
-  document.getElementById('signupForm').style.display = '';
-  document.getElementById('authConfirmMsg').style.display = 'none';
-  document.getElementById('loginError').style.display = 'none';
-  document.getElementById('signupError').style.display = 'none';
+async function handleForgot(e) {
+  e.preventDefault();
+  var email = document.getElementById('forgotEmail').value.trim();
+  var errEl = document.getElementById('forgotError');
+  var btn = document.getElementById('forgotBtn');
+  errEl.style.display = 'none';
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  try {
+    var res = await _sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+    if (res.error) {
+      errEl.textContent = res.error.message || 'Could not send the reset email';
+      errEl.style.display = 'block';
+    } else {
+      _authConfirm('We sent a password reset link. Open it on this device to choose a new password.');
+    }
+  } catch (err) {
+    errEl.textContent = 'Connection error. Please try again.';
+    errEl.style.display = 'block';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Send reset link';
+}
+
+async function handleSetPassword(e) {
+  e.preventDefault();
+  var pw = document.getElementById('recoveryPassword').value;
+  var confirmPw = document.getElementById('recoveryConfirm').value;
+  var errEl = document.getElementById('recoveryError');
+  var btn = document.getElementById('recoveryBtn');
+  errEl.style.display = 'none';
+  if (pw !== confirmPw) { errEl.textContent = 'Passwords do not match'; errEl.style.display = 'block'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  try {
+    var res = await _sb.auth.updateUser({ password: pw });
+    if (res.error) {
+      errEl.textContent = res.error.message || 'Could not update the password';
+      errEl.style.display = 'block';
+    } else {
+      _authUser = (res.data && res.data.user) || _authUser;
+      updateSidebarUser();
+      showApp();
+      if (!CREATOR._sbId) await sbFetchAllData();
+      navigate(getHash());
+      _showSaveSuccess();
+    }
+  } catch (err) {
+    errEl.textContent = 'Connection error. Please try again.';
+    errEl.style.display = 'block';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Set new password';
 }
 
 async function handleLogin(e) {
@@ -252,8 +315,7 @@ async function handleSignUp(e) {
     }
     // If email confirmation is required
     if (data.user && !data.session) {
-      document.getElementById('signupForm').style.display = 'none';
-      document.getElementById('authConfirmMsg').style.display = 'block';
+      _authConfirm('We sent a confirmation link. Click it to activate your account, then come back here to sign in.');
     } else if (data.session) {
       // Auto-confirmed — go directly to app
       _authUser = data.user;
@@ -272,18 +334,42 @@ async function handleSignUp(e) {
 
 async function handleLogout() {
   if (!_sb) return;
-  await _sb.auth.signOut();
+  try { await _sb.auth.signOut(); } catch (e) { console.error('signOut:', e); }
+  resetAllState();
+  showAuthScreen();
+}
+
+// Everything a logged-in session put in memory or in the DOM goes here, so
+// a second account on the same device never sees the first one's data.
+function resetAllState() {
   _authUser = null;
-  // Reset data
+  CREATOR = {
+    name: "", brand: "", entity: "", email: "", niche: "",
+    platforms: {
+      instagram: { handle: "", followers: "0", followersNum: 0, engagement: "0%", tier: "", posts: 0, verified: false },
+      tiktok: { handle: "", followers: "0", followersNum: 0, likes: "0" },
+      youtube: { handle: "", followers: "0", followersNum: 0, videos: 0 },
+      twitter: { handle: "", followers: "0", followersNum: 0, status: "new" },
+      linkedin: { handle: "", followers: "0", followersNum: 0, connections: 0 }
+    }
+  };
+  RATE_CARD = { organic: [], ugc: [], tiktok: [], youtube: [], addOns: [], bundles: [], minimumRate: 0, pricingRule: "" };
+  AUDIENCE_DATA.topAge = ''; AUDIENCE_DATA.ageRange = '';
+  AUDIENCE_DATA.gender = { male: 0, female: 0 };
+  AUDIENCE_DATA.topCountries = []; AUDIENCE_DATA.topCities = {}; AUDIENCE_DATA.interests = [];
   DEALS = []; INBOX_ITEMS = []; CALENDAR_EVENTS = []; INVOICE_DATA = [];
-  MONTHLY_REVENUE = []; CAMPAIGN_RESULTS = []; OUTREACH_TEMPLATES = {};
+  MONTHLY_REVENUE = []; CAMPAIGN_RESULTS = [];
   TASKS = []; _tasksTableMissing = false;
   _taskComposerOpen = false; _tasksCompletedOpen = false; _editingTaskId = null;
   CLIENTS = []; _invoicingMigrationMissing = false;
   OUTREACH_TARGETS = []; OUTREACH_LISTS = []; _outreachMigrationMissing = false;
+  _scriptsCache = []; _currentScriptId = null; _currentScriptRow = null; _currentScenes = [];
+  _sharedScriptToken = null; _sceneDirty = {}; _titleDirty = null;
+  if (typeof BOARDS !== 'undefined') { BOARDS = []; _bdBoard = null; _bdItems = []; _bdSignedUrls = {}; }
   if (typeof resetInvoiceViewState === 'function') resetInvoiceViewState();
   if (typeof resetOutreachViewState === 'function') resetOutreachViewState();
-  showAuthScreen();
+  document.querySelectorAll('.view').forEach(function(v) { v.innerHTML = ''; });
+  updateSidebarUser();
 }
 
 function updateSidebarUser() {
@@ -321,6 +407,7 @@ function _showSaveError(msg) {
     document.body.appendChild(el);
   }
   el.textContent = msg;
+  el.style.background = '#C73539';
   el.style.opacity = '1';
   clearTimeout(el._timer);
   el._timer = setTimeout(function() { el.style.opacity = '0'; }, 4000);
@@ -370,14 +457,10 @@ async function sbFetchAllData() {
   }
 
   try {
-    // Show loading state
-    const loadingEl = document.getElementById('sb-loading-overlay');
-    if (loadingEl) loadingEl.style.display = 'flex';
-
-    // Fetch profile — strictly by auth_user_id; create a fresh one if missing.
-    // Never claim an existing unlinked profile: that allowed a new signup to
-    // inherit another tenant's account.
-    var profileRes;
+    // Profile first: everything else is scoped by its id. Strictly by
+    // auth_user_id, create a fresh one if missing. Never claim an existing
+    // unlinked profile: that once let a new signup inherit another tenant.
+    var profileRes = { data: null };
     if (_authUser && _authUser.id) {
       profileRes = await _sb.from('profiles').select('*').eq('auth_user_id', _authUser.id).limit(1).maybeSingle();
       if (!profileRes.data) {
@@ -393,67 +476,80 @@ async function sbFetchAllData() {
         }
         profileRes = { data: newProfile.data };
       }
-    } else {
-      // No authenticated user: nothing to load (RLS blocks all reads anyway)
-      profileRes = { data: null };
     }
-    if (profileRes.data) {
-      CREATOR.name = profileRes.data.name || '';
-      CREATOR.brand = profileRes.data.brand || '';
-      CREATOR.entity = profileRes.data.entity || '';
-      CREATOR.email = profileRes.data.email || '';
-      CREATOR.niche = profileRes.data.niche || '';
-      // Media-kit copy (migration 013) — undefined pre-migration, defaults cover it
-      CREATOR.mkAlignYes = Array.isArray(profileRes.data.mk_align_yes) ? profileRes.data.mk_align_yes : [];
-      CREATOR.mkAlignNo = Array.isArray(profileRes.data.mk_align_no) ? profileRes.data.mk_align_no : [];
-      CREATOR.mkInterests = Array.isArray(profileRes.data.mk_interests) ? profileRes.data.mk_interests : [];
-      CREATOR.mkContactEmail = profileRes.data.mk_contact_email || '';
-      // Invoicing fields (migration 011) — undefined pre-migration, defaults cover it
-      CREATOR.businessAddress = profileRes.data.business_address || '';
-      CREATOR.bankName = profileRes.data.bank_name || '';
-      CREATOR.bankAccountHolder = profileRes.data.bank_account_holder || '';
-      CREATOR.bankAccountNumber = profileRes.data.bank_account_number || '';
-      CREATOR.bankRoutingNumber = profileRes.data.bank_routing_number || '';
-      CREATOR.bankAccountType = profileRes.data.bank_account_type || '';
-      CREATOR.invoiceNumbering = profileRes.data.invoice_numbering || 'per_client';
-      CREATOR.invoicePrefix = profileRes.data.invoice_prefix || 'INV';
-      // Document template (migration 015) — undefined pre-migration, defaults to classic
-      CREATOR.invoiceTemplate = profileRes.data.invoice_template || 'classic';
-      CREATOR._sbId = profileRes.data.id;
-    }
+    if (!profileRes.data) return;
 
-    // Fetch platforms
-    const platRes = await _sb.from('platforms').select('*').eq('user_id', CREATOR._sbId);
+    const p = profileRes.data;
+    CREATOR.name = p.name || '';
+    CREATOR.brand = p.brand || '';
+    CREATOR.entity = p.entity || '';
+    CREATOR.email = p.email || '';
+    CREATOR.niche = p.niche || '';
+    // Media-kit copy (migration 013) — undefined pre-migration, defaults cover it
+    CREATOR.mkAlignYes = Array.isArray(p.mk_align_yes) ? p.mk_align_yes : [];
+    CREATOR.mkAlignNo = Array.isArray(p.mk_align_no) ? p.mk_align_no : [];
+    CREATOR.mkInterests = Array.isArray(p.mk_interests) ? p.mk_interests : [];
+    CREATOR.mkContactEmail = p.mk_contact_email || '';
+    // Invoicing fields (migration 011) — undefined pre-migration, defaults cover it
+    CREATOR.businessAddress = p.business_address || '';
+    CREATOR.bankName = p.bank_name || '';
+    CREATOR.bankAccountHolder = p.bank_account_holder || '';
+    CREATOR.bankAccountNumber = p.bank_account_number || '';
+    CREATOR.bankRoutingNumber = p.bank_routing_number || '';
+    CREATOR.bankAccountType = p.bank_account_type || '';
+    CREATOR.invoiceNumbering = p.invoice_numbering || 'per_client';
+    CREATOR.invoicePrefix = p.invoice_prefix || 'INV';
+    // Document template (migration 015) — undefined pre-migration, defaults to classic
+    CREATOR.invoiceTemplate = p.invoice_template || 'classic';
+    CREATOR._sbId = p.id;
+    const uid = CREATOR._sbId;
+
+    // Everything else in one round trip. Boards and Scripts load their
+    // own data when their tab opens; nothing here is needed by them.
+    const own = (table) => _sb.from(table).select('*').eq('user_id', uid);
+    const [platRes, rcsRes, rcRes, dealsRes, crRes, ceRes, mrRes, adRes, ibRes, tkRes, clRes, orlRes, invRes] = await Promise.all([
+      own('platforms'),
+      own('rate_card_settings').limit(1).maybeSingle(),
+      own('rate_cards').order('sort_order'),
+      own('deals').order('sort_order'),
+      own('campaign_results'),
+      own('calendar_events').order('date'),
+      own('monthly_revenue').order('year').order('created_at'),
+      own('audience_data'),
+      _sb.from('inbox_items').select('id, brand, from_name, from_email, subject, date, time, preview, status, suggested_action').eq('user_id', uid).order('created_at', { ascending: false }),
+      own('tasks').order('created_at', { ascending: false }),
+      own('clients').order('name'),
+      own('outreach_lists').order('sort_order'),
+      own('invoices').order('date', { ascending: false })
+    ]);
+
+    // Platforms
     if (platRes.data) {
-      platRes.data.forEach(p => {
-        const key = p.platform;
+      platRes.data.forEach(pl => {
+        const key = pl.platform;
         if (CREATOR.platforms[key]) {
-          CREATOR.platforms[key].handle = p.handle || '';
-          CREATOR.platforms[key].followers = p.followers_display || String(p.followers);
-          CREATOR.platforms[key].followersNum = p.followers || 0;
-          CREATOR.platforms[key].engagement = p.engagement_rate ? p.engagement_rate + '%' : '0%';
-          CREATOR.platforms[key].tier = p.tier || '';
-          CREATOR.platforms[key].posts = p.posts || 0;
-          CREATOR.platforms[key].likes = p.likes || '0';
-          CREATOR.platforms[key].videos = p.videos || 0;
-          CREATOR.platforms[key].connections = p.connections || 0;
-          CREATOR.platforms[key].verified = p.verified || false;
-          CREATOR.platforms[key].status = p.status || '';
-          CREATOR.platforms[key].profileUrl = p.profile_url || '';
-          CREATOR.platforms[key]._sbId = p.id;
+          CREATOR.platforms[key].handle = pl.handle || '';
+          CREATOR.platforms[key].followers = pl.followers_display || String(pl.followers);
+          CREATOR.platforms[key].followersNum = pl.followers || 0;
+          CREATOR.platforms[key].engagement = pl.engagement_rate ? pl.engagement_rate + '%' : '0%';
+          CREATOR.platforms[key].tier = pl.tier || '';
+          CREATOR.platforms[key].posts = pl.posts || 0;
+          CREATOR.platforms[key].likes = pl.likes || '0';
+          CREATOR.platforms[key].videos = pl.videos || 0;
+          CREATOR.platforms[key].connections = pl.connections || 0;
+          CREATOR.platforms[key].verified = pl.verified || false;
+          CREATOR.platforms[key].status = pl.status || '';
+          CREATOR.platforms[key].profileUrl = pl.profile_url || '';
+          CREATOR.platforms[key]._sbId = pl.id;
         }
       });
     }
 
-    // Fetch rate card settings
-    const rcsRes = await _sb.from('rate_card_settings').select('*').eq('user_id', CREATOR._sbId).limit(1).single();
+    // Rate card settings + rows
     if (rcsRes.data) {
       RATE_CARD.minimumRate = rcsRes.data.minimum_rate || 0;
       RATE_CARD.pricingRule = rcsRes.data.pricing_rule || '';
     }
-
-    // Fetch rate cards
-    const rcRes = await _sb.from('rate_cards').select('*').eq('user_id', CREATOR._sbId).order('sort_order');
     if (rcRes.data) {
       RATE_CARD.organic = []; RATE_CARD.ugc = []; RATE_CARD.tiktok = [];
       RATE_CARD.youtube = []; RATE_CARD.addOns = []; RATE_CARD.bundles = [];
@@ -463,8 +559,7 @@ async function sbFetchAllData() {
       });
     }
 
-    // Fetch deals + deal_history
-    const dealsRes = await _sb.from('deals').select('*, deal_history(*)').eq('user_id', CREATOR._sbId).order('sort_order');
+    // Deals (history is not loaded: no view reads it)
     if (dealsRes.data) {
       DEALS = dealsRes.data.map(d => ({
         _sbId: d.id,
@@ -484,15 +579,10 @@ async function sbFetchAllData() {
         invoiced: d.invoiced || 0,
         paid: d.paid || 0,
         outstanding: d.outstanding || 0,
-        negotiationHistory: (d.deal_history || [])
-          .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.created_at || '').localeCompare(b.created_at || ''))
-          .map(h => ({ date: h.date, text: h.text }))
+        negotiationHistory: []
       }));
     }
 
-
-    // Fetch campaign results
-    const crRes = await _sb.from('campaign_results').select('*').eq('user_id', CREATOR._sbId);
     if (crRes.data) {
       CAMPAIGN_RESULTS = crRes.data.map(c => ({
         _sbId: c.id, brand: c.brand || '', views: c.views || 0,
@@ -500,17 +590,6 @@ async function sbFetchAllData() {
       }));
     }
 
-    // Fetch outreach templates
-    const otRes = await _sb.from('outreach_templates').select('*').eq('user_id', CREATOR._sbId).order('sort_order');
-    if (otRes.data) {
-      OUTREACH_TEMPLATES = {};
-      otRes.data.forEach(t => {
-        OUTREACH_TEMPLATES[t.template_key] = { title: t.title, body: t.body, _sbId: t.id };
-      });
-    }
-
-    // Fetch calendar events
-    const ceRes = await _sb.from('calendar_events').select('*').eq('user_id', CREATOR._sbId).order('date');
     if (ceRes.data) {
       CALENDAR_EVENTS = ceRes.data.map(e => ({
         _sbId: e.id, date: e.date || '', brand: e.brand || '',
@@ -518,16 +597,12 @@ async function sbFetchAllData() {
       }));
     }
 
-    // Fetch monthly revenue
-    const mrRes = await _sb.from('monthly_revenue').select('*').eq('user_id', CREATOR._sbId).order('year').order('created_at');
     if (mrRes.data) {
       MONTHLY_REVENUE = mrRes.data.map(r => ({
         _sbId: r.id, month: r.month + ' ' + r.year, earned: r.amount || 0
       }));
     }
 
-    // Fetch audience data
-    const adRes = await _sb.from('audience_data').select('*').eq('user_id', CREATOR._sbId);
     if (adRes.data) {
       adRes.data.forEach(row => {
         if (row.category === 'age') {
@@ -545,7 +620,6 @@ async function sbFetchAllData() {
           AUDIENCE_DATA.topCountries = Object.entries(c).map(([name, pct]) => ({ name, pct })).sort((a, b) => b.pct - a.pct);
         }
         if (row.category === 'topCities') {
-          // Store for future use
           AUDIENCE_DATA.topCities = row.data || {};
         }
       });
@@ -555,28 +629,18 @@ async function sbFetchAllData() {
       }
     }
 
-    // Fetch inbox items
-    const ibRes = await _sb.from('inbox_items').select('*').eq('user_id', CREATOR._sbId).order('created_at', { ascending: false });
     if (ibRes.data) {
       INBOX_ITEMS = ibRes.data.map((item, idx) => ({
         _sbId: item.id, id: idx + 1, brand: item.brand || '', contact: item.from_name || '',
-        email: item.from_email || '', subject: item.subject || '', time: item.date + (item.time ? ', ' + item.time : ''),
+        email: item.from_email || '', subject: item.subject || '', time: (item.date || '') + (item.time ? ', ' + item.time : ''),
         snippet: item.preview || '', status: item.status === 'new' ? 'needs_reply' : (item.status || 'read'),
         priority: 'medium', suggestedAction: item.suggested_action || 'reply',
-        context: item.body || item.preview || ''
+        context: item.preview || ''
       }));
     }
 
-
-    // Fetch contract rules
-    const ctRes = await _sb.from('contract_rules').select('*').eq('user_id', CREATOR._sbId).order('sort_order');
-    if (ctRes.data) {
-      CONTRACT_RULES = ctRes.data.map(r => ({ _sbId: r.id, rule: r.rule }));
-    }
-
-    // Fetch tasks — table added in migration 010; tolerate a missing
-    // table so the Tasks view can show setup instructions instead of erroring
-    const tkRes = await _sb.from('tasks').select('*').eq('user_id', CREATOR._sbId).order('created_at', { ascending: false });
+    // Tasks — table added in migration 010; tolerate a missing table so the
+    // Tasks view can show setup instructions instead of erroring
     if (tkRes.error) {
       // 42P01 = Postgres undefined_table, PGRST205 = PostgREST table not in schema cache
       _tasksTableMissing = (tkRes.error.code === '42P01' || tkRes.error.code === 'PGRST205');
@@ -591,10 +655,7 @@ async function sbFetchAllData() {
       }));
     }
 
-    // Fetch clients — table added in migration 011; a missing table means
-    // the invoicing migration hasn't run, so the Invoices editor shows
-    // setup instructions instead of erroring
-    const clRes = await _sb.from('clients').select('*').eq('user_id', CREATOR._sbId).order('name');
+    // Clients — table added in migration 011
     if (clRes.error) {
       _invoicingMigrationMissing = (clRes.error.code === '42P01' || clRes.error.code === 'PGRST205');
       if (!_invoicingMigrationMissing) console.error('clients fetch error:', clRes.error);
@@ -607,10 +668,7 @@ async function sbFetchAllData() {
       }));
     }
 
-    // Fetch outreach lists + targets — tables added in migration 012; a
-    // missing table means the outreach migration hasn't run, so the
-    // Outreach tab shows setup instructions instead of erroring
-    const orlRes = await _sb.from('outreach_lists').select('*').eq('user_id', CREATOR._sbId).order('sort_order');
+    // Outreach lists + targets — tables added in migration 012
     if (orlRes.error) {
       _outreachMigrationMissing = (orlRes.error.code === '42P01' || orlRes.error.code === 'PGRST205');
       if (!_outreachMigrationMissing) console.error('outreach_lists fetch error:', orlRes.error);
@@ -622,7 +680,7 @@ async function sbFetchAllData() {
       }));
     }
     if (!_outreachMigrationMissing) {
-      const ortRes = await _sb.from('outreach_targets').select('*').eq('user_id', CREATOR._sbId).order('name');
+      const ortRes = await own('outreach_targets').order('name');
       if (ortRes.error) {
         _outreachMigrationMissing = (ortRes.error.code === '42P01' || ortRes.error.code === 'PGRST205');
         if (!_outreachMigrationMissing) console.error('outreach_targets fetch error:', ortRes.error);
@@ -634,9 +692,7 @@ async function sbFetchAllData() {
       OUTREACH_TARGETS = [];
     }
 
-    // Fetch invoices (table exists since 001; new 011 columns are simply
-    // absent pre-migration and the mapper defaults them)
-    const invRes = await _sb.from('invoices').select('*').eq('user_id', CREATOR._sbId).order('date', { ascending: false });
+    // Invoices (table exists since 001; 011 columns default in the mapper)
     if (invRes.error) {
       console.error('invoices fetch error:', invRes.error);
       INVOICE_DATA = [];
@@ -644,100 +700,15 @@ async function sbFetchAllData() {
       INVOICE_DATA = (invRes.data || []).map(_mapInvoiceRow);
     }
 
-    // Update sidebar with loaded profile data
     updateSidebarUser();
 
-    console.log('All data loaded from Supabase:', {
-      profile: CREATOR.name,
-      deals: DEALS.length,
-      inbox: INBOX_ITEMS.length,
-      invoices: (INVOICE_DATA || []).length,
-      calendar: CALENDAR_EVENTS.length,
-      rateCards: RATE_CARD.organic.length + '+' + RATE_CARD.ugc.length,
-      monthlyRev: MONTHLY_REVENUE.length
-    });
+    // The boot painted before this landed (slow network): paint again.
+    if (_rerenderWhenLoaded) { _rerenderWhenLoaded = false; navigate(getHash()); }
 
   } catch (err) {
     console.error('sbFetchAllData error:', err);
     _showSaveError('Failed to load data: ' + (err.message || 'Unknown error'));
-  } finally {
-    const loadingEl = document.getElementById('sb-loading-overlay');
-    if (loadingEl) loadingEl.style.display = 'none';
   }
-}
-
-/* ---- SUPABASE CRUD: DEALS ---- */
-async function sbAddDeal(dealData) {
-  if (!_sb || !CREATOR._sbId) return null;
-  const { data, error } = await _sb.from('deals').insert({
-    user_id: CREATOR._sbId, brand: dealData.brand, status: dealData.status || 'Lead',
-    mapped_status: mapStatus(dealData.status || 'Lead'), value: dealData.value || 0,
-    contact: dealData.contact || '', email: dealData.email || '', agency: dealData.agency || '',
-    campaign: dealData.campaign || '', scope: dealData.scope || '', deliverables: dealData.deliverables || '',
-    term: dealData.term || '', notes: dealData.notes || '', last_contact: dealData.lastContact || todayISO(),
-    contract_status: dealData.contractStatus || '', invoiced: dealData.invoiced || 0,
-    paid: dealData.paid || 0, outstanding: dealData.outstanding || 0,
-    sort_order: DEALS.length
-  }).select().single();
-  if (error) { _showSaveError('Failed to add deal'); console.error(error); return null; }
-  _showSaveSuccess();
-  return data;
-}
-
-async function sbUpdateDeal(sbId, updates) {
-  if (!_sb) return false;
-  const mapped = {};
-  if ('status' in updates) { mapped.status = updates.status; mapped.mapped_status = mapStatus(updates.status); }
-  if ('value' in updates) mapped.value = updates.value;
-  if ('contact' in updates) mapped.contact = updates.contact;
-  if ('email' in updates) mapped.email = updates.email;
-  if ('notes' in updates) mapped.notes = updates.notes;
-  if ('lastContact' in updates) mapped.last_contact = updates.lastContact;
-  if ('paid' in updates) mapped.paid = updates.paid;
-  if ('outstanding' in updates) mapped.outstanding = updates.outstanding;
-  if ('invoiced' in updates) mapped.invoiced = updates.invoiced;
-  if ('contractStatus' in updates) mapped.contract_status = updates.contractStatus;
-  if ('scope' in updates) mapped.scope = updates.scope;
-  if ('deliverables' in updates) mapped.deliverables = updates.deliverables;
-  if ('term' in updates) mapped.term = updates.term;
-  if ('agency' in updates) mapped.agency = updates.agency;
-  if ('campaign' in updates) mapped.campaign = updates.campaign;
-  if ('brand' in updates) mapped.brand = updates.brand;
-  const { error } = await _sb.from('deals').update(mapped).eq('id', sbId);
-  if (error) { _showSaveError('Failed to update deal'); console.error(error); return false; }
-  _showSaveSuccess();
-  return true;
-}
-
-async function sbAddDealHistory(dealSbId, date, text) {
-  if (!_sb) return;
-  const { error } = await _sb.from('deal_history').insert({ deal_id: dealSbId, date: date, text: text });
-  if (error) console.error('deal_history insert error:', error);
-}
-
-/* ---- SUPABASE CRUD: INBOX ---- */
-async function sbUpdateInboxStatus(sbId, status) {
-  if (!_sb) return;
-  await _sb.from('inbox_items').update({ status: status }).eq('id', sbId);
-  _showSaveSuccess();
-}
-
-/* ---- SUPABASE CRUD: CALENDAR EVENTS ---- */
-async function sbAddCalendarEvent(data) {
-  if (!_sb || !CREATOR._sbId) return null;
-  const { data: row, error } = await _sb.from('calendar_events').insert({
-    user_id: CREATOR._sbId, date: data.date, brand: data.brand || '',
-    type: data.type || '', platform: data.platform || '', status: data.status || 'draft'
-  }).select().single();
-  if (error) { _showSaveError('Failed to add event'); return null; }
-  _showSaveSuccess();
-  return row;
-}
-
-async function sbDeleteCalendarEvent(sbId) {
-  if (!_sb) return;
-  await _sb.from('calendar_events').delete().eq('id', sbId);
-  _showSaveSuccess();
 }
 
 /* ---- SUPABASE CRUD: TASKS ---- */
@@ -886,23 +857,6 @@ async function sbUpdateProfile(updates) {
   return true;
 }
 
-/* ---- SUPABASE CRUD: PLATFORM STATS ---- */
-async function sbUpdatePlatform(platformKey, updates) {
-  if (!_sb || !CREATOR.platforms[platformKey]?._sbId) return false;
-  const { error } = await _sb.from('platforms').update(updates).eq('id', CREATOR.platforms[platformKey]._sbId);
-  if (error) { _showSaveError('Failed to update platform'); return false; }
-  _showSaveSuccess();
-  return true;
-}
-
-/* ---- SUPABASE CRUD: RATE CARDS ---- */
-async function sbUpdateRateCard(sbId, updates) {
-  if (!_sb) return false;
-  const { error } = await _sb.from('rate_cards').update(updates).eq('id', sbId);
-  if (error) { _showSaveError('Failed to update rate'); return false; }
-  _showSaveSuccess();
-  return true;
-}
 
 
 function getHash() {
@@ -910,6 +864,9 @@ function getHash() {
 }
 
 function navigate(view) {
+  // Leaving an editor: land any debounced saves before the DOM is replaced
+  if (typeof _flushScriptSaves === 'function') _flushScriptSaves();
+  if (typeof _bdFlushPendingSaves === 'function') _bdFlushPendingSaves();
   /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN, bshared/TOKEN */
   if (view.startsWith('bshared/')) {
     // Public shared-board link — works logged out, sidebar hidden
@@ -993,6 +950,7 @@ function navigate(view) {
 }
 
 window.addEventListener("hashchange", function() {
+  if (!_booted) return; // init paints the first view itself
   // Only navigate if the app shell is visible (user is authenticated)
   var appEl = document.getElementById('appShell');
   if (appEl && appEl.style.display !== 'none') navigate(getHash());
@@ -1002,9 +960,12 @@ window.addEventListener("hashchange", function() {
 document.getElementById("themeToggle").addEventListener("click", () => {
   const html = document.documentElement;
   const isDark = html.getAttribute("data-theme") === "dark";
-  html.setAttribute("data-theme", isDark ? "light" : "dark");
-  // Re-render charts if on dashboard
+  var next = isDark ? "light" : "dark";
+  html.setAttribute("data-theme", next);
+  safeSet('arkives-theme', next);
+  // Charts bake theme colors in at render time
   if (getHash() === "dashboard") renderDashboard();
+  else if (getHash() === "revenue") renderRevenue();
 });
 
 /* ---- MOBILE NAV ---- */
@@ -1055,10 +1016,11 @@ function renderDashboard() {
   const totalPaid = DEALS.reduce((s, d) => s + (Number(d.paid) || 0), 0);
   const totalOutstanding = DEALS.reduce((s, d) => s + (Number(d.outstanding) || 0), 0);
   const activeDealCount = DEALS.filter(d => d.status && !["Declined", "Dead", "Lost"].includes(d.status)).length;
-  const avgValue = activeDealCount ? (DEALS.filter(d => d.value).reduce((s, d) => s + parseValue(d.value), 0) / DEALS.filter(d => d.value).length) : 0;
+  const valuedDeals = DEALS.filter(d => parseValue(d.value) > 0);
+  const avgValue = valuedDeals.length ? (valuedDeals.reduce((s, d) => s + parseValue(d.value), 0) / valuedDeals.length) : 0;
 
   // Upcoming events from CALENDAR_EVENTS
-  const today = new Date().toISOString().split('T')[0];
+  const today = _localISODate();
   const upcoming = (CALENDAR_EVENTS || [])
     .filter(e => e.date && e.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date))
@@ -1278,12 +1240,12 @@ function renderRevenue() {
               if ((d.paid || 0) >= (d.invoiced || 0) && (d.invoiced || 0) > 0) { payStatus = "Paid"; payClass = "active"; }
               else if ((d.paid || 0) > 0) { payStatus = "Partial"; payClass = "negotiating"; }
               return `<tr>
-                <td style="font-weight:600;color:var(--text-primary)">${d.brand}</td>
+                <td style="font-weight:600;color:var(--text-primary)">${_esc(d.brand)}</td>
                 <td style="font-variant-numeric:tabular-nums">${formatCurrency(d.invoiced || 0)}</td>
                 <td style="font-variant-numeric:tabular-nums;color:var(--green)">${formatCurrency(d.paid || 0)}</td>
                 <td style="font-variant-numeric:tabular-nums;color:${(d.outstanding || 0) > 0 ? "var(--accent)" : "var(--text-muted)"}">${formatCurrency(d.outstanding || 0)}</td>
                 <td><span class="badge ${payClass}">${payStatus}</span></td>
-                <td style="color:var(--text-secondary)">${d.contractStatus || "N/A"}</td>
+                <td style="color:var(--text-secondary)">${_esc(d.contractStatus || "N/A")}</td>
               </tr>`;
             }).join("")}
           </tbody>
@@ -1478,7 +1440,7 @@ function renderMediaKit() {
               <span class="mk-demo-label">Top Locations</span>
               ${AUDIENCE_DATA.topCountries.map(c => `
                 <div class="mk-country-row">
-                  <span>${c.name}</span>
+                  <span>${_esc(c.name)}</span>
                   <div class="mk-country-bar"><div class="mk-country-fill" style="width:${c.pct}%"></div></div>
                   <span class="mk-country-pct">${c.pct}%</span>
                 </div>
@@ -1507,7 +1469,7 @@ function renderMediaKit() {
           : `<div class="mk-campaigns">
           ${CAMPAIGN_RESULTS.map(c => `
             <div class="mk-campaign-card">
-              <div class="mk-campaign-brand">${c.brand}</div>
+              <div class="mk-campaign-brand">${_esc(c.brand)}</div>
               <div class="mk-campaign-stats">
                 <div class="mk-camp-stat">
                   <span class="mk-camp-value">${c.views ? (c.views >= 1000000 ? (c.views / 1000000).toFixed(1) + "M" : (c.views / 1000).toFixed(0) + "K") : "\u2014"}</span>
@@ -2165,36 +2127,21 @@ function renderEngagementChart() {
 }
 
 
-function quickBrandMatch(brand) {
-  const deal = DEALS.find(d => d.brand === brand);
-  if (!deal) return;
-  document.getElementById("bmBrand").value = deal.brand;
-  document.getElementById("bmContact").value = deal.contact || "";
-  document.getElementById("bmScope").value = deal.scope || "";
-  document.getElementById("bmBudget").value = deal.value ? "$" + deal.value.toLocaleString() : "Not mentioned";
-  document.getElementById("bmEmail").value = deal.notes || "";
-  runBrandMatch();
-}
-
-
-/* ---- INBOX / DRAFT QUEUE ---- */
+/* ---- INBOX ---- */
 let INBOX_ITEMS = [];
-
-let draftQueue = [];
 
 function renderInbox() {
   const container = document.getElementById("view-inbox");
   const needsReply = INBOX_ITEMS.filter(i => i.status === "needs_reply").length;
   const needsAction = INBOX_ITEMS.filter(i => i.status === "needs_action").length;
+  const priorityColors = { urgent: "var(--error)", high: "var(--accent)", medium: "var(--teal)", low: "var(--text-muted)" };
+  const statusLabels = { needs_reply: "Reply Needed", needs_action: "Action Needed", waiting: "Waiting", drafted: "Draft Ready" };
 
   container.innerHTML = `
     <div class="view-header">
       <div>
         <h1 class="view-title">Inbox</h1>
-        <p class="view-subtitle">Brand deal emails and AI-drafted responses</p>
-      </div>
-      <div class="briefing-badge">
-        <span class="briefing-time">Last scan: ${todayStr()}</span>
+        <p class="view-subtitle">Brand deal emails</p>
       </div>
     </div>
 
@@ -2208,11 +2155,17 @@ function renderInbox() {
         <span class="kpi-value" style="color:var(--accent)">${needsAction}</span>
       </div>
       <div class="kpi-card">
-        <span class="kpi-label">Draft Queue</span>
-        <span class="kpi-value">${draftQueue.length}</span>
+        <span class="kpi-label">Total</span>
+        <span class="kpi-value">${INBOX_ITEMS.length}</span>
       </div>
     </div>
 
+    ${INBOX_ITEMS.length === 0 ? `
+    <div class="card">
+      <div class="dashboard-empty">
+        <p>No emails here yet. Inbox connects to your mailbox in a later release; until then, brand emails stay in your email client.</p>
+      </div>
+    </div>` : `
     <div class="inbox-layout">
       <div class="inbox-list-panel">
         <div class="card">
@@ -2221,24 +2174,20 @@ function renderInbox() {
             <span class="badge followup">${INBOX_ITEMS.length} items</span>
           </div>
           <div class="inbox-list">
-            ${INBOX_ITEMS.map(item => {
-              const priorityColors = { urgent: "var(--error)", high: "var(--accent)", medium: "var(--teal)", low: "var(--text-muted)" };
-              const statusLabels = { needs_reply: "Reply Needed", needs_action: "Action Needed", waiting: "Waiting", drafted: "Draft Ready" };
-              return `
-                <div class="inbox-item priority-${item.priority}" onclick="selectInboxItem(${item.id})" id="inbox-item-${item.id}">
+            ${INBOX_ITEMS.map(item => `
+                <div class="inbox-item priority-${_esc(item.priority)}" onclick="selectInboxItem(${Number(item.id)})" id="inbox-item-${Number(item.id)}">
                   <div class="inbox-item-header">
-                    <span class="inbox-brand">${item.brand}</span>
-                    <span class="inbox-time">${item.time}</span>
+                    <span class="inbox-brand">${_esc(item.brand)}</span>
+                    <span class="inbox-time">${_esc(item.time)}</span>
                   </div>
-                  <div class="inbox-subject">${item.subject}</div>
-                  <div class="inbox-snippet">${item.snippet}</div>
+                  <div class="inbox-subject">${_esc(item.subject)}</div>
+                  <div class="inbox-snippet">${_esc(item.snippet)}</div>
                   <div class="inbox-item-footer">
-                    <span class="inbox-status-badge" style="color:${priorityColors[item.priority]}">${statusLabels[item.status] || item.status}</span>
-                    <span class="inbox-contact">${item.contact}</span>
+                    <span class="inbox-status-badge" style="color:${priorityColors[item.priority] || 'var(--text-muted)'}">${_esc(statusLabels[item.status] || item.status)}</span>
+                    <span class="inbox-contact">${_esc(item.contact)}</span>
                   </div>
                 </div>
-              `;
-            }).join("")}
+            `).join("")}
           </div>
         </div>
       </div>
@@ -2247,35 +2196,11 @@ function renderInbox() {
         <div class="card">
           <div style="padding:40px;text-align:center">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
-            <p style="color:var(--text-secondary);margin-top:16px">Select an email to view details and generate a draft</p>
+            <p style="color:var(--text-secondary);margin-top:16px">Select an email to view details</p>
           </div>
         </div>
       </div>
-    </div>
-
-    ${draftQueue.length > 0 ? `
-    <div class="card" style="margin-top:24px">
-      <div class="card-header">
-        <span class="card-title">Draft Queue</span>
-        <span class="badge active">${draftQueue.length} ready to review</span>
-      </div>
-      <div class="draft-queue-list">
-        ${draftQueue.map((draft, i) => `
-          <div class="draft-queue-item">
-            <div class="draft-queue-header">
-              <strong>${draft.brand}</strong>
-              <span class="text-muted">${draft.summary}</span>
-            </div>
-            <div class="draft-queue-actions">
-              <button class="btn btn-sm btn-primary" onclick="approveDraft(${i})">Approve &amp; Send</button>
-              <button class="btn btn-sm btn-secondary" onclick="editDraft(${i})">Edit</button>
-              <button class="btn btn-sm" style="color:var(--error)" onclick="discardDraft(${i})">Discard</button>
-            </div>
-          </div>
-        `).join("")}
-      </div>
-    </div>
-    ` : ""}
+    </div>`}
   `;
 }
 
@@ -2288,135 +2213,28 @@ function selectInboxItem(id) {
   if (el) el.classList.add("selected");
 
   const detailDiv = document.getElementById("inboxDetail");
+  if (!detailDiv) return;
+  const mailto = /^[^\s@]+@[^\s@]+$/.test(item.email || '')
+    ? 'mailto:' + encodeURIComponent(item.email) + '?subject=' + encodeURIComponent('Re: ' + (item.subject || ''))
+    : '';
   detailDiv.innerHTML = `
     <div class="card inbox-detail-card">
       <div class="inbox-detail-header">
-        <h3>${item.brand}</h3>
-        <span class="badge ${item.priority === "urgent" ? "followup" : item.priority === "high" ? "negotiating" : "active"}">${item.priority}</span>
+        <h3>${_esc(item.brand)}</h3>
+        <span class="badge ${item.priority === "urgent" ? "followup" : item.priority === "high" ? "negotiating" : "active"}">${_esc(item.priority)}</span>
       </div>
       <div class="inbox-detail-meta">
-        <div><strong>From:</strong> ${item.contact} &lt;${item.email}&gt;</div>
-        <div><strong>Subject:</strong> ${item.subject}</div>
-        <div><strong>Received:</strong> ${item.time}</div>
+        <div><strong>From:</strong> ${_esc(item.contact)} &lt;${_esc(item.email)}&gt;</div>
+        <div><strong>Subject:</strong> ${_esc(item.subject)}</div>
+        <div><strong>Received:</strong> ${_esc(item.time)}</div>
       </div>
       <div class="inbox-detail-context">
-        <h4>Context</h4>
-        <p>${item.context}</p>
+        <h4>Preview</h4>
+        <p>${_esc(item.context)}</p>
       </div>
-      <div class="inbox-detail-actions">
-        <button class="btn btn-primary" onclick="generateDraft(${item.id}, '${item.suggestedAction}')">Draft ${item.suggestedAction.replace(/_/g, " ")} response</button>
-        <button class="btn btn-secondary" onclick="generateDraft(${item.id}, 'reply')">General Reply</button>
-        <button class="btn btn-secondary" onclick="generateDraft(${item.id}, 'decline')">Decline</button>
-      </div>
-      <div id="draftOutput-${item.id}"></div>
+      ${mailto ? `<div class="inbox-detail-actions"><a class="btn btn-primary" href="${mailto}">Reply in your email app</a></div>` : ''}
     </div>
   `;
-}
-
-async function generateDraft(itemId, draftType) {
-  const item = INBOX_ITEMS.find(i => i.id === itemId);
-  if (!item) return;
-
-  const outputDiv = document.getElementById("draftOutput-" + itemId);
-  outputDiv.innerHTML = `
-    <div class="research-loading" style="margin-top:16px">
-      <div class="research-loading-spinner"></div>
-      <p>Drafting ${draftType.replace(/_/g, " ")} for <strong>${item.brand}</strong>...</p>
-    </div>
-  `;
-
-  try {
-    const res = await fetch(API_BASE + "/api/draft-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        brand: item.brand,
-        contact: item.contact,
-        email: item.email,
-        context: item.context,
-        draft_type: draftType
-      })
-    });
-    const result = await res.json();
-
-    if (!result.success) {
-      outputDiv.innerHTML = `<div style="color:var(--error);margin-top:16px">Error: ${result.error}</div>`;
-      return;
-    }
-
-    const d = result.data;
-    outputDiv.innerHTML = `
-      <div class="draft-preview" style="margin-top:20px">
-        <div class="draft-preview-header">
-          <h4>AI Draft</h4>
-          <span class="badge ${d.confidence === "high" ? "active" : d.confidence === "medium" ? "negotiating" : "followup"}">${d.confidence} confidence</span>
-        </div>
-        <div class="draft-meta">
-          <div><strong>To:</strong> ${d.to || item.email}</div>
-          <div><strong>Subject:</strong> ${d.subject || item.subject}</div>
-        </div>
-        <div class="draft-body">
-          <pre class="draft-text" id="draftText-${itemId}">${d.body}</pre>
-        </div>
-        ${d.notes ? `<div class="draft-notes"><strong>Note:</strong> ${d.notes}</div>` : ""}
-        <div class="draft-actions">
-          <button class="btn btn-primary btn-sm" onclick="addToDraftQueue(${itemId}, '${draftType}')">Add to Queue</button>
-          <button class="btn btn-secondary btn-sm" onclick="copyDraftText(${itemId})">Copy</button>
-          <button class="btn btn-secondary btn-sm" onclick="generateDraft(${itemId}, '${draftType}')">Regenerate</button>
-        </div>
-      </div>
-    `;
-  } catch (err) {
-    outputDiv.innerHTML = `<div style="color:var(--error);margin-top:16px">Connection error: ${err.message}</div>`;
-  }
-}
-
-function addToDraftQueue(itemId, draftType) {
-  const item = INBOX_ITEMS.find(i => i.id === itemId);
-  const textEl = document.getElementById("draftText-" + itemId);
-  if (!item || !textEl) return;
-
-  draftQueue.push({
-    brand: item.brand,
-    contact: item.contact,
-    email: item.email,
-    subject: item.subject,
-    body: textEl.textContent,
-    summary: draftType.replace(/_/g, " ") + " for " + item.brand,
-    draftType
-  });
-
-  item.status = "drafted";
-  renderInbox();
-}
-
-function copyDraftText(itemId) {
-  const textEl = document.getElementById("draftText-" + itemId);
-  if (!textEl) return;
-  navigator.clipboard.writeText(textEl.textContent);
-}
-
-function approveDraft(index) {
-  const draft = draftQueue[index];
-  if (!draft) return;
-  alert("Draft approved for " + draft.brand + ". In production, this would send via Gmail API.");
-  draftQueue.splice(index, 1);
-  renderInbox();
-}
-
-function editDraft(index) {
-  const draft = draftQueue[index];
-  if (!draft) return;
-  const newBody = prompt("Edit the draft:", draft.body);
-  if (newBody !== null) {
-    draftQueue[index].body = newBody;
-    renderInbox();
-  }
-}
-
-function discardDraft(index) {
-  draftQueue.splice(index, 1);
-  renderInbox();
 }
 
 /* ---- CONTENT CALENDAR ---- */
@@ -2459,7 +2277,7 @@ function renderCalendar() {
   for (let i = 0; i < 6; i++) weeks.push(cells.slice(i*7, i*7+7));
 
   // Upcoming list
-  const today = new Date().toISOString().split('T')[0];
+  const today = _localISODate();
   const upcoming = (CALENDAR_EVENTS || [])
     .filter(e => e.date && e.date >= today)
     .sort((a,b) => a.date.localeCompare(b.date))
@@ -2530,8 +2348,17 @@ function renderCalendar() {
         `).join('')}
       </div>
     </div>
+  `;
+  _ensureCalendarModal();
+}
 
-    <!-- Add Event modal -->
+// The modal lives on <body>: .main is a lower stacking context than the
+// sidebar, so an overlay rendered inside a view can never cover it.
+function _ensureCalendarModal() {
+  if (document.getElementById('addEventModal')) return;
+  var host = document.createElement('div');
+  host.id = 'calendarModalHost';
+  host.innerHTML = `
     <div class="modal-overlay" id="addEventModal" style="display:none;" onclick="closeAddEventModal(event)">
       <div class="modal-card" onclick="event.stopPropagation()">
         <h3>Add Calendar Event</h3>
@@ -2569,8 +2396,8 @@ function renderCalendar() {
           <button class="btn btn-primary" onclick="saveCalendarEvent()">Save Event</button>
         </div>
       </div>
-    </div>
-  `;
+    </div>`;
+  document.body.appendChild(host);
 }
 
 function calendarPrev() {
@@ -2593,7 +2420,7 @@ function calendarToday() {
 function openAddEventModal(prefillDate) {
   const modal = document.getElementById('addEventModal');
   if (!modal) return;
-  document.getElementById('evDate').value = prefillDate || new Date().toISOString().split('T')[0];
+  document.getElementById('evDate').value = prefillDate || _localISODate();
   document.getElementById('evBrand').value = '';
   document.getElementById('evType').value = '';
   document.getElementById('evPlatform').value = '';
@@ -2791,30 +2618,8 @@ function renderTasks() {
         ` : ''}
       </div>
     </div>
-
-    <!-- Edit Task modal -->
-    <div class="modal-overlay" id="editTaskModal" style="display:none;" onclick="closeEditTaskModal(event)">
-      <div class="modal-card" onclick="event.stopPropagation()">
-        <h3>Edit Task</h3>
-        <div class="form-group">
-          <label for="etTitle">Task</label>
-          <input type="text" id="etTitle" maxlength="500" onkeydown="if(event.key==='Enter'){event.preventDefault();saveTaskEdits();}">
-        </div>
-        <div class="form-group">
-          <label for="etDetails">Details</label>
-          <textarea id="etDetails" rows="3" maxlength="2000" placeholder="Any extra context"></textarea>
-        </div>
-        <div class="form-group">
-          <label for="etDue">Due date</label>
-          <input type="date" id="etDue" min="1900-01-01" max="9999-12-31">
-        </div>
-        <div class="settings-actions">
-          <button class="btn btn-secondary" onclick="closeEditTaskModal()">Cancel</button>
-          <button class="btn btn-primary" onclick="saveTaskEdits()">Save</button>
-        </div>
-      </div>
-    </div>
   `;
+  _ensureTaskModal();
 
   // Restore preserved input state after the rebuild
   if (prevComposer && _taskComposerOpen && document.getElementById('taskNewTitle')) {
@@ -2837,6 +2642,36 @@ function renderTasks() {
     const el = document.getElementById(prevFocusId);
     if (el) el.focus();
   }
+}
+
+// Body-mounted so it stacks above the sidebar (see _ensureCalendarModal)
+function _ensureTaskModal() {
+  if (document.getElementById('editTaskModal')) return;
+  var host = document.createElement('div');
+  host.id = 'taskModalHost';
+  host.innerHTML = `
+    <div class="modal-overlay" id="editTaskModal" style="display:none;" onclick="closeEditTaskModal(event)">
+      <div class="modal-card" onclick="event.stopPropagation()">
+        <h3>Edit Task</h3>
+        <div class="form-group">
+          <label for="etTitle">Task</label>
+          <input type="text" id="etTitle" maxlength="500" onkeydown="if(event.key==='Enter'){event.preventDefault();saveTaskEdits();}">
+        </div>
+        <div class="form-group">
+          <label for="etDetails">Details</label>
+          <textarea id="etDetails" rows="3" maxlength="2000" placeholder="Any extra context"></textarea>
+        </div>
+        <div class="form-group">
+          <label for="etDue">Due date</label>
+          <input type="date" id="etDue" min="1900-01-01" max="9999-12-31">
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" onclick="closeEditTaskModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveTaskEdits()">Save</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(host);
 }
 
 function openTaskComposer() {
@@ -3270,7 +3105,8 @@ async function deleteRateRow(key, idx) {
   const item = RATE_CARD[key]?.[idx];
   if (!item) return;
   if (item._sbId && _sb) {
-    await _sb.from('rate_cards').delete().eq('id', item._sbId);
+    const { error } = await _sb.from('rate_cards').delete().eq('id', item._sbId);
+    if (error) { _showSaveError('Failed to delete rate'); console.error(error); return; }
   }
   RATE_CARD[key].splice(idx, 1);
   renderSettings();
@@ -3280,15 +3116,14 @@ async function deleteRateRow(key, idx) {
 async function saveRateCard() {
   if (!_sb || !CREATOR?._sbId) { _showSaveError('Not connected'); return; }
   // Save minimum rate + pricing rule to rate_card_settings
-  const minRate = parseInt(document.getElementById('setRateMin').value) || 15000;
+  const minRate = parseInt(document.getElementById('setRateMin').value) || 0;
   const pricingRule = document.getElementById('setRatePricingRule').value.trim();
 
   const settingsRes = await _sb.from('rate_card_settings').select('id').eq('user_id', CREATOR._sbId).maybeSingle();
-  if (settingsRes.data) {
-    await _sb.from('rate_card_settings').update({ minimum_rate: minRate, pricing_rule: pricingRule }).eq('id', settingsRes.data.id);
-  } else {
-    await _sb.from('rate_card_settings').insert({ user_id: CREATOR._sbId, minimum_rate: minRate, pricing_rule: pricingRule });
-  }
+  const sRes = settingsRes.data
+    ? await _sb.from('rate_card_settings').update({ minimum_rate: minRate, pricing_rule: pricingRule }).eq('id', settingsRes.data.id)
+    : await _sb.from('rate_card_settings').insert({ user_id: CREATOR._sbId, minimum_rate: minRate, pricing_rule: pricingRule });
+  if (sRes.error) { _showSaveError('Failed to save rate settings'); console.error(sRes.error); return; }
   RATE_CARD.minimumRate = minRate;
   RATE_CARD.pricingRule = pricingRule;
 
@@ -3424,14 +3259,11 @@ async function saveAudience() {
   AUDIENCE_DATA.gender = { male, female };
 
   // Upsert into audience_data rows keyed by category
-  try {
-    await _sb.from('audience_data').upsert({
-      user_id: CREATOR._sbId, category: 'gender', data: { Male: male, Female: female }
-    }, { onConflict: 'user_id,category' });
-    _showSaveSuccess();
-  } catch (e) {
-    _showSaveError('Failed: ' + e.message);
-  }
+  const res = await _sb.from('audience_data').upsert({
+    user_id: CREATOR._sbId, category: 'gender', data: { Male: male, Female: female }
+  }, { onConflict: 'user_id,category' });
+  if (res.error) { _showSaveError('Failed: ' + res.error.message); console.error(res.error); return; }
+  _showSaveSuccess();
 }
 
 /* ---- SETTINGS: Danger Zone / Account tab ---- */
@@ -4093,6 +3925,16 @@ var _currentScriptId = null;
 var _currentScriptRow = null;   // full script row from renderScriptEditor (share popover needs share_token/mode)
 var _currentScenes = [];
 var _scriptAutoSaveTimer = null;
+var _scriptLoadToken = 0;        // guards against a slow script painting into another's route
+var _sceneDirty = {};            // sceneId -> { field: value } typed but not yet saved
+var _titleDirty = null;          // pending title, or null
+var _scriptSaveChain = Promise.resolve(); // saves run one after another, never overlapping
+
+// Scene thumbnails are data URLs the client made; anything else (a crafted
+// value written through a shared edit link) renders as "no thumbnail".
+function _safeThumb(v) {
+  return (typeof v === 'string' && /^data:image\/(jpeg|png|webp|gif);base64,[A-Za-z0-9+\/=]+$/.test(v)) ? v : '';
+}
 
 /* ---- SHARE POPOVER PLUMBING (shared by Boards and Scripts) ---- */
 
@@ -4137,19 +3979,24 @@ document.addEventListener('click', function(e) {
 var _sharedScriptToken = null;
 var _sharedScriptMode = 'view';
 
-function _scriptRerender() {
-  if (_sharedScriptToken) renderSharedScript(_sharedScriptToken, _sharedScriptMode);
-  else renderScriptEditor(_currentScriptId);
+// Repaint the editor from in-memory state (no refetch). Pending edits are
+// flushed first so a repaint can never resurrect stale text.
+async function _scriptRerender() {
+  await _flushScriptSaves();
+  if (!_currentScriptRow) return;
+  if (_sharedScriptToken) _paintSharedEditor();
+  else _renderEditorUI(document.getElementById('view-script-editor'), _currentScriptRow, _currentScenes, false);
 }
 
 /* Scene field saves route through here so shared-edit sessions work.
    fields may hold script_text / scene_description / thumbnail_data. */
-async function _saveSceneFields(sceneId, fields) {
+async function _saveSceneFields(sceneId, fields, sharedToken) {
   if (!_sb) return;
+  if (sharedToken === undefined) sharedToken = _sharedScriptToken;
   try {
-    if (_sharedScriptToken) {
+    if (sharedToken) {
       var res = await _sb.rpc('patch_shared_scene', {
-        p_token: _sharedScriptToken, p_scene_id: sceneId,
+        p_token: sharedToken, p_scene_id: sceneId,
         p_script_text: ('script_text' in fields) ? fields.script_text : null,
         p_scene_description: ('scene_description' in fields) ? fields.scene_description : null,
         p_thumbnail_data: ('thumbnail_data' in fields) ? fields.thumbnail_data : null
@@ -4180,30 +4027,36 @@ async function sbCreateScript(title) {
     var res = await _sb.from('scripts').insert({ title: title || 'Untitled Script' }).select().single();
     if (res.error) { console.error('script create err:', res.error); _showSaveError('Failed to create script'); return null; }
     /* Add one empty scene by default */
-    await _sb.from('script_scenes').insert({ script_id: res.data.id, sort_order: 0, script_text: '', scene_description: '', thumbnail_data: '' });
+    var sc = await _sb.from('script_scenes').insert({ script_id: res.data.id, sort_order: 0, script_text: '', scene_description: '', thumbnail_data: '' });
+    if (sc.error) console.error('first scene err:', sc.error);
     return res.data;
   } catch (e) { console.error('script create exception:', e); return null; }
 }
 
 async function sbDeleteScript(scriptId) {
-  if (!_sb) return;
+  if (!_sb) return false;
   try {
-    await _sb.from('scripts').delete().eq('id', scriptId);
-  } catch (e) { console.error('script delete exception:', e); }
+    var res = await _sb.from('scripts').delete().eq('id', scriptId);
+    if (res.error) { console.error('script delete err:', res.error); _showSaveError('Failed to delete script'); return false; }
+    return true;
+  } catch (e) { console.error('script delete exception:', e); _showSaveError('Failed to delete script'); return false; }
 }
 
-async function sbUpdateScript(scriptId, updates) {
-  if (!_sb) return;
+async function sbUpdateScript(scriptId, updates, sharedToken) {
+  if (!_sb) return false;
+  if (sharedToken === undefined) sharedToken = _sharedScriptToken;
   try {
-    if (_sharedScriptToken) {
+    var res;
+    if (sharedToken) {
       // Shared editors may only rename; share_mode etc. stay owner-only
-      if ('title' in updates) {
-        await _sb.rpc('update_shared_script_title', { p_token: _sharedScriptToken, p_title: updates.title });
-      }
-      return;
+      if (!('title' in updates)) return true;
+      res = await _sb.rpc('update_shared_script_title', { p_token: sharedToken, p_title: updates.title });
+    } else {
+      res = await _sb.from('scripts').update(updates).eq('id', scriptId);
     }
-    await _sb.from('scripts').update(updates).eq('id', scriptId);
-  } catch (e) { console.error('script update exception:', e); }
+    if (res.error) { console.error('script update err:', res.error); return false; }
+    return true;
+  } catch (e) { console.error('script update exception:', e); return false; }
 }
 
 async function sbFetchScenes(scriptId) {
@@ -4220,39 +4073,32 @@ async function sbFetchScenes(scriptId) {
   } catch (e) { console.error('scenes fetch exception:', e); return []; }
 }
 
-async function sbUpsertScene(scene) {
-  if (!_sb) return null;
-  try {
-    var res = await _sb.from('script_scenes').upsert(scene).select().single();
-    if (res.error) { console.error('scene upsert err:', res.error); return null; }
-    return res.data;
-  } catch (e) { console.error('scene upsert exception:', e); return null; }
-}
-
 async function sbDeleteScene(sceneId) {
-  if (!_sb) return;
+  if (!_sb) return false;
   try {
-    if (_sharedScriptToken) {
-      await _sb.rpc('delete_shared_scene', { p_token: _sharedScriptToken, p_scene_id: sceneId });
-      return;
-    }
-    await _sb.from('script_scenes').delete().eq('id', sceneId);
-  } catch (e) { console.error('scene delete exception:', e); }
+    var res = _sharedScriptToken
+      ? await _sb.rpc('delete_shared_scene', { p_token: _sharedScriptToken, p_scene_id: sceneId })
+      : await _sb.from('script_scenes').delete().eq('id', sceneId);
+    if (res.error) { console.error('scene delete err:', res.error); _showSaveError('Failed to delete scene'); return false; }
+    return true;
+  } catch (e) { console.error('scene delete exception:', e); _showSaveError('Failed to delete scene'); return false; }
 }
 
 async function sbReorderScenes(scenes) {
   if (!_sb || !scenes.length) return;
   try {
+    var res;
     if (_sharedScriptToken) {
-      await _sb.rpc('reorder_shared_scenes', {
+      res = await _sb.rpc('reorder_shared_scenes', {
         p_token: _sharedScriptToken,
         p_scene_ids: scenes.map(function(s) { return s.id; })
       });
-      return;
+    } else {
+      var updates = scenes.map(function(s, i) { return { id: s.id, script_id: s.script_id, sort_order: i }; });
+      res = await _sb.from('script_scenes').upsert(updates);
     }
-    var updates = scenes.map(function(s, i) { return { id: s.id, script_id: s.script_id, sort_order: i }; });
-    await _sb.from('script_scenes').upsert(updates);
-  } catch (e) { console.error('reorder exception:', e); }
+    if (res.error) { console.error('reorder err:', res.error); _showSaveError('Failed to reorder scenes'); }
+  } catch (e) { console.error('reorder exception:', e); _showSaveError('Failed to reorder scenes'); }
 }
 
 async function sbFetchScriptByToken(token) {
@@ -4315,8 +4161,8 @@ async function _createNewScript() {
 
 async function _deleteScript(scriptId) {
   if (!confirm('Delete this script and all its scenes? This cannot be undone.')) return;
-  await sbDeleteScript(scriptId);
-  renderScripts();
+  var ok = await sbDeleteScript(scriptId);
+  if (ok) renderScripts();
 }
 
 function _escHtml(str) {
@@ -4328,20 +4174,26 @@ function _escHtml(str) {
 
 /* ---- SCRIPT EDITOR VIEW ---- */
 async function renderScriptEditor(scriptId) {
+  await _flushScriptSaves();            // the previous script's pending edits
+  var token = ++_scriptLoadToken;
   _sharedScriptToken = null;
   _currentScriptId = scriptId;
+  _currentScriptRow = null;
   var container = document.getElementById('view-script-editor');
   container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:300px;border-radius:12px"></div></div>';
 
   /* Fetch script + scenes */
   var scriptRes = await _sb.from('scripts').select('*').eq('id', scriptId).single();
+  if (token !== _scriptLoadToken) return;   // user moved on mid-load
   if (scriptRes.error || !scriptRes.data) {
     container.innerHTML = '<div style="padding:48px;text-align:center"><p>Script not found.</p><a href="#scripts" style="color:var(--accent)">Back to Scripts</a></div>';
     return;
   }
   var script = scriptRes.data;
+  var scenes = await sbFetchScenes(scriptId);
+  if (token !== _scriptLoadToken) return;
   _currentScriptRow = script;
-  _currentScenes = await sbFetchScenes(scriptId);
+  _currentScenes = scenes;
 
   _renderEditorUI(container, script, _currentScenes, false);
 }
@@ -4356,7 +4208,7 @@ function _renderEditorUI(container, script, scenes, readOnly) {
   if (!readOnly && !isSharedSession) {
     html += '<a href="#scripts" class="script-back-btn">' + SKETCHY_ICONS.chevronLeft + ' Back</a>';
   }
-  html += '<input type="text" class="script-title-input" id="scriptTitleInput" value="' + _escHtml(script.title) + '" ' + (readOnly ? 'disabled' : '') + ' placeholder="Script title..." />';
+  html += '<input type="text" class="script-title-input" id="scriptTitleInput" value="' + _esc(script.title) + '" ' + (readOnly ? 'disabled' : '') + ' placeholder="Script title..." />';
   if (!readOnly) {
     html += '<div class="script-topbar-actions">';
     if (!isSharedSession) {
@@ -4416,6 +4268,8 @@ function _renderEditorUI(container, script, scenes, readOnly) {
     var titleInput = document.getElementById('scriptTitleInput');
     if (titleInput) {
       titleInput.addEventListener('input', function() {
+        _titleDirty = titleInput.value;
+        if (_currentScriptRow) _currentScriptRow.title = titleInput.value;
         _scheduleAutoSave();
       });
     }
@@ -4456,7 +4310,8 @@ async function _scSetShareMode(mode) {
     _showSaveError('Sharing needs migration 018 — run it in Supabase first');
     return;
   }
-  await sbUpdateScript(_currentScriptId, { share_mode: mode });
+  var ok = await sbUpdateScript(_currentScriptId, { share_mode: mode });
+  if (!ok) { _showSaveError('Could not change sharing'); return; }
   _currentScriptRow.share_mode = mode;
   _scriptsCache.forEach(function(s) { if (s.id === _currentScriptId) s.share_mode = mode; });
   _scSyncSharePopover();
@@ -4489,9 +4344,10 @@ function _renderSceneRow(scene, idx, readOnly) {
 
   /* Thumbnail */
   html += '<div class="script-col-thumb">';
-  if (scene.thumbnail_data) {
+  var thumb = _safeThumb(scene.thumbnail_data);
+  if (thumb) {
     html += '<div class="script-thumb-preview">';
-    html += '<img src="' + scene.thumbnail_data + '" alt="Scene thumbnail" />';
+    html += '<img src="' + _esc(thumb) + '" alt="Scene thumbnail" />';
     if (!readOnly) {
       html += '<button class="script-thumb-remove" onclick="_removeThumb(\'' + scene.id + '\')" title="Remove thumbnail">&times;</button>';
     }
@@ -4522,6 +4378,13 @@ function _renderSceneRow(scene, idx, readOnly) {
 function _bindSceneEvents() {
   document.querySelectorAll('.script-cell-textarea').forEach(function(ta) {
     ta.addEventListener('input', function() {
+      // State is the source of truth; the DOM is a view of it
+      var sceneId = ta.getAttribute('data-scene-id');
+      var field = ta.getAttribute('data-field');
+      var scene = _currentScenes.find(function(s) { return s.id === sceneId; });
+      if (scene) scene[field] = ta.value;
+      if (!_sceneDirty[sceneId]) _sceneDirty[sceneId] = {};
+      _sceneDirty[sceneId][field] = ta.value;
       _scheduleAutoSave();
     });
     /* Auto-resize */
@@ -4539,38 +4402,46 @@ function _scheduleAutoSave() {
   var indicator = document.getElementById('scriptSaveIndicator');
   if (indicator) { indicator.textContent = 'Saving...'; indicator.style.color = 'var(--amber)'; }
   clearTimeout(_scriptAutoSaveTimer);
-  _scriptAutoSaveTimer = setTimeout(function() { _saveAllSceneData(); }, 800);
+  _scriptAutoSaveTimer = setTimeout(function() { _flushScriptSaves(); }, 800);
 }
 
-async function _saveAllSceneData() {
-  if (!_currentScriptId) return;
-  /* Save title */
-  var titleInput = document.getElementById('scriptTitleInput');
-  if (titleInput) {
-    await sbUpdateScript(_currentScriptId, { title: titleInput.value || 'Untitled Script' });
-  }
-  /* Save each scene's text fields */
-  var textareas = document.querySelectorAll('.script-cell-textarea');
-  var updates = {};
-  textareas.forEach(function(ta) {
-    var sceneId = ta.getAttribute('data-scene-id');
-    var field = ta.getAttribute('data-field');
-    if (!updates[sceneId]) updates[sceneId] = {};
-    updates[sceneId][field] = ta.value;
+// Save only what changed, one batch after another. Returns a promise that
+// settles when this batch (and every earlier one) has landed, so callers
+// await it before repainting or navigating away.
+function _flushScriptSaves() {
+  clearTimeout(_scriptAutoSaveTimer);
+  var scriptId = _currentScriptId;
+  var sharedTok = _sharedScriptToken;
+  var title = _titleDirty; _titleDirty = null;
+  var dirty = _sceneDirty; _sceneDirty = {};
+  var sceneIds = Object.keys(dirty);
+  if (!scriptId || (title === null && !sceneIds.length)) return _scriptSaveChain;
+  _scriptSaveChain = _scriptSaveChain.then(async function() {
+    var failed = false;
+    if (title !== null) {
+      var okT = await sbUpdateScript(scriptId, { title: title || 'Untitled Script' }, sharedTok);
+      if (!okT) { failed = true; if (_titleDirty === null) _titleDirty = title; }
+    }
+    for (var i = 0; i < sceneIds.length; i++) {
+      try { await _saveSceneFields(sceneIds[i], dirty[sceneIds[i]], sharedTok); }
+      catch (e) {
+        failed = true;
+        // Put it back so the next flush retries it (newer edits win)
+        _sceneDirty[sceneIds[i]] = Object.assign({}, dirty[sceneIds[i]], _sceneDirty[sceneIds[i]] || {});
+      }
+    }
+    var ind = document.getElementById('scriptSaveIndicator');
+    if (ind) {
+      if (failed) { ind.textContent = 'Error saving'; ind.style.color = 'var(--accent)'; }
+      else { ind.textContent = 'Saved'; ind.style.color = 'var(--teal)'; }
+    }
   });
-  var promises = Object.keys(updates).map(function(sceneId) {
-    return _saveSceneFields(sceneId, updates[sceneId]);
-  });
-  try {
-    await Promise.all(promises);
-    var indicator = document.getElementById('scriptSaveIndicator');
-    if (indicator) { indicator.textContent = 'Saved'; indicator.style.color = 'var(--teal)'; }
-  } catch (e) {
-    console.error('save err:', e);
-    var indicator2 = document.getElementById('scriptSaveIndicator');
-    if (indicator2) { indicator2.textContent = 'Error saving'; indicator2.style.color = 'var(--accent)'; }
-  }
+  return _scriptSaveChain;
 }
+
+// Leaving the page or backgrounding the tab (phones do this constantly)
+document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushScriptSaves(); });
+window.addEventListener('pagehide', function() { _flushScriptSaves(); });
 
 /* ---- ADD / DELETE SCENES ---- */
 async function _addScene() {
@@ -4592,7 +4463,9 @@ async function _addScene() {
 }
 
 async function _deleteSceneRow(sceneId) {
-  await sbDeleteScene(sceneId);
+  var ok = await sbDeleteScene(sceneId);
+  if (!ok) return;
+  delete _sceneDirty[sceneId];
   _currentScenes = _currentScenes.filter(function(s) { return s.id !== sceneId; });
   /* Reorder remaining */
   await sbReorderScenes(_currentScenes);
@@ -4678,10 +4551,12 @@ function _bindDragDrop() {
 
 /* ---- SHARED SCRIPT VIEWER ---- */
 async function renderSharedScript(token, mode) {
+  var loadToken = ++_scriptLoadToken;
   var container = document.getElementById('view-shared-script');
   container.innerHTML = '<div style="padding:48px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:300px;border-radius:12px"></div></div>';
 
   var script = await sbFetchScriptByToken(token);
+  if (loadToken !== _scriptLoadToken) return;
   if (!script) {
     // The RPC returns nothing for bad tokens AND for private scripts
     container.innerHTML = '<div style="padding:48px;text-align:center"><h2>Script Not Found</h2><p style="color:var(--text-secondary)">This link is invalid, the script was deleted, or sharing was turned off.</p></div>';
@@ -4692,10 +4567,18 @@ async function renderSharedScript(token, mode) {
   _sharedScriptToken = String(token).split('?')[0].split('&')[0].trim();
   _sharedScriptMode = isEdit ? 'edit' : 'view';
   _currentScriptId = script.id;
+  _currentScriptRow = script;
   var scenes = await sbFetchScenes(script.id);
+  if (loadToken !== _scriptLoadToken) return;
   _currentScenes = scenes;
+  _paintSharedEditor();
+}
 
-  _renderEditorUI(container, script, scenes, !isEdit);
+// Paint (or repaint) the shared editor from state
+function _paintSharedEditor() {
+  var container = document.getElementById('view-shared-script');
+  var isEdit = _sharedScriptMode === 'edit';
+  _renderEditorUI(container, _currentScriptRow, _currentScenes, !isEdit);
 
   /* Mark container for edit-mode grid (5 cols) vs read-only (4 cols) */
   if (isEdit) container.classList.add('shared-edit-mode');
@@ -4727,11 +4610,13 @@ async function renderSharedScript(token, mode) {
       if (session && session.user) {
         _authUser = session.user;
         showApp();
-        // Load ALL data from Supabase
-        await Promise.race([
-          sbFetchAllData(),
-          new Promise(function(r) { setTimeout(r, 8000); })
-        ]);
+        // Load the account's data; the logo loader stays up until it lands.
+        // On a very slow connection paint after 20s anyway and repaint when
+        // the data arrives (sbFetchAllData checks _rerenderWhenLoaded).
+        var loaded = false;
+        var fetchP = sbFetchAllData().then(function() { loaded = true; });
+        await Promise.race([fetchP, new Promise(function(r) { setTimeout(r, 20000); })]);
+        if (!loaded) { _rerenderWhenLoaded = true; _showSaveError('Still loading your data. The view will refresh when it arrives.'); }
         updateSidebarUser();
         navigate(getHash());
       } else {
@@ -4750,6 +4635,8 @@ async function renderSharedScript(token, mode) {
       showAuthScreen();
     }
   }
+
+  _booted = true;
 
   // Dismiss loader
   var overlay = document.getElementById('loaderOverlay');

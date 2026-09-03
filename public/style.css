@@ -159,8 +159,9 @@ body {
 }
 
 /* Paper background image per theme */
-:root { --paper-bg: url('paper-bg.png'); }
-[data-theme="dark"] { --paper-bg: url('paper-bg-dark.png'); }
+/* Seamless (mirrored) 1024px tiles, ~60-120KB, instead of the 3-4MB full-frame PNGs */
+:root { --paper-bg: url('paper-tile.webp'); }
+[data-theme="dark"] { --paper-bg: url('paper-tile-dark.webp'); }
 input, textarea, select, button { font-family: inherit; font-size: inherit; }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -171,6 +172,7 @@ a:hover { text-decoration: underline; }
   grid-template-columns: var(--sidebar-w) 1fr;
   grid-template-rows: 1fr;
   height: 100vh;
+  height: 100dvh; /* iOS: the real visible height, address bar included */
   overflow: hidden;
 }
 .main {
@@ -188,9 +190,9 @@ a:hover { text-decoration: underline; }
   pointer-events: none;
   z-index: 0;
   background-image: var(--paper-bg);
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
+  background-size: 480px auto;
+  background-position: 0 0;
+  background-repeat: repeat;
   opacity: 0.65;
 }
 
@@ -203,6 +205,7 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
   overflow-x: hidden;
   position: relative;
@@ -3952,7 +3955,9 @@ a.mk-platform-link:hover {
 
 /* --- Responsive --- */
 @media (max-width: 900px) {
-  .dashboard { grid-template-columns: 1fr; }
+  /* The sidebar leaves the grid (fixed drawer), so the header and main
+     become the two rows: header sized to content, main takes the rest. */
+  .dashboard { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   .sidebar {
     position: fixed;
     left: -280px;
@@ -3960,10 +3965,11 @@ a.mk-platform-link:hover {
     width: 280px;
     z-index: 200;
     transition: left 0.3s var(--ease);
+    padding-top: env(safe-area-inset-top, 0px);
   }
   .sidebar.open { left: 0; }
-  .mobile-header { display: flex; }
-  .main { padding: 20px 16px 80px; }
+  .mobile-header { display: flex; padding-top: env(safe-area-inset-top, 0px); }
+  .main { padding: 20px 16px calc(80px + env(safe-area-inset-bottom, 0px)); }
   .chart-row { grid-template-columns: 1fr; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .kpi-grid-3 { grid-template-columns: repeat(2, 1fr); }
@@ -4083,6 +4089,7 @@ a.mk-platform-link:hover {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 60px);
+  height: calc(100dvh - 60px);
   background: var(--bg-1);
   border-radius: 14px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.06);
@@ -4479,6 +4486,7 @@ a.mk-platform-link:hover {
 }
 #view-shared-script .script-editor {
   height: 100vh;
+  height: 100dvh;
   max-width: 1200px;
   margin: 0 auto;
   background: #FFFFFF;
@@ -4589,6 +4597,7 @@ a.mk-platform-link:hover {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--bg-0);
   background-image:
     linear-gradient(rgba(26,23,20,0.04) 1px, transparent 1px),
@@ -5421,12 +5430,6 @@ a.mk-platform-link:hover {
   gap: 6px;
 }
 
-/* Modal overlay for adding calendar events — inherits display:none from earlier rule, .open shows it */
-.modal-overlay {
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
 .modal-card {
   background: var(--bg-1);
   border: 1.5px solid var(--border);
@@ -6583,6 +6586,7 @@ a.mk-platform-link:hover {
   display: flex;
   flex-direction: column;
   height: calc(100vh - 60px);
+  height: calc(100dvh - 60px);
   background: var(--bg-1);
   border: 1.5px solid var(--border);
   border-radius: 10px;
@@ -6915,17 +6919,17 @@ a.mk-platform-link:hover {
 /* Mobile: toolbar hugs the bottom */
 @media (max-width: 768px) {
   .board-toolbar {
-    left: 50%; top: auto; bottom: 14px;
+    left: 50%; top: auto; bottom: calc(14px + env(safe-area-inset-bottom, 0px));
     transform: translateX(-50%);
     flex-direction: row;
   }
   .bd-tool-sep { width: 1.5px; height: auto; margin: 4px 3px; }
   .bd-tool-options, .bd-video-popover {
-    left: 50%; top: auto; bottom: 68px;
+    left: 50%; top: auto; bottom: calc(68px + env(safe-area-inset-bottom, 0px));
     transform: translateX(-50%);
     flex-direction: row;
   }
-  .board-editor { height: calc(100vh - 120px); }
+  .board-editor { height: calc(100vh - 120px); height: calc(100dvh - 120px); }
 }
 
 /* Boards — interaction refinements */
@@ -7089,4 +7093,11 @@ a.mk-platform-link:hover {
   border-top: 1.5px solid var(--border);
   padding-top: 10px;
   margin-top: 10px;
+}
+
+/* ============================================================
+   TOUCH: hover-only affordances must be visible
+   ============================================================ */
+@media (hover: none) {
+  .script-card-delete, .board-card-delete { opacity: 1; }
 }
