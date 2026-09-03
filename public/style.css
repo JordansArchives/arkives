@@ -64,7 +64,7 @@
 
   --text-primary: #1A1714;
   --text-secondary: #4A4540;
-  --text-muted: #8A8580;
+  --text-muted: #6E6963;   /* was #8A8580 (3.25:1 on paper); now 4.9:1 */
   --text-faint: #B5B0A8;
 
   --accent: #C73539;
@@ -115,7 +115,7 @@
 
   --text-primary: #E8E4DD;
   --text-secondary: #A8A29E;
-  --text-muted: #6B6560;
+  --text-muted: #8C8680;   /* was #6B6560 (3.2:1); now 5.2:1 */
   --text-faint: #4A4540;
 
   --accent: #D94A4E;
@@ -7141,4 +7141,130 @@ a.mk-platform-link:hover {
   .script-thumb-preview, .script-thumb-upload { max-width: 100%; }
   .script-thumb-preview img { width: 100%; max-height: 200px; object-fit: cover; }
   .script-row-action { min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+}
+
+/* ============================================================
+   PHASE 3b: Invoices + Tasks on the phone, quick wins, tab bar
+   ============================================================ */
+
+/* Keyboard focus: visible everywhere. !important because 22 rules in
+   this file null the outline; a real focus ring beats all of them. */
+:where(a, button, input, select, textarea, [tabindex], [contenteditable="true"]):focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* iOS zooms into inputs under 16px */
+@media (max-width: 640px) {
+  input, select, textarea { font-size: 16px; }
+}
+
+/* Undo toast (an action, unlike the save toast) */
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translate(-50%, 12px);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--text-primary);
+  color: var(--bg-0);
+  padding: 10px 12px 10px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 10001;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease);
+  max-width: 90vw;
+}
+.undo-toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.undo-toast-btn {
+  background: none;
+  border: 1.5px solid rgba(255,255,255,0.35);
+  color: inherit;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 32px;
+}
+@media (max-width: 900px) { .undo-toast { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); } }
+
+/* Tasks: 44px hit areas without changing the drawn size */
+.task-check { position: relative; }
+.task-check::before { content: ''; position: absolute; inset: -11px; }
+@media (hover: none) {
+  .task-star, .task-delete { min-width: 40px; min-height: 40px; display: inline-flex; align-items: center; justify-content: center; opacity: 1; }
+}
+
+/* Invoices: row actions collapse into a sheet on the phone */
+.inv-row-more { display: none; }
+@media (max-width: 640px) {
+  .inv-row-inline { display: none; }
+  .inv-row-more { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 40px; font-size: 18px; line-height: 1; }
+  .inv-row-actions { padding-left: 8px; }
+}
+.inv-sheet-overlay {
+  position: fixed; inset: 0;
+  background: rgba(26, 23, 20, 0.45);
+  z-index: 3000;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.inv-sheet {
+  width: 100%; max-width: 480px;
+  background: var(--bg-1);
+  border: 2px solid var(--border); border-bottom: none;
+  border-radius: 14px 14px 0 0;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; gap: 6px;
+  box-shadow: var(--shadow-lg);
+}
+.inv-sheet-title { font-family: var(--font-display); font-size: 16px; padding: 6px 8px 10px; color: var(--text-secondary); }
+.inv-sheet-btn {
+  width: 100%; text-align: left;
+  background: var(--bg-0); color: var(--text-primary);
+  border: 1.5px solid var(--border); border-radius: 8px;
+  padding: 12px 14px; font-size: 15px; min-height: 48px;
+  cursor: pointer;
+}
+.inv-sheet-btn:active { background: var(--bg-2); }
+.inv-sheet-danger { color: var(--red); }
+.inv-sheet-cancel { background: none; border-color: transparent; color: var(--text-secondary); text-align: center; margin-top: 4px; }
+
+/* Bottom tab bar: the four daily tools plus More (opens the drawer).
+   Phone widths only; hidden inside editors (the board toolbar lives there). */
+.tabbar {
+  display: none;
+  position: fixed; left: 0; right: 0; bottom: 0;
+  z-index: 150;
+  background: var(--bg-1);
+  border-top: 2px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.tabbar a, .tabbar button {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  min-height: 56px;
+  background: none; border: none;
+  color: var(--text-muted);
+  font-family: var(--font-body); font-size: 11px; letter-spacing: 0.02em;
+  text-decoration: none; cursor: pointer;
+}
+.tabbar a:hover { text-decoration: none; }
+.tabbar a.active { color: var(--accent); }
+.tabbar a.active svg { stroke: var(--accent); }
+@media (max-width: 900px) {
+  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); }
+  body:not(.editor-open) .main { padding-bottom: calc(80px + 56px + env(safe-area-inset-bottom, 0px)); }
+  body.editor-open .tabbar { display: none; }
 }

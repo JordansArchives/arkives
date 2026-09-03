@@ -86,6 +86,17 @@ for (const state of ['populated', 'empty']) {
       if (m.scrollX) flagged.push(`${v}: horizontal page overflow`);
       if (vp.name === 'phone' && m.headerH > 80) flagged.push(`${v}: mobile header ${m.headerH}px`);
       if (['dashboard', 'tasks', 'invoices', 'boards'].includes(v)) await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-${v}.png`) });
+      if (vp.name === 'phone') {
+        const t = await page.evaluate(() => ({
+          tabbar: getComputedStyle(document.getElementById('tabbar')).display,
+          tabH: Math.round(document.getElementById('tabbar').getBoundingClientRect().height),
+          more: document.querySelector('.inv-row-more') ? getComputedStyle(document.querySelector('.inv-row-more')).display : 'n/a',
+          inline: document.querySelector('.inv-row-inline') ? getComputedStyle(document.querySelector('.inv-row-inline')).display : 'n/a',
+        }));
+        if (t.tabbar === 'none') flagged.push(`${v}: tab bar hidden on phone`);
+        if (t.tabH < 48) flagged.push(`${v}: tab bar only ${t.tabH}px tall`);
+        if (v === 'invoices' && state === 'populated' && (t.more !== 'inline-flex' || t.inline !== 'none')) flagged.push(`invoices: row actions not collapsed on phone (more=${t.more}, inline=${t.inline})`);
+      }
     }
 
     if (state === 'populated' && vp.name === 'phone') {

@@ -18,12 +18,14 @@ let _invClientEditingId = null; // clients card: null = closed, '__new' = adding
 let _invFilter = 'all';        // all | draft | sent | overdue | paid
 let _invSearch = '';           // matches invoice number / bill-to
 let _invPayingId = null;       // invoice _sbId with the payment modal open
+let _invRowMenuId = null;      // invoice _sbId with the row-actions sheet open (phone)
 
 function resetInvoiceViewState() {
   _invEditorOpen = false; _invEditingId = null; _inv = null;
   _invNewClientOpen = false; _invClientEditingId = null;
-  _invFilter = 'all'; _invSearch = ''; _invPayingId = null;
+  _invFilter = 'all'; _invSearch = ''; _invPayingId = null; _invRowMenuId = null;
   _invSyncPayModal();
+  _invSyncRowMenu();
 }
 
 // The modal mounts on <body>, not inside .main — .main is a lower
@@ -137,7 +139,11 @@ function nextInvoiceNumber(client) {
 /* ============================================================
    LIST VIEW
    ============================================================ */
-function renderInvoices() {
+// sub: '' = list, 'new' = new-invoice editor, '<id>' = edit that invoice.
+// Called with a sub from navigate() (URL is the source of truth), and
+// without one from in-view actions that just want a repaint.
+function renderInvoices(sub) {
+  if (typeof sub === 'string') _invApplyRoute(sub);
   if (_invEditorOpen) { renderInvoiceEditor(); return; }
   const container = document.getElementById('view-invoices');
 
@@ -219,6 +225,81 @@ function renderInvoices() {
   _invSyncPayModal();
 }
 
+function _invApplyRoute(sub) {
+  if (!sub) { _invEditorOpen = false; _invEditingId = null; _inv = null; _invNewClientOpen = false; return; }
+  if (sub === 'new') {
+    // Duplicate sets up _inv before changing the hash; keep it
+    if (_invEditorOpen && _invEditingId === null && _inv) return;
+    _invStartNew();
+    return;
+  }
+  if (_invEditorOpen && _invEditingId === sub && _inv) return;
+  if (!_invStartEdit(sub)) { _invEditorOpen = false; _inv = null; }
+}
+
+function _invStartNew() {
+  _inv = {
+    _sbId: null, clientId: null,
+    invoiceNumber: nextInvoiceNumber(null),
+    billToName: '', billToAddress: '',
+    date: _localISODate(), paymentTerms: 'none', dueDate: '',
+    lineItems: [{ type: 'flat', desc: '', qty: 1, rate: 0, fee: 0 }],
+    tax: 0, amountPaid: 0, notes: '', includePaymentInfo: true,
+    status: 'draft'
+  };
+  _invEditingId = null; _invEditorOpen = true; _invNewClientOpen = false;
+}
+
+function _invStartEdit(sbId) {
+  const src = INVOICE_DATA.find(i => i._sbId === sbId);
+  if (!src) return false;
+  _inv = JSON.parse(JSON.stringify(src));
+  // Legacy row (pre-builder): surface the stored amount as one flat line
+  if (!_inv.lineItems || !_inv.lineItems.length) {
+    _inv.lineItems = [{ type: 'flat', desc: _inv.description || 'Creator partnership', qty: 1, rate: 0, fee: Number(_inv.amount) || 0 }];
+  }
+  if (!_inv.billToName) _inv.billToName = _inv.brand || '';
+  _invEditingId = sbId; _invEditorOpen = true; _invNewClientOpen = false;
+  return true;
+}
+
+/* ---- ROW ACTIONS SHEET (phone) ----
+   Under 640px the inline row buttons collapse into one "more" button
+   that opens a bottom sheet mounted on <body>. */
+function invOpenRowMenu(sbId) { _invRowMenuId = sbId; _invSyncRowMenu(); }
+function invCloseRowMenu() { _invRowMenuId = null; _invSyncRowMenu(); }
+function _invSyncRowMenu() {
+  let host = document.getElementById('invSheetHost');
+  if (!host) {
+    if (!_invRowMenuId) return;
+    host = document.createElement('div');
+    host.id = 'invSheetHost';
+    document.body.appendChild(host);
+  }
+  const inv = _invRowMenuId && INVOICE_DATA.find(i => i._sbId === _invRowMenuId);
+  if (!inv) { host.innerHTML = ''; return; }
+  const id = _esc(inv._sbId);
+  const statusBtn = inv.status === 'draft'
+    ? `<button class="inv-sheet-btn" onclick="invCloseRowMenu();invQuickStatus('${id}','sent')">Mark Sent</button>`
+    : inv.status === 'sent'
+      ? `<button class="inv-sheet-btn" onclick="invCloseRowMenu();invOpenPay('${id}')">Record Payment</button>`
+      : '';
+  const undoBtn = inv.status !== 'draft' ? `<button class="inv-sheet-btn" onclick="invCloseRowMenu();invUndoStatus('${id}')">${inv.status === 'paid' ? 'Back to Sent' : 'Back to Draft'}</button>` : '';
+  host.innerHTML = `
+    <div class="inv-sheet-overlay" onclick="if(event.target===this)invCloseRowMenu()">
+      <div class="inv-sheet" role="dialog" aria-modal="true" aria-label="Invoice actions">
+        <div class="inv-sheet-title">${_esc(inv.invoiceNumber)} · ${_esc(inv.billToName || inv.brand)}</div>
+        <button class="inv-sheet-btn" onclick="invCloseRowMenu();invOpen('${id}')">Open</button>
+        ${statusBtn}
+        ${undoBtn}
+        <button class="inv-sheet-btn" onclick="invCloseRowMenu();invDuplicate('${id}')">Duplicate</button>
+        <button class="inv-sheet-btn" onclick="invCloseRowMenu();invRowPDF('${id}')">PDF</button>
+        <button class="inv-sheet-btn inv-sheet-danger" onclick="invCloseRowMenu();invRowDelete('${id}')">Delete</button>
+        <button class="inv-sheet-btn inv-sheet-cancel" onclick="invCloseRowMenu()">Cancel</button>
+      </div>
+    </div>`;
+}
+
 function _invFilteredRows() {
   let rows = INVOICE_DATA;
   if (_invFilter !== 'all') rows = rows.filter(i => invDisplayStatus(i) === _invFilter);
@@ -250,12 +331,15 @@ function _renderInvRows() {
         <td>${_esc(inv.dueDate || '—')}</td>
         <td><span class="invoice-status ${st}">${st.charAt(0).toUpperCase() + st.slice(1)}</span></td>
         <td class="inv-row-actions" onclick="event.stopPropagation()">
-          ${inv.status === 'draft' ? `<button class="btn btn-sm" onclick="invQuickStatus('${inv._sbId}','sent')">Mark Sent</button>` : ''}
-          ${inv.status === 'sent' ? `<button class="btn btn-sm" onclick="invOpenPay('${inv._sbId}')">Record Payment</button>` : ''}
-          ${inv.status !== 'draft' ? `<button class="btn btn-sm" onclick="invUndoStatus('${inv._sbId}')" title="${inv.status === 'paid' ? 'Back to Sent' : 'Back to Draft'}">Undo</button>` : ''}
-          <button class="btn btn-sm" onclick="invDuplicate('${inv._sbId}')">Duplicate</button>
-          <button class="btn btn-sm" onclick="invRowPDF('${inv._sbId}')">PDF</button>
-          <button class="btn btn-sm inv-row-delete" onclick="invRowDelete('${inv._sbId}')" title="Delete invoice">Delete</button>
+          <span class="inv-row-inline">
+          ${inv.status === 'draft' ? `<button class="btn btn-sm" onclick="invQuickStatus('${_esc(inv._sbId)}','sent')">Mark Sent</button>` : ''}
+          ${inv.status === 'sent' ? `<button class="btn btn-sm" onclick="invOpenPay('${_esc(inv._sbId)}')">Record Payment</button>` : ''}
+          ${inv.status !== 'draft' ? `<button class="btn btn-sm" onclick="invUndoStatus('${_esc(inv._sbId)}')" title="${inv.status === 'paid' ? 'Back to Sent' : 'Back to Draft'}">Undo</button>` : ''}
+          <button class="btn btn-sm" onclick="invDuplicate('${_esc(inv._sbId)}')">Duplicate</button>
+          <button class="btn btn-sm" onclick="invRowPDF('${_esc(inv._sbId)}')">PDF</button>
+          <button class="btn btn-sm inv-row-delete" onclick="invRowDelete('${_esc(inv._sbId)}')" title="Delete invoice">Delete</button>
+          </span>
+          <button class="btn btn-sm inv-row-more" onclick="invOpenRowMenu('${_esc(inv._sbId)}')" aria-label="More actions" title="Actions">&#8943;</button>
         </td>
       </tr>`;
   }).join('');
@@ -437,7 +521,8 @@ function invDuplicate(sbId) {
     _inv.lineItems = [{ type: 'flat', desc: _inv.description || '', qty: 1, rate: 0, fee: Number(_inv.amount) || 0 }];
   }
   _invEditingId = null; _invEditorOpen = true; _invNewClientOpen = false;
-  renderInvoiceEditor();
+  if (location.hash !== '#invoices/new') location.hash = 'invoices/new';
+  else renderInvoiceEditor();
 }
 
 /* ---- PAYMENT RECORDING ---- */
@@ -521,37 +606,25 @@ function invExportCSV() {
 /* ============================================================
    EDITOR
    ============================================================ */
+// The editor lives at #invoices/new and #invoices/{id} so the browser
+// Back button leaves the editor instead of leaving Invoices.
 function invNew() {
   if (_invoicingMigrationMissing) { _showSaveError('Run migrations/011_invoicing.sql in Supabase first'); return; }
-  _inv = {
-    _sbId: null, clientId: null,
-    invoiceNumber: nextInvoiceNumber(null),
-    billToName: '', billToAddress: '',
-    date: _localISODate(), paymentTerms: 'none', dueDate: '',
-    lineItems: [{ type: 'flat', desc: '', qty: 1, rate: 0, fee: 0 }],
-    tax: 0, amountPaid: 0, notes: '', includePaymentInfo: true,
-    status: 'draft'
-  };
-  _invEditingId = null; _invEditorOpen = true; _invNewClientOpen = false;
-  renderInvoiceEditor();
+  _invStartNew();
+  if (location.hash !== '#invoices/new') location.hash = 'invoices/new';
+  else renderInvoiceEditor();
 }
 
 function invOpen(sbId) {
-  const src = INVOICE_DATA.find(i => i._sbId === sbId);
-  if (!src) return;
-  _inv = JSON.parse(JSON.stringify(src));
-  // Legacy row (pre-builder): surface the stored amount as one flat line
-  if (!_inv.lineItems || !_inv.lineItems.length) {
-    _inv.lineItems = [{ type: 'flat', desc: _inv.description || 'Creator partnership', qty: 1, rate: 0, fee: Number(_inv.amount) || 0 }];
-  }
-  if (!_inv.billToName) _inv.billToName = _inv.brand || '';
-  _invEditingId = sbId; _invEditorOpen = true; _invNewClientOpen = false;
-  renderInvoiceEditor();
+  if (!_invStartEdit(sbId)) return;
+  if (location.hash !== '#invoices/' + sbId) location.hash = 'invoices/' + sbId;
+  else renderInvoiceEditor();
 }
 
 function invBack() {
   _invEditorOpen = false; _invEditingId = null; _inv = null;
-  renderInvoices();
+  if (location.hash !== '#invoices') location.hash = 'invoices';
+  else renderInvoices();
 }
 
 function renderInvoiceEditor() {

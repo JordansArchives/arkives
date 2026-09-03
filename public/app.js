@@ -413,6 +413,28 @@ function _showSaveError(msg) {
   el._timer = setTimeout(function() { el.style.opacity = '0'; }, 4000);
 }
 
+// A toast with an action. One at a time; a new one replaces the last.
+let _undoToastTimer = null;
+function _showUndoToast(msg, onUndo) {
+  var el = document.getElementById('undo-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'undo-toast';
+    el.className = 'undo-toast';
+    document.body.appendChild(el);
+  }
+  el.innerHTML = '<span class="undo-toast-msg"></span><button type="button" class="undo-toast-btn">Undo</button>';
+  el.querySelector('.undo-toast-msg').textContent = msg;
+  el.querySelector('.undo-toast-btn').addEventListener('click', function() {
+    clearTimeout(_undoToastTimer);
+    el.classList.remove('show');
+    if (onUndo) onUndo();
+  });
+  el.classList.add('show');
+  clearTimeout(_undoToastTimer);
+  _undoToastTimer = setTimeout(function() { el.classList.remove('show'); }, 5000);
+}
+
 function _showSaveSuccess() {
   var el = document.getElementById('sb-save-toast');
   if (!el) {
@@ -869,9 +891,11 @@ function navigate(view) {
   // Leaving an editor: land any debounced saves before the DOM is replaced
   if (typeof _flushScriptSaves === 'function') _flushScriptSaves();
   if (typeof _bdFlushPendingSaves === 'function') _bdFlushPendingSaves();
+  if (typeof _flushTaskDeletes === 'function') _flushTaskDeletes();
   /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN, bshared/TOKEN */
   if (view.startsWith('bshared/')) {
     // Public shared-board link — works logged out, sidebar hidden
+    document.body.classList.add('editor-open');
     var bsClean = view.split('?')[0];
     var bsToken = bsClean.split('/')[1];
     var bsMode = bsClean.split('/')[2] || 'view';
@@ -885,6 +909,7 @@ function navigate(view) {
     return;
   }
   if (view.startsWith('board/')) {
+    document.body.classList.add('editor-open');
     var boardId = view.split('/')[1];
     document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
     var bdEl = document.getElementById('view-board-editor');
@@ -898,6 +923,7 @@ function navigate(view) {
     return;
   }
   if (view.startsWith('script/')) {
+    document.body.classList.add('editor-open');
     var scriptId = view.split('/')[1];
     document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
     var edEl = document.getElementById('view-script-editor');
@@ -911,6 +937,7 @@ function navigate(view) {
     return;
   }
   if (view.startsWith('shared/')) {
+    document.body.classList.add('editor-open');
     // Strip any query string that may have gotten into the hash
     var cleanView = view.split('?')[0];
     var shareToken = cleanView.split('/')[1];
@@ -930,25 +957,34 @@ function navigate(view) {
   var mc2 = document.querySelector('.main') || document.getElementById('mainContent');
   if (mc2) mc2.style.marginLeft = '';
 
+  document.body.classList.remove('editor-open');
+
+  // "invoices/abc" = the invoices view with a sub-route (an open editor)
+  var parts = view.split('/');
+  var baseView = parts[0];
+  var sub = parts.length > 1 ? parts.slice(1).join('/') : '';
+  let el = document.getElementById("view-" + baseView);
+  if (!el) { baseView = 'dashboard'; sub = ''; el = document.getElementById('view-dashboard'); }
+
   document.querySelectorAll(".view").forEach(v => {
     v.style.display = "none";
     v.classList.remove("active");
   });
-  const el = document.getElementById("view-" + view);
   if (el) {
     el.style.display = "block";
     el.classList.add("active");
   }
   document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
-  const navEl = document.querySelector('[data-view="' + view + '"]');
+  const navEl = document.querySelector('.nav-item[data-view="' + baseView + '"]');
   if (navEl) navEl.classList.add("active");
+  document.querySelectorAll('.tabbar [data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === baseView));
 
   // Close mobile sidebar
   document.getElementById("sidebar").classList.remove("open");
   const overlay = document.querySelector(".sidebar-overlay");
   if (overlay) overlay.classList.remove("open");
 
-  renderView(view);
+  renderView(baseView, sub);
 }
 
 window.addEventListener("hashchange", function() {
@@ -980,6 +1016,11 @@ document.getElementById("themeToggle").addEventListener("click", () => {
     document.getElementById("sidebar").classList.toggle("open");
     overlay.classList.toggle("open");
   });
+  const moreBtn = document.getElementById("tabMore");
+  if (moreBtn) moreBtn.addEventListener("click", () => {
+    document.getElementById("sidebar").classList.toggle("open");
+    overlay.classList.toggle("open");
+  });
   overlay.addEventListener("click", () => {
     document.getElementById("sidebar").classList.remove("open");
     overlay.classList.remove("open");
@@ -989,7 +1030,7 @@ document.getElementById("themeToggle").addEventListener("click", () => {
 /* ---- RENDER VIEWS ---- */
 let chartsRendered = {};
 
-function renderView(view) {
+function renderView(view, sub) {
   switch (view) {
     case "dashboard": renderDashboard(); break;
     case "revenue": renderRevenue(); break;
@@ -1002,7 +1043,7 @@ function renderView(view) {
     case "scripts": renderScripts(); break;
     case "boards": if (typeof renderBoards === "function") renderBoards(); break;
     case "contracts": renderContracts(); break;
-    case "invoices": renderInvoices(); break;
+    case "invoices": renderInvoices(sub || ''); break;
     case "tasks": renderTasks(); break;
   }
 }
@@ -2719,18 +2760,22 @@ async function saveNewTask() {
   }
 }
 
+// Optimistic: the checkbox flips now, the save follows; on failure it
+// flips back with the error toast. On a phone this is the difference
+// between "instant" and "laggy" for the most frequent action in the app.
 async function toggleTaskComplete(sbId) {
   const t = TASKS.find(x => x._sbId === sbId);
   if (!t || _taskBusyIds[sbId]) return;
   _taskBusyIds[sbId] = true;
+  const before = { completed: t.completed, completedAt: t.completedAt };
+  const completed = !t.completed;
+  const completedAt = completed ? new Date().toISOString() : null;
+  t.completed = completed;
+  t.completedAt = completedAt || '';
+  renderTasks();
   try {
-    const completed = !t.completed;
-    const completedAt = completed ? new Date().toISOString() : null;
     const ok = await sbUpdateTask(sbId, { completed: completed, completed_at: completedAt });
-    if (!ok) return;
-    t.completed = completed;
-    t.completedAt = completedAt || '';
-    renderTasks();
+    if (!ok) { t.completed = before.completed; t.completedAt = before.completedAt; renderTasks(); }
   } finally {
     delete _taskBusyIds[sbId];
   }
@@ -2740,30 +2785,52 @@ async function toggleTaskStar(sbId) {
   const t = TASKS.find(x => x._sbId === sbId);
   if (!t || _taskBusyIds[sbId]) return;
   _taskBusyIds[sbId] = true;
+  const before = t.starred;
+  t.starred = !t.starred;
+  renderTasks();
   try {
-    const starred = !t.starred;
-    const ok = await sbUpdateTask(sbId, { starred: starred });
-    if (!ok) return;
-    t.starred = starred;
-    renderTasks();
+    const ok = await sbUpdateTask(sbId, { starred: t.starred });
+    if (!ok) { t.starred = before; renderTasks(); }
   } finally {
     delete _taskBusyIds[sbId];
   }
 }
 
-async function deleteTask(sbId) {
-  if (_taskBusyIds[sbId]) return;
-  _taskBusyIds[sbId] = true;
-  try {
-    if (!confirm('Delete this task?')) return;
-    const ok = await sbDeleteTasks([sbId]);
-    if (!ok) return;
-    TASKS = TASKS.filter(x => x._sbId !== sbId);
+// Delete = remove now, offer Undo for a few seconds, then commit. No
+// confirm() dialog. Pending deletes are committed on navigation/unload.
+let _taskPendingDeletes = {};
+function deleteTask(sbId) {
+  const t = TASKS.find(x => x._sbId === sbId);
+  if (!t || _taskBusyIds[sbId] || _taskPendingDeletes[sbId]) return;
+  TASKS = TASKS.filter(x => x._sbId !== sbId);
+  renderTasks();
+  const pending = { task: t, timer: setTimeout(function() { _commitTaskDelete(sbId); }, 5000) };
+  _taskPendingDeletes[sbId] = pending;
+  _showUndoToast('Task deleted', function() {
+    if (!_taskPendingDeletes[sbId]) return;
+    clearTimeout(pending.timer);
+    delete _taskPendingDeletes[sbId];
+    TASKS.push(t);
     renderTasks();
-  } finally {
-    delete _taskBusyIds[sbId];
-  }
+  });
 }
+
+async function _commitTaskDelete(sbId) {
+  const pending = _taskPendingDeletes[sbId];
+  if (!pending) return;
+  delete _taskPendingDeletes[sbId];
+  const ok = await sbDeleteTasks([sbId]);
+  if (!ok) { TASKS.push(pending.task); renderTasks(); }
+}
+
+function _flushTaskDeletes() {
+  Object.keys(_taskPendingDeletes).forEach(function(id) {
+    clearTimeout(_taskPendingDeletes[id].timer);
+    _commitTaskDelete(id);
+  });
+}
+document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushTaskDeletes(); });
+window.addEventListener('pagehide', function() { _flushTaskDeletes(); });
 
 function toggleCompletedTasks() {
   _tasksCompletedOpen = !_tasksCompletedOpen;

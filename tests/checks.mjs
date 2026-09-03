@@ -175,6 +175,50 @@ const results = await page.evaluate(async () => {
   const rowsHtml = document.getElementById('view-script-editor').innerHTML;
   T('first row has Move up disabled, last has Move down disabled', /title="Move up" disabled/.test(rowsHtml) && /title="Move down" disabled/.test(rowsHtml));
 
+  // ---- Tasks: optimistic toggles + undo-able delete ----
+  const taskWrites = [];
+  window.sbUpdateTask = async (id, u) => { taskWrites.push(u); return !u.__fail; };
+  window.sbDeleteTasks = async (ids) => { taskWrites.push({ del: ids }); return true; };
+  TASKS = [{ _sbId: 't1', title: 'A', details: '', dueDate: '', starred: false, completed: false, completedAt: '', createdAt: '2026-09-01' },
+           { _sbId: 't2', title: 'B', details: '', dueDate: '', starred: false, completed: false, completedAt: '', createdAt: '2026-09-02' }];
+  _taskPendingDeletes = {};
+  location.hash = 'tasks'; navigate('tasks');
+  const p = toggleTaskComplete('t1');
+  // A completed task leaves the active list and the collapsed Completed count goes up, before the save resolves
+  T('complete flips before the save resolves', TASKS.find(t => t._sbId === 't1').completed === true && !document.querySelector('.task-list:not(.task-list-completed) .task-item[data-id="t1"]') && /Completed \(1\)/.test(document.getElementById('view-tasks').textContent));
+  await p;
+  T('complete persisted', taskWrites.some(w => w.completed === true));
+  window.sbUpdateTask = async () => false;
+  await toggleTaskStar('t2');
+  T('failed star save reverts', TASKS.find(t => t._sbId === 't2').starred === false);
+  deleteTask('t2');
+  T('delete removes immediately with an Undo toast', !TASKS.some(t => t._sbId === 't2') && document.getElementById('undo-toast')?.classList.contains('show'));
+  document.querySelector('#undo-toast .undo-toast-btn').click();
+  T('undo restores the task without a DB call', TASKS.some(t => t._sbId === 't2') && !taskWrites.some(w => w.del) && !_taskPendingDeletes.t2);
+  deleteTask('t2');
+  _flushTaskDeletes();
+  await new Promise(r => setTimeout(r, 10));
+  T('flush commits a pending delete', taskWrites.some(w => w.del && w.del[0] === 't2') && !TASKS.some(t => t._sbId === 't2'));
+
+  // ---- Invoices: routes + row sheet ----
+  INVOICE_DATA = [{ _sbId: 'i1', invoiceNumber: 'ACME-0001', brand: 'Acme', billToName: 'Acme Media', billToAddress: '', date: '2026-08-01', dueDate: '', status: 'sent', lineItems: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 100 }], amount: 100, amountPaid: 0, tax: 0, notes: '', includePaymentInfo: false, paymentTerms: 'none', clientId: null, description: 'Reel' }];
+  CLIENTS = []; _invoicingMigrationMissing = false;
+  location.hash = 'invoices/i1'; navigate('invoices/i1');
+  T('#invoices/{id} opens the editor', _invEditorOpen && _invEditingId === 'i1' && !!document.getElementById('invBillToName'));
+  location.hash = 'invoices'; navigate('invoices');
+  T('#invoices closes the editor', !_invEditorOpen && !!document.getElementById('invTbody'));
+  location.hash = 'invoices/new'; navigate('invoices/new');
+  T('#invoices/new starts a blank invoice', _invEditorOpen && _invEditingId === null && _inv && _inv.status === 'draft');
+  location.hash = 'invoices'; navigate('invoices');
+  invOpenRowMenu('i1');
+  T('row sheet mounts on body with the status action', document.getElementById('invSheetHost')?.parentElement === document.body && /Record Payment/.test(document.getElementById('invSheetHost').innerHTML));
+  invCloseRowMenu();
+  T('row sheet closes', document.getElementById('invSheetHost').innerHTML === '');
+  T('unknown hash falls back to dashboard', (() => { location.hash = 'nope'; navigate('nope'); return document.getElementById('view-dashboard').classList.contains('active'); })());
+  T('tab bar marks the active tool', (() => { location.hash = 'tasks'; navigate('tasks'); return document.querySelector('.tabbar [data-tab="tasks"]').classList.contains('active') && !document.querySelector('.tabbar [data-tab="boards"]').classList.contains('active'); })());
+  T('editor routes set editor-open on body', (() => { location.hash = 'script/abc'; navigate('script/abc'); const on = document.body.classList.contains('editor-open'); location.hash = 'tasks'; navigate('tasks'); return on && !document.body.classList.contains('editor-open'); })());
+  _scriptLoadToken++; // abandon the stray editor fetch
+
   return { out, xss: !!window.__x };
 });
 await browser.close();
