@@ -126,7 +126,7 @@ function renderContracts() {
       <div class="contract-form">
 
         <!-- Contract Settings (collapsible, inside form column only) -->
-        <div class="contract-defaults-toggle" onclick="toggleContractDefaults()">
+        <div class="contract-defaults-toggle" data-action="toggleContractDefaults">
           <svg id="contractDefaultsArrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="transition:transform 0.2s;vertical-align:-1px;margin-right:6px;"><polyline points="6 9 12 15 18 9"/></svg>
           Contract Settings
         </div>
@@ -199,13 +199,13 @@ function renderContracts() {
             <label>Approval Consequence (if client misses deadline)</label>
             <input type="text" id="cdApprovalConsequence" value="${CONTRACT_DEFAULTS.approvalConsequence}" placeholder="approval of the Content as delivered">
           </div>
-          <button class="btn btn-secondary" onclick="saveContractDefaults()" style="margin-top:8px;">Save Defaults</button>
+          <button class="btn btn-secondary" data-action="saveContractDefaults" style="margin-top:8px;">Save Defaults</button>
         </div>
 
         ${dealOpts ? `
         <div class="form-group contract-form-section">
           <label>Load from Existing Deal</label>
-          <select id="cLoadDeal" onchange="prefillContractFromDeal()">
+          <select id="cLoadDeal" data-change="prefillContractFromDeal">
             <option value="">— Select a deal to pre-fill —</option>
             ${dealOpts}
           </select>
@@ -274,7 +274,7 @@ function renderContracts() {
         <div class="form-row">
           <div class="form-group">
             <label>Deliverable Type</label>
-            <select id="cDeliverable" onchange="contractDeliverableChanged()">
+            <select id="cDeliverable" data-change="contractDeliverableChanged">
               ${deliverableOptions.map(d => `<option value="${d.name}" data-rate="${d.rate}">${d.name}</option>`).join('')}
             </select>
           </div>
@@ -290,7 +290,7 @@ function renderContracts() {
         <div class="form-row">
           <div class="form-group">
             <label>Compensation Model</label>
-            <select id="cCompModel" onchange="togglePerfFields()">
+            <select id="cCompModel" data-change="togglePerfFields">
               <option value="flat">Flat Rate</option>
               <option value="performance">Performance-Based</option>
             </select>
@@ -394,7 +394,7 @@ function renderContracts() {
         </div>
 
         <div class="contract-actions">
-          <button class="btn btn-primary" onclick="generateContract()">
+          <button class="btn btn-primary" data-action="generateContract">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
             Generate Contract
           </button>
@@ -405,11 +405,11 @@ function renderContracts() {
         <div class="contract-preview-header">
           <h4>Contract Preview</h4>
           <div class="contract-preview-actions">
-            <button class="btn btn-sm btn-secondary" onclick="copyContractPreview()">
+            <button class="btn btn-sm btn-secondary" data-action="copyContractPreview">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><rect x="9" y="9" width="13" height="13" rx="1"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               Copy
             </button>
-            <button class="btn btn-sm btn-primary" onclick="downloadContractPDF()">
+            <button class="btn btn-sm btn-primary" data-action="downloadContractPDF">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               PDF
             </button>
@@ -1038,3 +1038,6 @@ function downloadContractPDF() {
   showToast('PDF downloaded');
 }
 
+
+/* ---- ACTION REGISTRY (toolkit-views.js) ---- */
+act({ toggleContractDefaults, saveContractDefaults, prefillContractFromDeal, contractDeliverableChanged, togglePerfFields, generateContract, copyContractPreview, downloadContractPDF });

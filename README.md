@@ -260,9 +260,11 @@ Add `https://arkives.xyz` to the allowed redirect URLs in:
 - `var` in auth functions (broader compat), `const`/`let` elsewhere
 - Async/await for all Supabase operations
 - Error handling via `_showSaveError()` / `_showSaveSuccess()` toast system
+- **No inline event handlers.** Markup declares `data-action="fn"` (click), `data-input` / `data-change` / `data-keydown` / `data-submit` for other events, with args as HTML-escaped JSON in `data-args` (build them with `_args(...)` in templates; `"$event"`, `"$el"`, `"$value"`, `"$checked"` resolve at dispatch). Add `data-stop` to stop propagation after the handler. Register every handler in the `act({ ... })` block at the bottom of the file that defines it. The dispatcher lives at the top of `app.js`.
 
 ### What NOT to do
-- Don't introduce a build step (no webpack, no vite, no npm)
+- Don't write `onclick="..."` or an inline `<script>`: the Content-Security-Policy forbids inline scripts, so it silently does nothing in production, and `npm test` fails on it
+- Don't introduce a build step for `public/` today (npm is dev tooling only; nothing in `node_modules` ships). The module conversion is a planned decision, see `ARCHITECTURE-AUDIT.md` Phase 2
 - Don't add framework dependencies
 - Don't use `localStorage` directly — use `safeGet()`/`safeSet()`
 - Don't hardcode data — everything comes from Supabase
@@ -297,12 +299,14 @@ No build step. `public/` is what ships. Tooling lives outside it:
 npm install          # eslint, globals, playwright-core (no browser download; uses installed Chrome)
 npm run lint         # regenerates tools/app-globals.json, then ESLint over public/ tools/ tests/
 npm test             # tests/checks.mjs (logic, stubbed Supabase) + tests/smoke.mjs (13 views x populated/empty x desktop/phone)
-npm run serve        # python static server on :8741 for manual poking
+npm run serve        # serves public/ on :8741 with the production headers from public/_headers (CSP enforced)
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint + test on every push and PR. Screenshots from the smoke run are uploaded as an artifact.
 
 **Adding a top-level function or variable in `public/*.js`?** Run `npm run globals` (or just `npm run lint`, which does it) so `no-undef` knows about it. The five files share one global scope at runtime; the generated list is how the linter sees that.
+
+**Security headers.** `public/_headers` ships an enforced Content-Security-Policy with no `'unsafe-inline'` for scripts (switched from report-only on 2026-09-04 once the last inline handler was gone). The test server sends the same headers, so the smoke run exercises the app under the real policy, and `tests/checks.mjs` fails on any `on*=` attribute or inline `<script>` in `public/`, on any `data-action` name that has no registered handler, and on any constant `data-args` that is not a JSON array.
 
 **Migrations still run by hand** in the Supabase SQL editor. `migrations/020_share_hardening.sql` must be applied (it is idempotent and safe before or after deploy). `introspect.sql` at the repo root is a read-only schema dump for checking drift.
 

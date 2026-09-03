@@ -2,8 +2,39 @@
 // and assert the behavior the 2026-09 audit fixed. Fast (one page load).
 //
 //   npm run test:checks
+import fs from 'node:fs';
 import { chromium } from 'playwright-core';
-import { startServer, launchOptions } from './_server.mjs';
+import { startServer, launchOptions, siteHeaders, ROOT } from './_server.mjs';
+
+// ---- Static guards (source, not runtime) ----
+// The Content-Security-Policy has no 'unsafe-inline' for scripts, so an
+// inline handler or inline <script> would silently do nothing in
+// production. Catch it here, at the point of introduction.
+const staticOut = [];
+const S = (name, cond, detail) => staticOut.push({ name, pass: !!cond, detail: detail === undefined ? '' : String(detail) });
+const SRC = ['index.html', 'app.js', 'invoices.js', 'outreach.js', 'boards.js', 'toolkit-views.js', 'theme.js'];
+const INLINE_RE = /\son(click|dblclick|input|change|keydown|keyup|keypress|submit|load|error|focus|blur|mouse[a-z]+|pointer[a-z]+|touch[a-z]+|contextmenu|wheel|scroll|paste|drop|drag[a-z]*)\s*=/gi;
+const actionNames = new Set();
+const inlineHits = [], badArgs = [];
+for (const f of SRC) {
+  const src = fs.readFileSync(ROOT + f, 'utf8');
+  src.split('\n').forEach((ln, i) => {
+    for (const m of ln.matchAll(INLINE_RE)) inlineHits.push(f + ':' + (i + 1) + ' on' + m[1]);
+    for (const m of ln.matchAll(/data-(action|input|change|keydown|submit)="([^"]*)"/g)) actionNames.add(m[2]);
+    // constant args must be a JSON array (dynamic ones go through _args at runtime)
+    for (const m of ln.matchAll(/data-(args|input-args|change-args|keydown-args|submit-args)="([^"]*)"/g)) {
+      if (/\$\{|' \+/.test(m[2])) continue;
+      try { if (!Array.isArray(JSON.parse(m[2].replace(/&quot;/g, '"').replace(/&amp;/g, '&')))) throw 0; } catch (e) { badArgs.push(f + ':' + (i + 1) + ' ' + m[2]); }
+    }
+  });
+}
+S('no inline event handlers in public/', inlineHits.length === 0, inlineHits.join(', '));
+S('no inline <script> blocks in index.html', !/<script(?![^>]*\ssrc=)[^>]*>/i.test(fs.readFileSync(ROOT + 'index.html', 'utf8')));
+S('every constant data-*-args attribute is a JSON array', badArgs.length === 0, badArgs.join(' | '));
+S('action names are plain identifiers', [...actionNames].every(n => /^[A-Za-z_$][\w$]*$/.test(n)), [...actionNames].filter(n => !/^[A-Za-z_$][\w$]*$/.test(n)).join(', '));
+const hdr = siteHeaders();
+S('_headers enforces the CSP (not report-only)', !!hdr['content-security-policy'] && !hdr['content-security-policy-report-only']);
+S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr['content-security-policy'] || '').split(';').find(x => x.trim().startsWith('script-src')) || ''; return d && !/unsafe-inline|unsafe-eval/.test(d); })());
 
 const PORT = 8742;
 const server = await startServer(PORT);
@@ -14,7 +45,7 @@ page.on('pageerror', e => pageErrors.push(String(e.message)));
 await page.goto(`http://localhost:${PORT}/#dashboard`, { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 
-const results = await page.evaluate(async () => {
+const results = await page.evaluate(async (ACTION_NAMES) => {
   const out = [];
   const T = (name, cond, detail) => out.push({ name, pass: !!cond, detail: detail === undefined ? '' : String(detail) });
 
@@ -219,15 +250,156 @@ const results = await page.evaluate(async () => {
   T('editor routes set editor-open on body', (() => { location.hash = 'script/abc'; navigate('script/abc'); const on = document.body.classList.contains('editor-open'); location.hash = 'tasks'; navigate('tasks'); return on && !document.body.classList.contains('editor-open'); })());
   _scriptLoadToken++; // abandon the stray editor fetch
 
+  // ---- Event delegation: every data-* name in the source has a handler ----
+  const unregistered = ACTION_NAMES.filter(n => typeof ACTIONS[n] !== 'function');
+  T('every data-action/input/change/keydown/submit in the source is registered (' + ACTION_NAMES.length + ' names)', unregistered.length === 0, unregistered.join(', '));
+
+  // ---- Event delegation: dispatcher semantics ----
+  const calls = [];
+  act({
+    __t0: function () { calls.push(['t0', arguments.length]); },
+    __t1: function (a, b, c, d) { calls.push(['t1', a, b && b.type, c && c.id, d]); },
+    __tStop: function (ev) { calls.push(['stop']); ev.stopPropagation(); },
+    __tOuter: function () { calls.push(['outer']); },
+    __tIn: function (v) { calls.push(['in', v]); },
+    __tChk: function (c) { calls.push(['chk', c]); },
+    __tKey: function (ev) { calls.push(['key', ev.key]); },
+    __tSub: function (ev) { ev.preventDefault(); calls.push(['sub']); },
+  });
+  const lab = document.createElement('div');
+  lab.innerHTML = `
+    <div data-action="__tOuter">
+      <button id="d0" data-action="__t0">x</button>
+      <button id="d1" data-action="__t1" data-args="${_args('a', '$event', '$el', 7)}">x</button>
+      <span data-action="__tStop" data-args="[&quot;$event&quot;]"><button id="dStop">x</button></span>
+      <span data-action="__t0" data-stop><button id="dStopAttr">x</button></span>
+      <button id="dBad" data-action="__nope">x</button>
+      <input id="dIn" data-input="__tIn" data-input-args="[&quot;$value&quot;]">
+      <input id="dChk" type="checkbox" data-change="__tChk" data-change-args="[&quot;$checked&quot;]">
+      <input id="dKey" data-keydown="__tKey" data-keydown-args="[&quot;$event&quot;]">
+      <form id="dForm" data-submit="__tSub" data-submit-args="[&quot;$event&quot;]"><button type="submit">go</button></form>
+    </div>`;
+  document.body.appendChild(lab);
+  let docSeen = 0; const seeDoc = () => docSeen++; document.addEventListener('click', seeDoc);
+  document.getElementById('d0').click();
+  T('click: handler gets exactly its args and the event bubbles to the outer action', JSON.stringify(calls) === '[["t0",0],["outer"]]', JSON.stringify(calls));
+  T('click: later document listeners still run when nothing stops the event', docSeen === 1);
+  calls.length = 0; docSeen = 0;
+  document.getElementById('d1').click();
+  T('$event, $el and literals resolve in order', JSON.stringify(calls[0]) === '["t1","a","click","d1",7]', JSON.stringify(calls[0]));
+  calls.length = 0; docSeen = 0;
+  document.getElementById('dStop').click();
+  T('a handler that stops propagation ends the walk and hides the event from later document listeners', JSON.stringify(calls) === '[["stop"]]' && docSeen === 0, JSON.stringify(calls) + ' docSeen=' + docSeen);
+  calls.length = 0; docSeen = 0;
+  document.getElementById('dStopAttr').click();
+  T('data-stop runs the handler then stops', JSON.stringify(calls) === '[["t0",0]]' && docSeen === 0, JSON.stringify(calls));
+  calls.length = 0;
+  const errBefore = console.error; let loggedErr = ''; console.error = (m) => { loggedErr += m; };
+  document.getElementById('dBad').click();
+  console.error = errBefore;
+  T('an unregistered action logs an error and does not throw', /__nope/.test(loggedErr) && calls.length === 0, loggedErr);
+  const din = document.getElementById('dIn'); din.value = 'hi'; din.dispatchEvent(new Event('input', { bubbles: true }));
+  T('data-input passes $value', JSON.stringify(calls) === '[["in","hi"]]', JSON.stringify(calls));
+  calls.length = 0;
+  document.getElementById('dChk').click();
+  T('data-change passes $checked', calls.some(c => c[0] === 'chk' && c[1] === true), JSON.stringify(calls));
+  calls.length = 0;
+  document.getElementById('dKey').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  T('data-keydown passes the event', JSON.stringify(calls) === '[["key","Enter"]]', JSON.stringify(calls));
+  calls.length = 0;
+  document.getElementById('dForm').requestSubmit();
+  T('data-submit passes the event (and preventDefault holds)', JSON.stringify(calls) === '[["sub"]]' && location.pathname === '/', JSON.stringify(calls));
+  document.removeEventListener('click', seeDoc); lab.remove();
+  ['__t0', '__t1', '__tStop', '__tOuter', '__tIn', '__tChk', '__tKey', '__tSub'].forEach(n => { delete ACTIONS[n]; });
+
+  // ---- Event delegation: the real UI, driven by clicks ----
+  // Auth form submits through the dispatcher
+  const realLogin = ACTIONS.handleLogin; let loginEv = null;
+  ACTIONS.handleLogin = (ev) => { ev.preventDefault(); loginEv = ev; };
+  document.getElementById('loginEmail').value = 't@example.com'; document.getElementById('loginPassword').value = 'pw';
+  document.getElementById('loginForm').requestSubmit(); // real path: validation, then the delegated submit
+  document.getElementById('loginEmail').value = ''; document.getElementById('loginPassword').value = '';
+  ACTIONS.handleLogin = realLogin;
+  T('login form submit reaches handleLogin with the event', loginEv && loginEv.type === 'submit');
+  // Settings tabs (constant args)
+  location.hash = 'settings'; navigate('settings');
+  document.querySelector('.settings-tab[data-tab="ratecard"]').click();
+  T('settings tab click switches the panel', document.querySelector('.settings-tab[data-tab="ratecard"]').classList.contains('active') && document.getElementById('settings-panel-ratecard').style.display === '' && document.getElementById('settings-panel-profile').style.display === 'none');
+  // Calendar day cell (dynamic args) opens the modal prefilled; backdrop closes it; the card does not
+  location.hash = 'calendar'; navigate('calendar');
+  const cell = document.querySelector('.calendar-cell[data-action="openAddEventModal"]');
+  const cellIso = JSON.parse(cell.getAttribute('data-args'))[0];
+  cell.click();
+  const evModal = document.getElementById('addEventModal');
+  T('calendar cell click opens Add Event prefilled with that day', evModal.style.display !== 'none' && document.getElementById('evDate').value === cellIso, document.getElementById('evDate').value + ' vs ' + cellIso);
+  evModal.querySelector('.modal-card h3').click();
+  T('click inside the event card keeps it open', evModal.style.display !== 'none');
+  evModal.click();
+  T('click on the event backdrop closes it', evModal.style.display === 'none');
+  // Tasks: check button toggles, body opens the editor, backdrop closes it
+  window.sbUpdateTask = async () => true;
+  TASKS = [{ _sbId: 'k1', title: 'Click me', details: '', dueDate: '', starred: false, completed: false, completedAt: '', createdAt: '2026-09-01' }];
+  location.hash = 'tasks'; navigate('tasks');
+  document.querySelector('.task-item[data-id="k1"] .task-body').click();
+  const tModal = document.getElementById('editTaskModal');
+  T('task body click opens the edit modal for that task', tModal.style.display !== 'none' && _editingTaskId === 'k1' && document.getElementById('etTitle').value === 'Click me');
+  tModal.querySelector('.modal-card').click();
+  T('click inside the task card keeps it open', tModal.style.display !== 'none');
+  tModal.click();
+  T('click on the task backdrop closes it', tModal.style.display === 'none' && _editingTaskId === null);
+  document.getElementById('etTitle').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); // closed modal: harmless
+  document.querySelector('.task-item[data-id="k1"] .task-check').click();
+  T('task check click completes the task', TASKS[0].completed === true);
+  // Invoices: row click opens; the actions cell stops the row; the sheet backdrop closes
+  INVOICE_DATA = [{ _sbId: 'i1', invoiceNumber: 'ACME-0001', brand: 'Acme', billToName: 'Acme Media', billToAddress: '', date: '2026-08-01', dueDate: '', status: 'sent', lineItems: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 100 }], amount: 100, amountPaid: 0, tax: 0, notes: '', includePaymentInfo: false, paymentTerms: 'none', clientId: null, description: 'Reel' }];
+  location.hash = 'invoices'; navigate('invoices');
+  document.querySelector('.inv-row td').click();
+  T('invoice row click opens that invoice', _invEditorOpen && _invEditingId === 'i1');
+  location.hash = 'invoices'; navigate('invoices');
+  document.querySelector('.inv-row .inv-row-more').click();
+  T('row actions click opens the sheet without opening the row', !_invEditorOpen && /Record Payment/.test(document.getElementById('invSheetHost').innerHTML));
+  document.querySelector('#invSheetHost .inv-sheet').click();
+  T('click inside the sheet keeps it open', document.getElementById('invSheetHost').innerHTML !== '');
+  document.querySelector('#invSheetHost .inv-sheet-overlay').click();
+  T('click on the sheet backdrop closes it', document.getElementById('invSheetHost').innerHTML === '');
+  invOpenRowMenu('i1');
+  const sheetPick = document.querySelector('#invSheetHost .inv-sheet-btn[data-action="invRowMenuPick"]');
+  sheetPick.click();
+  T('a sheet action closes the sheet and runs (Open)', document.getElementById('invSheetHost').innerHTML === '' && _invEditorOpen && _invEditingId === 'i1');
+  location.hash = 'invoices'; navigate('invoices');
+  // Outreach rail (dynamic args through a template)
+  OUTREACH_TARGETS = []; OUTREACH_LISTS = [{ _sbId: 'L1', name: 'Brands' }]; _outSelectedList = 'all';
+  location.hash = 'outreach'; navigate('outreach');
+  document.querySelector('.out-rail-item[data-action="outSelectList"][data-args*="L1"]').click();
+  T('outreach list click selects the list', _outSelectedList === 'L1');
+  // Card pattern used by Scripts and Boards lists: go() on the card, a stopped delete button inside
+  const realDel = ACTIONS._deleteBoard; let delId = null; ACTIONS._deleteBoard = (id) => { delId = id; };
+  const card = document.createElement('div');
+  card.innerHTML = '<div class="board-card" data-action="go" data-args="' + _args('board/zz') + '"><button class="board-card-delete" data-action="_deleteBoard" data-args="' + _args('zz') + '" data-stop>x</button></div>';
+  document.body.appendChild(card);
+  location.hash = 'boards';
+  card.querySelector('.board-card-delete').click();
+  T('card delete button runs and does not open the card', delId === 'zz' && location.hash === '#boards');
+  card.querySelector('.board-card').click();
+  T('card click navigates', location.hash === '#board/zz');
+  ACTIONS._deleteBoard = realDel; card.remove(); location.hash = 'tasks'; navigate('tasks');
+  // Boards zoom buttons in the editor shell
+  const zBefore = _bdView.z;
+  document.querySelector('#view-board-editor .bd-zoom button[data-args="[1]"]').click();
+  T('board zoom-in button zooms', _bdView.z > zBefore, zBefore + ' -> ' + _bdView.z);
+
+  // ---- jsPDF works under the CSP (no unsafe-eval) ----
+  T('jsPDF renders under the CSP', (() => { try { const d = new jspdf.jsPDF(); d.text('csp', 10, 10); return /^data:application\/pdf/.test(d.output('datauristring')); } catch (e) { return false; } })());
+
   return { out, xss: !!window.__x };
-});
+}, [...actionNames]);
 await browser.close();
 server.close();
 
 let fails = 0;
-for (const r of results.out) {
+for (const r of [...staticOut, ...results.out]) {
   if (!r.pass) fails++;
   console.log((r.pass ? 'PASS ' : 'FAIL ') + r.name + (r.detail && !r.pass ? '  -> ' + r.detail : ''));
 }
-console.log(`\n${results.out.length - fails}/${results.out.length} passed | injection fired: ${results.xss} | page errors: ${pageErrors.length ? pageErrors.join(' | ') : 'none'}`);
+console.log(`\n${staticOut.length + results.out.length - fails}/${staticOut.length + results.out.length} passed | injection fired: ${results.xss} | page errors: ${pageErrors.length ? pageErrors.join(' | ') : 'none'}`);
 process.exit(fails || results.xss || pageErrors.length ? 1 : 0);

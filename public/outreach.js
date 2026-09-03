@@ -97,7 +97,7 @@ function renderOutreach() {
         <h1 class="view-title">Outreach</h1>
         <p class="view-subtitle">Who you want to work with, and where it stands.</p>
       </div>
-      <button class="btn btn-primary" onclick="outNew()">+ New Target</button>
+      <button class="btn btn-primary" data-action="outNew">+ New Target</button>
     </div>
 
     ${setupCard}
@@ -131,11 +131,11 @@ function renderOutreach() {
         <div class="out-controls">
           <div class="out-chips">${_outChipsHTML()}</div>
           <div class="out-controls-right">
-            <select class="out-status-filter" onchange="outSetStatusFilter(this.value)">
+            <select class="out-status-filter" data-change="outSetStatusFilter" data-change-args="[&quot;$value&quot;]">
               <option value="all" ${_outStatusFilter === 'all' ? 'selected' : ''}>All statuses</option>
               ${OUT_STATUS_ORDER.map(s => `<option value="${s}" ${_outStatusFilter === s ? 'selected' : ''}>${OUT_STATUSES[s]}</option>`).join('')}
             </select>
-            <input type="search" class="out-search" id="outSearch" placeholder="Search targets" value="${_esc(_outSearch)}" oninput="outSearchInput(this.value)">
+            <input type="search" class="out-search" id="outSearch" placeholder="Search targets" value="${_esc(_outSearch)}" data-input="outSearchInput" data-input-args="[&quot;$value&quot;]">
           </div>
         </div>
         <div class="table-wrap">
@@ -163,7 +163,7 @@ function renderOutreach() {
 function _outThHTML(key, label) {
   const active = _outSort.key === key;
   const arrow = active ? (_outSort.dir === 1 ? ' ▲' : ' ▼') : '';
-  return `<th class="out-th-sort ${active ? 'active' : ''}" onclick="outSortBy('${key}')">${label}<span class="out-sort-arrow">${arrow}</span></th>`;
+  return `<th class="out-th-sort ${active ? 'active' : ''}" data-action="outSortBy" data-args="${_args(key)}">${label}<span class="out-sort-arrow">${arrow}</span></th>`;
 }
 
 /* ---- LISTS RAIL ---- */
@@ -173,26 +173,26 @@ function _outRailHTML() {
       return `
         <div class="out-rail-item editing">
           <input type="text" id="outListRename" maxlength="100" value="${_esc(l.name)}"
-            onkeydown="outRenameListKey(event, '${l._sbId}')" onclick="event.stopPropagation()">
-          <button class="btn btn-sm" onclick="event.stopPropagation();outRenameList('${l._sbId}')">Save</button>
-          <button class="btn btn-sm" onclick="event.stopPropagation();outCancelListEdit()">&times;</button>
+            data-keydown="outRenameListKey" data-keydown-args="${_args('$event', l._sbId)}" data-action="stop" data-args="[&quot;$event&quot;]">
+          <button class="btn btn-sm" data-action="outRenameList" data-args="${_args(l._sbId)}" data-stop>Save</button>
+          <button class="btn btn-sm" data-action="outCancelListEdit" data-stop>&times;</button>
         </div>`;
     }
     const count = OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(l._sbId)).length;
     return `
-      <div class="out-rail-item ${_outSelectedList === l._sbId ? 'active' : ''}" onclick="outSelectList('${l._sbId}')">
+      <div class="out-rail-item ${_outSelectedList === l._sbId ? 'active' : ''}" data-action="outSelectList" data-args="${_args(l._sbId)}">
         <span class="out-rail-name">${_esc(l.name)}</span>
         <span class="out-rail-count">${count}</span>
-        <span class="out-rail-actions" onclick="event.stopPropagation()">
-          <button title="Rename list" onclick="outEditList('${l._sbId}')">✎</button>
-          <button title="Delete list" onclick="outDeleteList('${l._sbId}')">${SKETCHY_ICONS.trash}</button>
+        <span class="out-rail-actions" data-action="stop" data-args="[&quot;$event&quot;]">
+          <button title="Rename list" data-action="outEditList" data-args="${_args(l._sbId)}">✎</button>
+          <button title="Delete list" data-action="outDeleteList" data-args="${_args(l._sbId)}">${SKETCHY_ICONS.trash}</button>
         </span>
       </div>`;
   };
 
   return `
     <div class="out-rail-title">Lists</div>
-    <div class="out-rail-item ${_outSelectedList === 'all' ? 'active' : ''}" onclick="outSelectList('all')">
+    <div class="out-rail-item ${_outSelectedList === 'all' ? 'active' : ''}" data-action="outSelectList" data-args="[&quot;all&quot;]">
       <span class="out-rail-name">All targets</span>
       <span class="out-rail-count">${OUTREACH_TARGETS.length}</span>
     </div>
@@ -200,11 +200,11 @@ function _outRailHTML() {
     ${_outAddingList ? `
       <div class="out-rail-item editing">
         <input type="text" id="outNewListName" maxlength="100" placeholder="List name"
-          onkeydown="outAddListKey(event)" onclick="event.stopPropagation()">
-        <button class="btn btn-sm" onclick="outAddList()">Add</button>
-        <button class="btn btn-sm" onclick="outHideAddList()">&times;</button>
+          data-keydown="outAddListKey" data-keydown-args="[&quot;$event&quot;]" data-action="stop" data-args="[&quot;$event&quot;]">
+        <button class="btn btn-sm" data-action="outAddList">Add</button>
+        <button class="btn btn-sm" data-action="outHideAddList">&times;</button>
       </div>` : `
-      <button class="out-rail-add" onclick="outShowAddList()">${SKETCHY_ICONS.plus} New list</button>`}
+      <button class="out-rail-add" data-action="outShowAddList">${SKETCHY_ICONS.plus} New list</button>`}
   `;
 }
 
@@ -289,7 +289,7 @@ function _outChipsHTML() {
   const chips = [['all', 'All']].concat(Object.keys(OUT_TYPES).map(k => [k, plurals[k]]));
   return chips.map(([k, label]) => {
     const count = k === 'all' ? inList.length : inList.filter(t => t.type === k).length;
-    return `<button class="out-chip ${_outTypeFilter === k ? 'active' : ''}" onclick="outSetType('${k}')">${label} <em>${count}</em></button>`;
+    return `<button class="out-chip ${_outTypeFilter === k ? 'active' : ''}" data-action="outSetType" data-args="${_args(k)}">${label} <em>${count}</em></button>`;
   }).join('');
 }
 
@@ -331,10 +331,10 @@ function _outRowsHTML() {
     const href = outWebsiteHref(t.website);
     const agreed = outAgreedTotal(t);
     return `
-      <tr class="out-row" onclick="outOpen('${t._sbId}')">
+      <tr class="out-row" data-action="outOpen" data-args="${_args(t._sbId)}">
         <td class="out-name-cell">
           <span style="font-weight:600">${_esc(t.name)}</span>
-          ${href ? `<a class="out-link" href="${_esc(href)}" target="_blank" rel="noopener noreferrer" title="${_esc(href)}" onclick="event.stopPropagation()">${SKETCHY_ICONS.link}</a>` : ''}
+          ${href ? `<a class="out-link" href="${_esc(href)}" target="_blank" rel="noopener noreferrer" title="${_esc(href)}" data-action="stop" data-args="[&quot;$event&quot;]">${SKETCHY_ICONS.link}</a>` : ''}
         </td>
         <td>${OUT_TYPES[t.type] || t.type}</td>
         <td><span class="out-status ${t.status}">${OUT_STATUSES[t.status] || t.status}</span></td>
@@ -422,27 +422,27 @@ function _outDrawerHTML() {
   const isNew = _outDrawerId === '__new';
   const href = outWebsiteHref(d.website);
   return `
-    <div class="out-drawer-backdrop" onclick="outClose()"></div>
+    <div class="out-drawer-backdrop" data-action="outClose"></div>
     <aside class="out-drawer">
       <div class="out-drawer-head">
         <h2>${isNew ? 'New Target' : 'Edit Target'}</h2>
-        <button class="out-drawer-close" onclick="outClose()" title="Close">&times;</button>
+        <button class="out-drawer-close" data-action="outClose" title="Close">&times;</button>
       </div>
       <div class="out-drawer-body">
         <div class="form-group">
           <label>Name</label>
-          <input type="text" id="outFieldName" maxlength="200" placeholder="Nike" value="${_esc(d.name)}" oninput="outDraftField('name', this.value)">
+          <input type="text" id="outFieldName" maxlength="200" placeholder="Nike" value="${_esc(d.name)}" data-input="outDraftField" data-input-args="[&quot;name&quot;,&quot;$value&quot;]">
         </div>
         <div class="out-field-row">
           <div class="form-group">
             <label>Type</label>
-            <select onchange="outDraftField('type', this.value)">
+            <select data-change="outDraftField" data-change-args="[&quot;type&quot;,&quot;$value&quot;]">
               ${Object.entries(OUT_TYPES).map(([k, v]) => `<option value="${k}" ${d.type === k ? 'selected' : ''}>${v}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
             <label>Status</label>
-            <select onchange="outDraftField('status', this.value)">
+            <select data-change="outDraftField" data-change-args="[&quot;status&quot;,&quot;$value&quot;]">
               ${OUT_STATUS_ORDER.map(s => `<option value="${s}" ${d.status === s ? 'selected' : ''}>${OUT_STATUSES[s]}</option>`).join('')}
             </select>
           </div>
@@ -450,7 +450,7 @@ function _outDrawerHTML() {
         <div class="form-group">
           <label>Website</label>
           <div class="out-site-row">
-            <input type="text" maxlength="500" placeholder="nike.com" value="${_esc(d.website)}" oninput="outDraftField('website', this.value)">
+            <input type="text" maxlength="500" placeholder="nike.com" value="${_esc(d.website)}" data-input="outDraftField" data-input-args="[&quot;website&quot;,&quot;$value&quot;]">
             ${href ? `<a class="btn btn-sm" href="${_esc(href)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}
           </div>
         </div>
@@ -458,12 +458,12 @@ function _outDrawerHTML() {
           <label>Who initiated?</label>
           <div class="out-seg">
             ${['none', 'us', 'them'].map(k => `
-              <button class="out-seg-btn ${d.initiatedBy === k ? 'active' : ''}" onclick="outDraftInitiated('${k}')">${OUT_INITIATED[k]}</button>`).join('')}
+              <button class="out-seg-btn ${d.initiatedBy === k ? 'active' : ''}" data-action="outDraftInitiated" data-args="${_args(k)}">${OUT_INITIATED[k]}</button>`).join('')}
           </div>
         </div>
         <div class="form-group">
           <label>What I want to work on with them</label>
-          <textarea rows="3" maxlength="2000" placeholder="AI-animated launch spot for their spring campaign..." oninput="outDraftField('pitch', this.value)">${_esc(d.pitch)}</textarea>
+          <textarea rows="3" maxlength="2000" placeholder="AI-animated launch spot for their spring campaign..." data-input="outDraftField" data-input-args="[&quot;pitch&quot;,&quot;$value&quot;]">${_esc(d.pitch)}</textarea>
         </div>
         <div class="form-group">
           <label>Lists</label>
@@ -471,7 +471,7 @@ function _outDrawerHTML() {
             <div class="out-list-checks">
               ${OUTREACH_LISTS.map(l => `
                 <label class="out-check">
-                  <input type="checkbox" ${d.listIds.includes(l._sbId) ? 'checked' : ''} onchange="outDraftListToggle('${l._sbId}', this.checked)">
+                  <input type="checkbox" ${d.listIds.includes(l._sbId) ? 'checked' : ''} data-change="outDraftListToggle" data-change-args="${_args(l._sbId, '$checked')}">
                   <span>${_esc(l.name)}</span>
                 </label>`).join('')}
             </div>` : `<p class="out-hint">No lists yet — create one from the rail on the left.</p>`}
@@ -481,25 +481,25 @@ function _outDrawerHTML() {
           <div class="out-projects">
             ${d.projects.map((p, i) => `
               <div class="out-proj-row">
-                <input type="text" maxlength="200" placeholder="Project name" value="${_esc(p.name)}" oninput="outDraftProject(${i}, 'name', this.value)">
-                <input type="number" step="any" min="0" placeholder="Budget" value="${_esc(p.budget)}" oninput="outDraftProject(${i}, 'budget', this.value)">
-                <input type="number" step="any" min="0" placeholder="Agreed rate" value="${_esc(p.rate)}" oninput="outDraftProject(${i}, 'rate', this.value)">
-                <button class="out-proj-remove" title="Remove project" onclick="outRemoveProject(${i})">${SKETCHY_ICONS.trash}</button>
-                <input type="text" class="out-proj-notes" maxlength="500" placeholder="Notes (deliverables, timing...)" value="${_esc(p.notes)}" oninput="outDraftProject(${i}, 'notes', this.value)">
+                <input type="text" maxlength="200" placeholder="Project name" value="${_esc(p.name)}" data-input="outDraftProject" data-input-args="${_args(i, 'name', '$value')}">
+                <input type="number" step="any" min="0" placeholder="Budget" value="${_esc(p.budget)}" data-input="outDraftProject" data-input-args="${_args(i, 'budget', '$value')}">
+                <input type="number" step="any" min="0" placeholder="Agreed rate" value="${_esc(p.rate)}" data-input="outDraftProject" data-input-args="${_args(i, 'rate', '$value')}">
+                <button class="out-proj-remove" title="Remove project" data-action="outRemoveProject" data-args="${_args(i)}">${SKETCHY_ICONS.trash}</button>
+                <input type="text" class="out-proj-notes" maxlength="500" placeholder="Notes (deliverables, timing...)" value="${_esc(p.notes)}" data-input="outDraftProject" data-input-args="${_args(i, 'notes', '$value')}">
               </div>`).join('')}
-            <button class="btn btn-sm" onclick="outAddProject()">${SKETCHY_ICONS.plus} Add project</button>
+            <button class="btn btn-sm" data-action="outAddProject">${SKETCHY_ICONS.plus} Add project</button>
           </div>
         </div>
         <div class="form-group">
           <label>Notes</label>
-          <textarea rows="3" maxlength="5000" placeholder="Contacts, context, anything else..." oninput="outDraftField('notes', this.value)">${_esc(d.notes)}</textarea>
+          <textarea rows="3" maxlength="5000" placeholder="Contacts, context, anything else..." data-input="outDraftField" data-input-args="[&quot;notes&quot;,&quot;$value&quot;]">${_esc(d.notes)}</textarea>
         </div>
       </div>
       <div class="out-drawer-foot">
-        ${isNew ? '<span></span>' : `<button class="btn out-delete-btn" onclick="outDelete()">Delete</button>`}
+        ${isNew ? '<span></span>' : `<button class="btn out-delete-btn" data-action="outDelete">Delete</button>`}
         <div class="gap-row">
-          <button class="btn" onclick="outClose()">Cancel</button>
-          <button class="btn btn-primary" onclick="outSave()">${isNew ? 'Add Target' : 'Save'}</button>
+          <button class="btn" data-action="outClose">Cancel</button>
+          <button class="btn btn-primary" data-action="outSave">${isNew ? 'Add Target' : 'Save'}</button>
         </div>
       </div>
     </aside>`;
@@ -611,3 +611,11 @@ async function outDelete() {
   _outDrawerId = null; _outDraft = null; _outDirty = false;
   renderOutreach();
 }
+
+/* ---- ACTION REGISTRY (outreach.js) ---- */
+act({
+  outNew, outOpen, outClose, outSave, outDelete, outSetStatusFilter, outSearchInput, outSortBy, outSetType,
+  outSelectList, outShowAddList, outHideAddList, outAddList, outAddListKey, outEditList, outDeleteList,
+  outRenameList, outRenameListKey, outCancelListEdit,
+  outDraftField, outDraftInitiated, outDraftListToggle, outDraftProject, outAddProject, outRemoveProject,
+});

@@ -1,5 +1,5 @@
 /*
-  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' https://wqblmehsqcmsdstyweus.supabase.co wss://wqblmehsqcmsdstyweus.supabase.co; img-src 'self' data: blob: https://i.ytimg.com https://wqblmehsqcmsdstyweus.supabase.co; media-src 'self' blob:; frame-src https://www.youtube.com https://player.vimeo.com; style-src 'self' 'unsafe-inline' https://api.fontshare.com; font-src 'self' data: https://cdn.fontshare.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; object-src 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; connect-src 'self' https://wqblmehsqcmsdstyweus.supabase.co wss://wqblmehsqcmsdstyweus.supabase.co; img-src 'self' data: blob: https://i.ytimg.com https://wqblmehsqcmsdstyweus.supabase.co; media-src 'self' blob:; frame-src https://www.youtube.com https://player.vimeo.com; style-src 'self' 'unsafe-inline' https://api.fontshare.com; font-src 'self' data: https://cdn.fontshare.com; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; object-src 'none'
   X-Frame-Options: DENY
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

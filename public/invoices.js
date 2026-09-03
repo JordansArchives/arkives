@@ -165,8 +165,8 @@ function renderInvoices(sub) {
         <p class="view-subtitle">Build it, send it, get paid.</p>
       </div>
       <div class="gap-row">
-        <button class="btn" onclick="invExportCSV()">Export CSV</button>
-        <button class="btn btn-primary" onclick="invNew()">+ New Invoice</button>
+        <button class="btn" data-action="invExportCSV">Export CSV</button>
+        <button class="btn btn-primary" data-action="invNew">+ New Invoice</button>
       </div>
     </div>
 
@@ -196,10 +196,10 @@ function renderInvoices(sub) {
           ${['all', 'draft', 'sent', 'overdue', 'paid'].map(f => {
             const count = f === 'all' ? INVOICE_DATA.length : INVOICE_DATA.filter(i => invDisplayStatus(i) === f).length;
             const label = f.charAt(0).toUpperCase() + f.slice(1);
-            return `<button class="inv-chip ${_invFilter === f ? 'active' : ''}" onclick="invSetFilter('${f}')">${label} <em>${count}</em></button>`;
+            return `<button class="inv-chip ${_invFilter === f ? 'active' : ''}" data-action="invSetFilter" data-args="${_args(f)}">${label} <em>${count}</em></button>`;
           }).join('')}
         </div>
-        <input type="search" class="inv-search" id="invSearch" placeholder="Search number or client" value="${_esc(_invSearch)}" oninput="invSearchInput(this.value)">
+        <input type="search" class="inv-search" id="invSearch" placeholder="Search number or client" value="${_esc(_invSearch)}" data-input="invSearchInput" data-input-args="[&quot;$value&quot;]">
       </div>
       <div class="table-wrap">
         <table class="data-table">
@@ -278,24 +278,24 @@ function _invSyncRowMenu() {
   }
   const inv = _invRowMenuId && INVOICE_DATA.find(i => i._sbId === _invRowMenuId);
   if (!inv) { host.innerHTML = ''; return; }
-  const id = _esc(inv._sbId);
+  const id = inv._sbId;
   const statusBtn = inv.status === 'draft'
-    ? `<button class="inv-sheet-btn" onclick="invCloseRowMenu();invQuickStatus('${id}','sent')">Mark Sent</button>`
+    ? `<button class="inv-sheet-btn" data-action="invRowMenuPick" data-args="${_args('sent', id)}">Mark Sent</button>`
     : inv.status === 'sent'
-      ? `<button class="inv-sheet-btn" onclick="invCloseRowMenu();invOpenPay('${id}')">Record Payment</button>`
+      ? `<button class="inv-sheet-btn" data-action="invRowMenuPick" data-args="${_args('pay', id)}">Record Payment</button>`
       : '';
-  const undoBtn = inv.status !== 'draft' ? `<button class="inv-sheet-btn" onclick="invCloseRowMenu();invUndoStatus('${id}')">${inv.status === 'paid' ? 'Back to Sent' : 'Back to Draft'}</button>` : '';
+  const undoBtn = inv.status !== 'draft' ? `<button class="inv-sheet-btn" data-action="invRowMenuPick" data-args="${_args('undo', id)}">${inv.status === 'paid' ? 'Back to Sent' : 'Back to Draft'}</button>` : '';
   host.innerHTML = `
-    <div class="inv-sheet-overlay" onclick="if(event.target===this)invCloseRowMenu()">
+    <div class="inv-sheet-overlay" data-action="invCloseRowMenuBackdrop" data-args="[&quot;$event&quot;,&quot;$el&quot;]">
       <div class="inv-sheet" role="dialog" aria-modal="true" aria-label="Invoice actions">
         <div class="inv-sheet-title">${_esc(inv.invoiceNumber)} · ${_esc(inv.billToName || inv.brand)}</div>
-        <button class="inv-sheet-btn" onclick="invCloseRowMenu();invOpen('${id}')">Open</button>
+        <button class="inv-sheet-btn" data-action="invRowMenuPick" data-args="${_args('open', id)}">Open</button>
         ${statusBtn}
         ${undoBtn}
-        <button class="inv-sheet-btn" onclick="invCloseRowMenu();invDuplicate('${id}')">Duplicate</button>
-        <button class="inv-sheet-btn" onclick="invCloseRowMenu();invRowPDF('${id}')">PDF</button>
-        <button class="inv-sheet-btn inv-sheet-danger" onclick="invCloseRowMenu();invRowDelete('${id}')">Delete</button>
-        <button class="inv-sheet-btn inv-sheet-cancel" onclick="invCloseRowMenu()">Cancel</button>
+        <button class="inv-sheet-btn" data-action="invRowMenuPick" data-args="${_args('duplicate', id)}">Duplicate</button>
+        <button class="inv-sheet-btn" data-action="invRowMenuPick" data-args="${_args('pdf', id)}">PDF</button>
+        <button class="inv-sheet-btn inv-sheet-danger" data-action="invRowMenuPick" data-args="${_args('delete', id)}">Delete</button>
+        <button class="inv-sheet-btn inv-sheet-cancel" data-action="invCloseRowMenu">Cancel</button>
       </div>
     </div>`;
 }
@@ -322,7 +322,7 @@ function _renderInvRows() {
     const st = invDisplayStatus(inv);
     const balance = invBalance(inv);
     return `
-      <tr class="inv-row" onclick="invOpen('${inv._sbId}')">
+      <tr class="inv-row" data-action="invOpen" data-args="${_args(inv._sbId)}">
         <td style="font-weight:600;font-variant-numeric:tabular-nums">${_esc(inv.invoiceNumber)}</td>
         <td>${_esc(inv.billToName || inv.brand)}</td>
         <td style="font-variant-numeric:tabular-nums">${fmtMoney(invTotal(inv))}</td>
@@ -330,16 +330,16 @@ function _renderInvRows() {
         <td>${_esc(inv.date)}</td>
         <td>${_esc(inv.dueDate || '—')}</td>
         <td><span class="invoice-status ${st}">${st.charAt(0).toUpperCase() + st.slice(1)}</span></td>
-        <td class="inv-row-actions" onclick="event.stopPropagation()">
+        <td class="inv-row-actions" data-action="stop" data-args="[&quot;$event&quot;]">
           <span class="inv-row-inline">
-          ${inv.status === 'draft' ? `<button class="btn btn-sm" onclick="invQuickStatus('${_esc(inv._sbId)}','sent')">Mark Sent</button>` : ''}
-          ${inv.status === 'sent' ? `<button class="btn btn-sm" onclick="invOpenPay('${_esc(inv._sbId)}')">Record Payment</button>` : ''}
-          ${inv.status !== 'draft' ? `<button class="btn btn-sm" onclick="invUndoStatus('${_esc(inv._sbId)}')" title="${inv.status === 'paid' ? 'Back to Sent' : 'Back to Draft'}">Undo</button>` : ''}
-          <button class="btn btn-sm" onclick="invDuplicate('${_esc(inv._sbId)}')">Duplicate</button>
-          <button class="btn btn-sm" onclick="invRowPDF('${_esc(inv._sbId)}')">PDF</button>
-          <button class="btn btn-sm inv-row-delete" onclick="invRowDelete('${_esc(inv._sbId)}')" title="Delete invoice">Delete</button>
+          ${inv.status === 'draft' ? `<button class="btn btn-sm" data-action="invQuickStatus" data-args="${_args(inv._sbId, 'sent')}">Mark Sent</button>` : ''}
+          ${inv.status === 'sent' ? `<button class="btn btn-sm" data-action="invOpenPay" data-args="${_args(inv._sbId)}">Record Payment</button>` : ''}
+          ${inv.status !== 'draft' ? `<button class="btn btn-sm" data-action="invUndoStatus" data-args="${_args(inv._sbId)}" title="${inv.status === 'paid' ? 'Back to Sent' : 'Back to Draft'}">Undo</button>` : ''}
+          <button class="btn btn-sm" data-action="invDuplicate" data-args="${_args(inv._sbId)}">Duplicate</button>
+          <button class="btn btn-sm" data-action="invRowPDF" data-args="${_args(inv._sbId)}">PDF</button>
+          <button class="btn btn-sm inv-row-delete" data-action="invRowDelete" data-args="${_args(inv._sbId)}" title="Delete invoice">Delete</button>
           </span>
-          <button class="btn btn-sm inv-row-more" onclick="invOpenRowMenu('${_esc(inv._sbId)}')" aria-label="More actions" title="Actions">&#8943;</button>
+          <button class="btn btn-sm inv-row-more" data-action="invOpenRowMenu" data-args="${_args(inv._sbId)}" aria-label="More actions" title="Actions">&#8943;</button>
         </td>
       </tr>`;
   }).join('');
@@ -387,8 +387,8 @@ function renderClientsCard() {
         <textarea id="clAddress" rows="3" placeholder="Company&#10;Street&#10;City, ST ZIP">${_esc(editingClient ? editingClient.billingAddress : '')}</textarea>
       </div>
       <div class="gap-row">
-        <button class="btn btn-primary" onclick="invSaveClient()">${editingClient ? 'Save Client' : 'Add Client'}</button>
-        <button class="btn" onclick="invCancelClientForm()">Cancel</button>
+        <button class="btn btn-primary" data-action="invSaveClient">${editingClient ? 'Save Client' : 'Add Client'}</button>
+        <button class="btn" data-action="invCancelClientForm">Cancel</button>
       </div>
     </div>` : '';
 
@@ -399,7 +399,7 @@ function renderClientsCard() {
           <h3 style="margin:0;font-family:var(--font-display);font-size:1.1rem">Clients</h3>
           <p style="margin:2px 0 0;color:var(--text-muted);font-size:0.85rem">Saved billing details. Picking one in the editor fills the invoice.</p>
         </div>
-        ${editing ? '' : `<button class="btn btn-sm" onclick="invAddClientFromCard()">+ Add Client</button>`}
+        ${editing ? '' : `<button class="btn btn-sm" data-action="invAddClientFromCard">+ Add Client</button>`}
       </div>
       ${form}
       ${CLIENTS.length ? `
@@ -414,8 +414,8 @@ function renderClientsCard() {
                 <td style="font-variant-numeric:tabular-nums">${_esc(c.invoicePrefix || invSuggestPrefix(c.company || c.name))}</td>
                 <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_esc((c.billingAddress || '').replace(/\n/g, ', '))}</td>
                 <td class="inv-row-actions">
-                  <button class="btn btn-sm" onclick="invEditClient('${c._sbId}')">Edit</button>
-                  <button class="btn btn-sm" onclick="invDeleteClient('${c._sbId}')">Delete</button>
+                  <button class="btn btn-sm" data-action="invEditClient" data-args="${_args(c._sbId)}">Edit</button>
+                  <button class="btn btn-sm" data-action="invDeleteClient" data-args="${_args(c._sbId)}">Delete</button>
                 </td>
               </tr>`).join('')}
           </tbody>
@@ -531,7 +531,7 @@ function renderPayModal() {
   if (!inv) return '';
   const balance = invBalance(inv);
   return `
-    <div class="inv-modal-overlay" onclick="if(event.target===this)invClosePay()">
+    <div class="inv-modal-overlay" data-action="invClosePayBackdrop" data-args="[&quot;$event&quot;,&quot;$el&quot;]">
       <div class="inv-modal">
         <h3>Record Payment</h3>
         <p class="inv-modal-sub">${_esc(inv.invoiceNumber)} · ${_esc(inv.billToName || inv.brand)}<br>
@@ -542,8 +542,8 @@ function renderPayModal() {
         </div>
         <p class="inv-help">Partial payments accumulate. The invoice flips to Paid when the balance hits zero.</p>
         <div class="gap-row">
-          <button class="btn btn-primary" onclick="invRecordPayment()">Record</button>
-          <button class="btn" onclick="invClosePay()">Cancel</button>
+          <button class="btn btn-primary" data-action="invRecordPayment">Record</button>
+          <button class="btn" data-action="invClosePay">Cancel</button>
         </div>
       </div>
     </div>`;
@@ -645,20 +645,20 @@ function renderInvoiceEditor() {
       <div class="form-group"><label>Company</label><input type="text" id="invNcCompany" placeholder="Acme Media LLC"></div>
       <div class="form-group"><label>Billing Address</label><textarea id="invNcAddress" rows="3" placeholder="Company&#10;Street&#10;City, ST ZIP"></textarea></div>
       <div class="gap-row">
-        <button class="btn btn-primary btn-sm" onclick="invSaveNewClient()">Save Client</button>
-        <button class="btn btn-sm" onclick="_invNewClientOpen=false;renderInvoiceEditor()">Cancel</button>
+        <button class="btn btn-primary btn-sm" data-action="invSaveNewClient">Save Client</button>
+        <button class="btn btn-sm" data-action="invCancelNewClient">Cancel</button>
       </div>
     </div>` : '';
 
   container.innerHTML = `
     <div class="view-header">
       <div>
-        <button class="btn btn-sm" onclick="invBack()" style="margin-bottom:8px">← Invoices</button>
+        <button class="btn btn-sm" data-action="invBack" style="margin-bottom:8px">← Invoices</button>
         <h1 class="view-title">${_invEditingId ? 'Edit Invoice' : 'New Invoice'}</h1>
       </div>
       <div class="gap-row">
-        <button class="btn" onclick="invDownloadPDF()">Download PDF</button>
-        <button class="btn btn-primary" onclick="invSave()">Save Invoice</button>
+        <button class="btn" data-action="invDownloadPDF">Download PDF</button>
+        <button class="btn btn-primary" data-action="invSave">Save Invoice</button>
       </div>
     </div>
 
@@ -668,32 +668,32 @@ function renderInvoiceEditor() {
         <div class="inv-section-label">Bill To</div>
         <div class="form-group">
           <label>Client</label>
-          <select id="invClientSel" onchange="invPickClient(this.value)">${clientOptions}</select>
+          <select id="invClientSel" data-change="invPickClient" data-change-args="[&quot;$value&quot;]">${clientOptions}</select>
         </div>
         ${newClientForm}
         <div class="form-group">
           <label>Name / Company</label>
-          <input type="text" id="invBillToName" value="${_esc(inv.billToName)}" placeholder="Client or company name" oninput="invField('billToName', this.value)">
+          <input type="text" id="invBillToName" value="${_esc(inv.billToName)}" placeholder="Client or company name" data-input="invField" data-input-args="[&quot;billToName&quot;,&quot;$value&quot;]">
         </div>
         <div class="form-group">
           <label>Billing Address</label>
-          <textarea id="invBillToAddress" rows="3" placeholder="Company&#10;Street&#10;City, ST ZIP" oninput="invField('billToAddress', this.value)">${_esc(inv.billToAddress)}</textarea>
+          <textarea id="invBillToAddress" rows="3" placeholder="Company&#10;Street&#10;City, ST ZIP" data-input="invField" data-input-args="[&quot;billToAddress&quot;,&quot;$value&quot;]">${_esc(inv.billToAddress)}</textarea>
         </div>
         <p class="inv-help">Picking a client fills this and sets the next invoice number. Editing here never changes the saved client.</p>
 
         <div class="inv-section-label">Details</div>
         <div class="form-group">
           <label>Invoice Number</label>
-          <input type="text" id="invNumber" value="${_esc(inv.invoiceNumber)}" oninput="invField('invoiceNumber', this.value)">
+          <input type="text" id="invNumber" value="${_esc(inv.invoiceNumber)}" data-input="invField" data-input-args="[&quot;invoiceNumber&quot;,&quot;$value&quot;]">
         </div>
         <div class="form-row">
           <div class="form-group">
             <label>Date</label>
-            <input type="date" id="invDate" value="${_esc(inv.date)}" onchange="invField('date', this.value)">
+            <input type="date" id="invDate" value="${_esc(inv.date)}" data-change="invField" data-change-args="[&quot;date&quot;,&quot;$value&quot;]">
           </div>
           <div class="form-group">
             <label>Payment Terms</label>
-            <select id="invTerms" onchange="invField('paymentTerms', this.value)">
+            <select id="invTerms" data-change="invField" data-change-args="[&quot;paymentTerms&quot;,&quot;$value&quot;]">
               <option value="none" ${inv.paymentTerms === 'none' ? 'selected' : ''}>No terms</option>
               <option value="net15" ${inv.paymentTerms === 'net15' ? 'selected' : ''}>Net 15</option>
               <option value="net30" ${inv.paymentTerms === 'net30' ? 'selected' : ''}>Net 30</option>
@@ -704,12 +704,12 @@ function renderInvoiceEditor() {
         </div>
         <div class="form-group">
           <label>Due Date</label>
-          <input type="date" id="invDue" value="${_esc(inv.dueDate)}" ${netLocked ? 'disabled' : ''} onchange="invField('dueDate', this.value)">
+          <input type="date" id="invDue" value="${_esc(inv.dueDate)}" ${netLocked ? 'disabled' : ''} data-change="invField" data-change-args="[&quot;dueDate&quot;,&quot;$value&quot;]">
         </div>
         <p class="inv-help">Net terms set the due date automatically and lock it. With no terms, enter any date you like. Leave it blank and no due date shows.</p>
         <div class="form-group">
           <label>Status</label>
-          <select id="invStatus" onchange="invField('status', this.value)">
+          <select id="invStatus" data-change="invField" data-change-args="[&quot;status&quot;,&quot;$value&quot;]">
             <option value="draft" ${inv.status === 'draft' ? 'selected' : ''}>Draft</option>
             <option value="sent" ${inv.status === 'sent' ? 'selected' : ''}>Sent</option>
             <option value="paid" ${inv.status === 'paid' ? 'selected' : ''}>Paid</option>
@@ -718,30 +718,30 @@ function renderInvoiceEditor() {
 
         <div class="inv-section-label">Line Items</div>
         <div id="invLineItems">${_renderInvLineItems()}</div>
-        <button class="btn inv-add-line" onclick="invAddLine()">+ Add line item</button>
+        <button class="btn inv-add-line" data-action="invAddLine">+ Add line item</button>
         ${_invUsesRedDoc() ? `
         <div class="form-group" style="margin-top:12px">
           <label>Tax</label>
-          <input type="number" id="invTax" step="0.01" min="0" value="${inv.tax || ''}" placeholder="0.00" oninput="invField('tax', this.value)">
+          <input type="number" id="invTax" step="0.01" min="0" value="${inv.tax || ''}" placeholder="0.00" data-input="invField" data-input-args="[&quot;tax&quot;,&quot;$value&quot;]">
         </div>` : ''}
 
         <div class="inv-section-label">Payment</div>
         <div class="form-group">
           <label>Amount Already Paid</label>
-          <input type="number" id="invAmountPaid" step="0.01" min="0" value="${inv.amountPaid || ''}" placeholder="0.00" oninput="invField('amountPaid', this.value)">
+          <input type="number" id="invAmountPaid" step="0.01" min="0" value="${inv.amountPaid || ''}" placeholder="0.00" data-input="invField" data-input-args="[&quot;amountPaid&quot;,&quot;$value&quot;]">
         </div>
         <label class="inv-check">
-          <input type="checkbox" id="invIncPay" ${inv.includePaymentInfo ? 'checked' : ''} onchange="invField('includePaymentInfo', this.checked)">
+          <input type="checkbox" id="invIncPay" ${inv.includePaymentInfo ? 'checked' : ''} data-change="invField" data-change-args="[&quot;includePaymentInfo&quot;,&quot;$checked&quot;]">
           <span>Include payment info block</span>
         </label>
         ${!hasBank ? '<p class="inv-help">No bank details saved yet. Add them in Settings → Invoicing and they\'ll appear on the invoice.</p>' : ''}
 
         <div class="inv-section-label">Notes</div>
         <div class="form-group">
-          <textarea id="invNotes" rows="3" placeholder="Optional note to the client" oninput="invField('notes', this.value)">${_esc(inv.notes)}</textarea>
+          <textarea id="invNotes" rows="3" placeholder="Optional note to the client" data-input="invField" data-input-args="[&quot;notes&quot;,&quot;$value&quot;]">${_esc(inv.notes)}</textarea>
         </div>
 
-        ${_invEditingId ? `<button class="btn inv-delete-btn" onclick="invDelete()">Delete Invoice</button>` : ''}
+        ${_invEditingId ? `<button class="btn inv-delete-btn" data-action="invDelete">Delete Invoice</button>` : ''}
       </div>
 
       <div class="inv-preview-pane">
@@ -761,28 +761,28 @@ function _renderInvLineItems() {
     <div class="inv-li">
       <div class="inv-li-top">
         <div class="inv-li-types">
-          <button class="inv-li-type ${type === 'flat' ? 'active' : ''}" onclick="invLiType(${i},'flat')">Flat</button>
-          <button class="inv-li-type ${type === 'hourly' ? 'active' : ''}" onclick="invLiType(${i},'hourly')">Hourly</button>
-          <button class="inv-li-type ${type === 'day' ? 'active' : ''}" onclick="invLiType(${i},'day')">Day</button>
+          <button class="inv-li-type ${type === 'flat' ? 'active' : ''}" data-action="invLiType" data-args="${_args(i, 'flat')}">Flat</button>
+          <button class="inv-li-type ${type === 'hourly' ? 'active' : ''}" data-action="invLiType" data-args="${_args(i, 'hourly')}">Hourly</button>
+          <button class="inv-li-type ${type === 'day' ? 'active' : ''}" data-action="invLiType" data-args="${_args(i, 'day')}">Day</button>
         </div>
-        ${_inv.lineItems.length > 1 ? `<button class="inv-li-remove" onclick="invRemoveLine(${i})" title="Remove">×</button>` : ''}
+        ${_inv.lineItems.length > 1 ? `<button class="inv-li-remove" data-action="invRemoveLine" data-args="${_args(i)}" title="Remove">×</button>` : ''}
       </div>
       <div class="form-group">
-        <input type="text" placeholder="Description" value="${_esc(li.desc)}" oninput="invLiField(${i},'desc',this.value)">
+        <input type="text" placeholder="Description" value="${_esc(li.desc)}" data-input="invLiField" data-input-args="${_args(i, 'desc', '$value')}">
       </div>
       ${type === 'flat' ? `
       <div class="form-group">
         <label>Fee</label>
-        <input type="number" step="0.01" min="0" value="${li.fee || ''}" placeholder="0.00" oninput="invLiField(${i},'fee',this.value)">
+        <input type="number" step="0.01" min="0" value="${li.fee || ''}" placeholder="0.00" data-input="invLiField" data-input-args="${_args(i, 'fee', '$value')}">
       </div>` : `
       <div class="form-row">
         <div class="form-group">
           <label>${qtyLabel}</label>
-          <input type="number" step="0.25" min="0" value="${li.qty || ''}" placeholder="0" oninput="invLiField(${i},'qty',this.value)">
+          <input type="number" step="0.25" min="0" value="${li.qty || ''}" placeholder="0" data-input="invLiField" data-input-args="${_args(i, 'qty', '$value')}">
         </div>
         <div class="form-group">
           <label>${rateLabel}</label>
-          <input type="number" step="0.01" min="0" value="${li.rate || ''}" placeholder="0.00" oninput="invLiField(${i},'rate',this.value)">
+          <input type="number" step="0.01" min="0" value="${li.rate || ''}" placeholder="0.00" data-input="invLiField" data-input-args="${_args(i, 'rate', '$value')}">
         </div>
       </div>`}
       <div class="inv-li-amount">= <span id="invLiAmt-${i}">${fmtMoney(invLineAmount(li))}</span></div>
@@ -1296,7 +1296,7 @@ function renderInvoicingSettings() {
         <input type="text" id="setInvBankType" value="${_esc(c.bankAccountType)}" placeholder="Business Checking">
       </div>
       <div class="settings-actions">
-        <button class="btn btn-primary" onclick="saveInvoicingSettings()">Save Invoicing Settings</button>
+        <button class="btn btn-primary" data-action="saveInvoicingSettings">Save Invoicing Settings</button>
       </div>
     </div>
   `;
@@ -1325,3 +1325,27 @@ async function saveInvoicingSettings() {
   CREATOR.bankRoutingNumber = updates.bank_routing_number;
   CREATOR.bankAccountType = updates.bank_account_type;
 }
+
+/* ---- DELEGATION HELPERS ---- */
+function invRowMenuPick(kind, id) {
+  invCloseRowMenu();
+  if (kind === 'sent') invQuickStatus(id, 'sent');
+  else if (kind === 'pay') invOpenPay(id);
+  else if (kind === 'undo') invUndoStatus(id);
+  else if (kind === 'open') invOpen(id);
+  else if (kind === 'duplicate') invDuplicate(id);
+  else if (kind === 'pdf') invRowPDF(id);
+  else if (kind === 'delete') invRowDelete(id);
+}
+function invCloseRowMenuBackdrop(ev, el) { if (ev.target === el) invCloseRowMenu(); }
+function invClosePayBackdrop(ev, el) { if (ev.target === el) invClosePay(); }
+function invCancelNewClient() { _invNewClientOpen = false; renderInvoiceEditor(); }
+
+/* ---- ACTION REGISTRY (invoices.js) ---- */
+act({
+  invExportCSV, invNew, invSetFilter, invSearchInput, invOpen, invOpenRowMenu, invCloseRowMenu, invRowMenuPick, invCloseRowMenuBackdrop,
+  invQuickStatus, invOpenPay, invUndoStatus, invDuplicate, invRowPDF, invRowDelete,
+  invSaveClient, invCancelClientForm, invAddClientFromCard, invEditClient, invDeleteClient, invSaveNewClient, invCancelNewClient,
+  invRecordPayment, invClosePay, invClosePayBackdrop, invBack, invDownloadPDF, invSave, invDelete,
+  invPickClient, invField, invAddLine, invLiType, invRemoveLine, invLiField, saveInvoicingSettings,
+});

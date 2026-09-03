@@ -3,6 +3,71 @@
    App Logic, Data, Routing, Charts
    =========================================== */
 
+/* ---- EVENT DELEGATION ----
+   There are no inline handlers anywhere in the app; that is what lets the
+   Content-Security-Policy drop 'unsafe-inline' for scripts. Markup declares
+   intent with data attributes and five document-level listeners dispatch to
+   handlers registered with act({ name }) at the bottom of each file.
+
+     data-action=NAME    click     args in data-args
+     data-input=NAME     input     args in data-input-args
+     data-change=NAME    change    args in data-change-args
+     data-keydown=NAME   keydown   args in data-keydown-args
+     data-submit=NAME    submit    args in data-submit-args
+     data-stop           call ev.stopPropagation() after the handler
+
+   Args are HTML-escaped JSON; build them in templates with _args(...).
+   The strings "$event", "$el", "$value" and "$checked" resolve at dispatch
+   time to the event, the element, el.value and el.checked. A handler gets
+   exactly the args its markup lists, like the inline form did. Events walk
+   up through nested data-* elements the way inline handlers bubbled; a
+   handler that stops propagation (or data-stop) ends the walk. */
+const ACTIONS = Object.create(null);
+function act(map) {
+  for (const name in map) {
+    if (ACTIONS[name] && ACTIONS[name] !== map[name]) console.warn('act: duplicate handler name ' + name);
+    ACTIONS[name] = map[name];
+  }
+}
+function _args() {
+  return _esc(JSON.stringify(Array.prototype.slice.call(arguments)));
+}
+const _DELEGATED = { click: 'action', input: 'input', change: 'change', keydown: 'keydown', submit: 'submit' };
+function _dispatch(ev) {
+  const kind = _DELEGATED[ev.type];
+  if (!kind || !(ev.target instanceof Element)) return;
+  const sel = '[data-' + kind + ']';
+  const argsAttr = 'data-' + (kind === 'action' ? 'args' : kind + '-args');
+  let el = ev.target.closest(sel);
+  while (el) {
+    const name = el.getAttribute('data-' + kind);
+    const fn = ACTIONS[name];
+    if (typeof fn !== 'function') { console.error('No handler registered for data-' + kind + '="' + name + '"'); return; }
+    let args = [];
+    const raw = el.getAttribute(argsAttr);
+    if (raw) {
+      try { args = JSON.parse(raw); } catch (e) { console.error('Bad ' + argsAttr + ' on ' + name + ': ' + raw); return; }
+      if (!Array.isArray(args)) { console.error(argsAttr + ' must be a JSON array on ' + name); return; }
+      const target = el;
+      args = args.map(function (a) {
+        if (a === '$event') return ev;
+        if (a === '$el') return target;
+        if (a === '$value') return target.value;
+        if (a === '$checked') return target.checked;
+        return a;
+      });
+    }
+    fn.apply(el, args);
+    if (el.hasAttribute('data-stop')) ev.stopPropagation();
+    if (ev.cancelBubble) { ev.stopImmediatePropagation(); return; }
+    el = el.parentElement ? el.parentElement.closest(sel) : null;
+  }
+}
+Object.keys(_DELEGATED).forEach(function (t) { document.addEventListener(t, _dispatch); });
+// Generic handlers used across files.
+function go(hash) { window.location.hash = hash; }
+act({ go: go, stop: function (ev) { ev.stopPropagation(); } });
+
 /* ---- DATA ---- */
 let CREATOR = {
   name: "", brand: "", entity: "", email: "", niche: "",
@@ -1427,7 +1492,7 @@ function renderMediaKit() {
         <h1 class="view-title">Media Kit</h1>
         <p class="view-subtitle">Share with brands to showcase your reach and rates</p>
       </div>
-      <button class="btn-export-pdf" onclick="exportMediaKitPDF()">
+      <button class="btn-export-pdf" data-action="exportMediaKitPDF">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Export PDF
       </button>
@@ -2218,7 +2283,7 @@ function renderInbox() {
           </div>
           <div class="inbox-list">
             ${INBOX_ITEMS.map(item => `
-                <div class="inbox-item priority-${_esc(item.priority)}" onclick="selectInboxItem(${Number(item.id)})" id="inbox-item-${Number(item.id)}">
+                <div class="inbox-item priority-${_esc(item.priority)}" data-action="selectInboxItem" data-args="${_args(Number(item.id))}" id="inbox-item-${Number(item.id)}">
                   <div class="inbox-item-header">
                     <span class="inbox-brand">${_esc(item.brand)}</span>
                     <span class="inbox-time">${_esc(item.time)}</span>
@@ -2333,17 +2398,17 @@ function renderCalendar() {
         <p class="view-subtitle">Publishing schedule and deal deliverables</p>
       </div>
       <div class="view-header-actions">
-        <button class="btn btn-primary" onclick="openAddEventModal()">+ Add Event</button>
+        <button class="btn btn-primary" data-action="openAddEventModal">+ Add Event</button>
       </div>
     </div>
 
     <div class="calendar-container">
       <div class="calendar-main">
         <div class="calendar-toolbar">
-          <button class="btn-icon" onclick="calendarPrev()" title="Previous month">‹</button>
+          <button class="btn-icon" data-action="calendarPrev" title="Previous month">‹</button>
           <h2 class="calendar-month-title">${monthName}</h2>
-          <button class="btn-icon" onclick="calendarNext()" title="Next month">›</button>
-          <button class="btn btn-secondary btn-sm" onclick="calendarToday()">Today</button>
+          <button class="btn-icon" data-action="calendarNext" title="Next month">›</button>
+          <button class="btn btn-secondary btn-sm" data-action="calendarToday">Today</button>
         </div>
 
         <div class="calendar-grid">
@@ -2353,7 +2418,7 @@ function renderCalendar() {
           ${weeks.map(week => `
             <div class="calendar-week">
               ${week.map(cell => cell.empty ? '<div class="calendar-cell empty"></div>' :
-                `<div class="calendar-cell ${cell.isToday ? 'is-today' : ''}" onclick="openAddEventModal('${cell.iso}')">
+                `<div class="calendar-cell ${cell.isToday ? 'is-today' : ''}" data-action="openAddEventModal" data-args="${_args(cell.iso)}">
                   <div class="calendar-day-num">${cell.day}</div>
                   ${cell.events.slice(0, 3).map(e => `
                     <div class="calendar-event status-${_slug(e.status || 'draft')}" title="${_esc(e.brand)} — ${_esc(e.type)}">
@@ -2385,7 +2450,7 @@ function renderCalendar() {
               <div class="upcoming-meta">${_esc(e.type || '')}${e.platform ? ' · ' + _esc(e.platform) : ''}</div>
             </div>
             <div class="upcoming-actions">
-              <button class="btn-icon btn-danger" onclick="deleteCalendarEvent('${e._sbId}')" title="Delete">×</button>
+              <button class="btn-icon btn-danger" data-action="deleteCalendarEvent" data-args="${_args(e._sbId)}" title="Delete">×</button>
             </div>
           </div>
         `).join('')}
@@ -2402,8 +2467,8 @@ function _ensureCalendarModal() {
   var host = document.createElement('div');
   host.id = 'calendarModalHost';
   host.innerHTML = `
-    <div class="modal-overlay" id="addEventModal" style="display:none;" onclick="closeAddEventModal(event)">
-      <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-overlay" id="addEventModal" style="display:none;" data-action="closeAddEventModal" data-args="[&quot;$event&quot;,&quot;$el&quot;]">
+      <div class="modal-card" data-action="stop" data-args="[&quot;$event&quot;]">
         <h3>Add Calendar Event</h3>
         <div class="form-row">
           <div class="form-group">
@@ -2435,8 +2500,8 @@ function _ensureCalendarModal() {
           </select>
         </div>
         <div class="settings-actions">
-          <button class="btn btn-secondary" onclick="closeAddEventModal()">Cancel</button>
-          <button class="btn btn-primary" onclick="saveCalendarEvent()">Save Event</button>
+          <button class="btn btn-secondary" data-action="closeAddEventModal">Cancel</button>
+          <button class="btn btn-primary" data-action="saveCalendarEvent">Save Event</button>
         </div>
       </div>
     </div>`;
@@ -2470,8 +2535,8 @@ function openAddEventModal(prefillDate) {
   document.getElementById('evStatus').value = 'draft';
   modal.style.display = 'flex';
 }
-function closeAddEventModal(event) {
-  if (event && event.target !== event.currentTarget) return;
+function closeAddEventModal(event, el) {
+  if (event && event.target !== (el || event.currentTarget)) return;
   const m = document.getElementById('addEventModal');
   if (m) m.style.display = 'none';
 }
@@ -2543,15 +2608,15 @@ function _taskRowHTML(t) {
   const dueSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 4.2h17.6c.6 0 1.1.5 1.1 1.1v14.5c0 .6-.5 1.1-1.1 1.1H3.2c-.6 0-1.1-.5-1.1-1.1V5.3c0-.6.5-1.1 1.1-1.1z"/><path d="M16.1 2.1v4.1"/><path d="M8 2.1v4.1"/><path d="M2.1 10.1h19.8"/></svg>';
   return `
     <div class="task-item ${t.completed ? 'completed' : ''}" data-id="${t._sbId}">
-      <button class="task-check" onclick="toggleTaskComplete('${t._sbId}')" title="${t.completed ? 'Mark incomplete' : 'Mark complete'}" aria-label="${t.completed ? 'Mark incomplete' : 'Mark complete'}">${checkSvg}</button>
-      <div class="task-body" role="button" tabindex="0" onclick="openEditTaskModal('${t._sbId}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openEditTaskModal('${t._sbId}');}">
+      <button class="task-check" data-action="toggleTaskComplete" data-args="${_args(t._sbId)}" title="${t.completed ? 'Mark incomplete' : 'Mark complete'}" aria-label="${t.completed ? 'Mark incomplete' : 'Mark complete'}">${checkSvg}</button>
+      <div class="task-body" role="button" tabindex="0" data-action="openEditTaskModal" data-args="${_args(t._sbId)}" data-keydown="taskRowKey" data-keydown-args="${_args('$event', t._sbId)}">
         <div class="task-title">${_esc(t.title)}</div>
         ${t.details ? `<div class="task-details">${_esc(t.details)}</div>` : ''}
         ${dueLabel ? `<span class="task-due ${overdue ? 'overdue' : ''}">${dueSvg} ${dueLabel}</span>` : ''}
       </div>
       <div class="task-item-actions">
-        <button class="task-star ${t.starred ? 'active' : ''}" onclick="toggleTaskStar('${t._sbId}')" title="${t.starred ? 'Unstar' : 'Star'}" aria-label="${t.starred ? 'Unstar' : 'Star'}">${starSvg}</button>
-        <button class="task-delete" onclick="deleteTask('${t._sbId}')" title="Delete" aria-label="Delete task">&times;</button>
+        <button class="task-star ${t.starred ? 'active' : ''}" data-action="toggleTaskStar" data-args="${_args(t._sbId)}" title="${t.starred ? 'Unstar' : 'Star'}" aria-label="${t.starred ? 'Unstar' : 'Star'}">${starSvg}</button>
+        <button class="task-delete" data-action="deleteTask" data-args="${_args(t._sbId)}" title="Delete" aria-label="Delete task">&times;</button>
       </div>
     </div>`;
 }
@@ -2587,7 +2652,7 @@ function renderTasks() {
         <p class="view-subtitle">Quick to-dos. Add it, check it off, move on.</p>
       </div>
       <div class="view-header-actions">
-        <button class="btn btn-primary" onclick="openTaskComposer()">+ Add Task</button>
+        <button class="btn btn-primary" data-action="openTaskComposer">+ Add Task</button>
       </div>
     </div>`;
 
@@ -2617,12 +2682,12 @@ function renderTasks() {
         <div class="task-composer" id="taskComposer" style="display:${_taskComposerOpen ? 'block' : 'none'}">
           <div class="form-group">
             <label for="taskNewTitle">Task</label>
-            <input type="text" id="taskNewTitle" placeholder="What needs doing?" maxlength="500" onkeydown="if(event.key==='Enter'){event.preventDefault();saveNewTask();}">
+            <input type="text" id="taskNewTitle" placeholder="What needs doing?" maxlength="500" data-keydown="taskComposerKey" data-keydown-args="[&quot;$event&quot;]">
           </div>
           <div class="form-row">
             <div class="form-group">
               <label for="taskNewDetails">Details (optional)</label>
-              <input type="text" id="taskNewDetails" placeholder="Any extra context" maxlength="2000" onkeydown="if(event.key==='Enter'){event.preventDefault();saveNewTask();}">
+              <input type="text" id="taskNewDetails" placeholder="Any extra context" maxlength="2000" data-keydown="taskComposerKey" data-keydown-args="[&quot;$event&quot;]">
             </div>
             <div class="form-group">
               <label for="taskNewDue">Due date (optional)</label>
@@ -2630,8 +2695,8 @@ function renderTasks() {
             </div>
           </div>
           <div class="task-composer-actions">
-            <button class="btn btn-secondary btn-sm" onclick="closeTaskComposer()">Cancel</button>
-            <button class="btn btn-primary btn-sm" onclick="saveNewTask()">Add Task</button>
+            <button class="btn btn-secondary btn-sm" data-action="closeTaskComposer">Cancel</button>
+            <button class="btn btn-primary btn-sm" data-action="saveNewTask">Add Task</button>
           </div>
         </div>
 
@@ -2647,12 +2712,12 @@ function renderTasks() {
 
         ${done.length > 0 ? `
           <div class="tasks-completed">
-            <button class="tasks-completed-toggle" onclick="toggleCompletedTasks()" aria-expanded="${_tasksCompletedOpen}">
+            <button class="tasks-completed-toggle" data-action="toggleCompletedTasks" aria-expanded="${_tasksCompletedOpen}">
               <span class="tasks-completed-chevron ${_tasksCompletedOpen ? 'open' : ''}">&#8250;</span>
               Completed (${done.length})
             </button>
             ${_tasksCompletedOpen ? `
-              <button class="btn btn-ghost btn-sm tasks-clear-btn" onclick="clearCompletedTasks()">Clear all</button>
+              <button class="btn btn-ghost btn-sm tasks-clear-btn" data-action="clearCompletedTasks">Clear all</button>
               <div class="task-list task-list-completed">
                 ${done.map(_taskRowHTML).join('')}
               </div>
@@ -2693,12 +2758,12 @@ function _ensureTaskModal() {
   var host = document.createElement('div');
   host.id = 'taskModalHost';
   host.innerHTML = `
-    <div class="modal-overlay" id="editTaskModal" style="display:none;" onclick="closeEditTaskModal(event)">
-      <div class="modal-card" onclick="event.stopPropagation()">
+    <div class="modal-overlay" id="editTaskModal" style="display:none;" data-action="closeEditTaskModal" data-args="[&quot;$event&quot;,&quot;$el&quot;]">
+      <div class="modal-card" data-action="stop" data-args="[&quot;$event&quot;]">
         <h3>Edit Task</h3>
         <div class="form-group">
           <label for="etTitle">Task</label>
-          <input type="text" id="etTitle" maxlength="500" onkeydown="if(event.key==='Enter'){event.preventDefault();saveTaskEdits();}">
+          <input type="text" id="etTitle" maxlength="500" data-keydown="taskEditKey" data-keydown-args="[&quot;$event&quot;]">
         </div>
         <div class="form-group">
           <label for="etDetails">Details</label>
@@ -2709,8 +2774,8 @@ function _ensureTaskModal() {
           <input type="date" id="etDue" min="1900-01-01" max="9999-12-31">
         </div>
         <div class="settings-actions">
-          <button class="btn btn-secondary" onclick="closeEditTaskModal()">Cancel</button>
-          <button class="btn btn-primary" onclick="saveTaskEdits()">Save</button>
+          <button class="btn btn-secondary" data-action="closeEditTaskModal">Cancel</button>
+          <button class="btn btn-primary" data-action="saveTaskEdits">Save</button>
         </div>
       </div>
     </div>`;
@@ -2865,8 +2930,8 @@ function openEditTaskModal(sbId) {
   document.getElementById('editTaskModal').style.display = 'flex';
 }
 
-function closeEditTaskModal(event) {
-  if (event && event.target !== event.currentTarget) return;
+function closeEditTaskModal(event, el) {
+  if (event && event.target !== (el || event.currentTarget)) return;
   _editingTaskId = null;
   const m = document.getElementById('editTaskModal');
   if (m) m.style.display = 'none';
@@ -2908,13 +2973,13 @@ function renderSettings() {
     </div>
 
     <div class="settings-tabs">
-      <button class="settings-tab active" data-tab="profile" onclick="switchSettingsTab('profile')">Profile</button>
-      <button class="settings-tab" data-tab="platforms" onclick="switchSettingsTab('platforms')">Platforms</button>
-      <button class="settings-tab" data-tab="ratecard" onclick="switchSettingsTab('ratecard')">Rate Card</button>
-      <button class="settings-tab" data-tab="contract" onclick="switchSettingsTab('contract')">Contract Defaults</button>
-      <button class="settings-tab" data-tab="invoicing" onclick="switchSettingsTab('invoicing')">Invoicing</button>
-      <button class="settings-tab" data-tab="audience" onclick="switchSettingsTab('audience')">Audience</button>
-      <button class="settings-tab" data-tab="danger" onclick="switchSettingsTab('danger')">Account</button>
+      <button class="settings-tab active" data-tab="profile" data-action="switchSettingsTab" data-args="[&quot;profile&quot;]">Profile</button>
+      <button class="settings-tab" data-tab="platforms" data-action="switchSettingsTab" data-args="[&quot;platforms&quot;]">Platforms</button>
+      <button class="settings-tab" data-tab="ratecard" data-action="switchSettingsTab" data-args="[&quot;ratecard&quot;]">Rate Card</button>
+      <button class="settings-tab" data-tab="contract" data-action="switchSettingsTab" data-args="[&quot;contract&quot;]">Contract Defaults</button>
+      <button class="settings-tab" data-tab="invoicing" data-action="switchSettingsTab" data-args="[&quot;invoicing&quot;]">Invoicing</button>
+      <button class="settings-tab" data-tab="audience" data-action="switchSettingsTab" data-args="[&quot;audience&quot;]">Audience</button>
+      <button class="settings-tab" data-tab="danger" data-action="switchSettingsTab" data-args="[&quot;danger&quot;]">Account</button>
     </div>
 
     <div class="settings-panel" id="settings-panel-profile">
@@ -3000,7 +3065,7 @@ function renderProfileSettings() {
         <textarea id="setMkInterests" rows="3" placeholder="Photography&#10;Video Editing">${_esc((c.mkInterests || []).join('\n'))}</textarea>
       </div>
       <div class="settings-actions">
-        <button class="btn btn-primary" onclick="saveProfile()">Save Profile</button>
+        <button class="btn btn-primary" data-action="saveProfile">Save Profile</button>
       </div>
     </div>
   `;
@@ -3066,7 +3131,7 @@ function renderPlatformsSettings() {
       <p class="settings-help">Your follower counts drive rate suggestions and appear in your media kit.</p>
       ${rows}
       <div class="settings-actions">
-        <button class="btn btn-primary" onclick="savePlatforms()">Save Platforms</button>
+        <button class="btn btn-primary" data-action="savePlatforms">Save Platforms</button>
       </div>
     </div>
   `;
@@ -3124,14 +3189,14 @@ function renderRateCardSettings() {
       <div class="rate-row" data-key="${key}" data-idx="${idx}" data-sbid="${r._sbId || ''}">
         <input type="text" class="rate-name" value="${_esc(r.name)}" placeholder="Deliverable">
         <input type="number" class="rate-value" value="${r.rate || 0}" placeholder="0">
-        <button class="btn-icon btn-danger" onclick="deleteRateRow('${key}', ${idx})" title="Delete">×</button>
+        <button class="btn-icon btn-danger" data-action="deleteRateRow" data-args="${_args(key, idx)}" title="Delete">×</button>
       </div>
     `).join('');
     return `
       <div class="rate-category">
         <div class="rate-cat-header">
           <h4>${label}</h4>
-          <button class="btn btn-secondary btn-sm" onclick="addRateRow('${key}')">+ Add</button>
+          <button class="btn btn-secondary btn-sm" data-action="addRateRow" data-args="${_args(key)}">+ Add</button>
         </div>
         ${rows || '<p class="rate-empty">No rates. Click Add to create one.</p>'}
       </div>
@@ -3157,7 +3222,7 @@ function renderRateCardSettings() {
       ${sections}
 
       <div class="settings-actions">
-        <button class="btn btn-primary" onclick="saveRateCard()">Save All Rates</button>
+        <button class="btn btn-primary" data-action="saveRateCard">Save All Rates</button>
       </div>
     </div>
   `;
@@ -3276,7 +3341,7 @@ function renderContractSettingsPanel() {
         <input type="text" id="cdApprovalConsequence" value="${_esc(cd.approvalConsequence)}">
       </div>
       <div class="settings-actions">
-        <button class="btn btn-primary" onclick="saveContractDefaults()">Save Contract Defaults</button>
+        <button class="btn btn-primary" data-action="saveContractDefaults">Save Contract Defaults</button>
       </div>
     </div>
   `;
@@ -3310,7 +3375,7 @@ function renderAudienceSettings() {
         </div>
       </div>
       <div class="settings-actions">
-        <button class="btn btn-primary" onclick="saveAudience()">Save Audience</button>
+        <button class="btn btn-primary" data-action="saveAudience">Save Audience</button>
       </div>
     </div>
   `;
@@ -3342,8 +3407,8 @@ function renderDangerZone() {
       <h3>Account</h3>
       <p class="settings-help">Signed in as <strong>${_esc(_authUser?.email || '—')}</strong></p>
       <div class="settings-actions">
-        <button class="btn btn-secondary" onclick="exportAllData()">Export All Data (JSON)</button>
-        <button class="btn btn-danger" onclick="handleLogout()">Sign Out</button>
+        <button class="btn btn-secondary" data-action="exportAllData">Export All Data (JSON)</button>
+        <button class="btn btn-danger" data-action="handleLogout">Sign Out</button>
       </div>
     </div>
   `;
@@ -4192,7 +4257,7 @@ async function renderScripts() {
   var html = '<div class="scripts-page">';
   html += '<div class="scripts-header">';
   html += '<div><h2 class="view-title" style="margin:0">Scripts</h2><p style="color:var(--text-secondary);margin:4px 0 0;font-size:13px">Storyboards and video scripts</p></div>';
-  html += '<button class="btn btn-primary" onclick="_createNewScript()">+ New Script</button>';
+  html += '<button class="btn btn-primary" data-action="_createNewScript">+ New Script</button>';
   html += '</div>';
 
   if (scripts.length === 0) {
@@ -4206,13 +4271,13 @@ async function renderScripts() {
       var date = new Date(s.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       var shareLabel = s.share_mode === 'none' ? 'Private' : (s.share_mode === 'view' ? 'View link' : 'Edit link');
       var shareDot = s.share_mode === 'none' ? 'var(--text-secondary)' : 'var(--teal)';
-      html += '<div class="script-card" onclick="window.location.hash=\'script/' + s.id + '\';">';
+      html += '<div class="script-card" data-action="go" data-args="' + _args('script/' + s.id) + '">';
       html += '<div class="script-card-title">' + _escHtml(s.title) + '</div>';
       html += '<div class="script-card-meta">';
       html += '<span>' + date + '</span>';
       html += '<span style="display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:' + shareDot + ';display:inline-block"></span>' + shareLabel + '</span>';
       html += '</div>';
-      html += '<button class="script-card-delete" onclick="event.stopPropagation(); _deleteScript(\'' + s.id + '\')" title="Delete script">' + SKETCHY_ICONS.trash + '</button>';
+      html += '<button class="script-card-delete" data-action="_deleteScript" data-args="' + _args(s.id) + '" data-stop title="Delete script">' + SKETCHY_ICONS.trash + '</button>';
       html += '</div>';
     });
     html += '</div>';
@@ -4325,7 +4390,7 @@ function _renderEditorUI(container, script, scenes, readOnly) {
 
   /* Add scene button */
   if (!readOnly) {
-    html += '<button class="script-add-scene-btn" onclick="_addScene()">+ Add Scene</button>';
+    html += '<button class="script-add-scene-btn" data-action="_addScene">+ Add Scene</button>';
   }
   html += '</div>'; /* end wrapper */
   html += '</div>'; /* end editor */
@@ -4418,14 +4483,14 @@ function _renderSceneRow(scene, idx, readOnly) {
     html += '<div class="script-thumb-preview">';
     html += '<img src="' + _esc(thumb) + '" alt="Scene thumbnail" />';
     if (!readOnly) {
-      html += '<button class="script-thumb-remove" onclick="_removeThumb(\'' + scene.id + '\')" title="Remove thumbnail">&times;</button>';
+      html += '<button class="script-thumb-remove" data-action="_removeThumb" data-args="' + _args(scene.id) + '" title="Remove thumbnail">&times;</button>';
     }
     html += '</div>';
   } else if (!readOnly) {
     html += '<label class="script-thumb-upload" for="thumbInput_' + scene.id + '">';
     html += '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
     html += '<span>Upload image</span>';
-    html += '<input type="file" id="thumbInput_' + scene.id + '" accept="image/*" style="display:none" onchange="_handleThumbUpload(this, \'' + scene.id + '\')" />';
+    html += '<input type="file" id="thumbInput_' + scene.id + '" accept="image/*" style="display:none" data-change="_handleThumbUpload" data-change-args="' + _args('$el', scene.id) + '" />';
     html += '</label>';
   } else {
     html += '<div style="color:var(--text-secondary);font-size:12px;text-align:center;padding:16px">No thumbnail</div>';
@@ -4434,12 +4499,11 @@ function _renderSceneRow(scene, idx, readOnly) {
 
   /* Actions */
   if (!readOnly) {
-    var sid = _esc(scene.id);
     var last = idx >= _currentScenes.length - 1;
     html += '<div class="script-col-actions">';
-    html += '<button class="script-row-action script-row-move" onclick="_moveScene(\'' + sid + '\', -1)" title="Move up"' + (idx === 0 ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowUp + '</button>';
-    html += '<button class="script-row-action script-row-move" onclick="_moveScene(\'' + sid + '\', 1)" title="Move down"' + (last ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowDown + '</button>';
-    html += '<button class="script-row-action" onclick="_deleteSceneRow(\'' + sid + '\')" title="Delete scene">' + SKETCHY_ICONS.trash + '</button>';
+    html += '<button class="script-row-action script-row-move" data-action="_moveScene" data-args="' + _args(scene.id, -1) + '" title="Move up"' + (idx === 0 ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowUp + '</button>';
+    html += '<button class="script-row-action script-row-move" data-action="_moveScene" data-args="' + _args(scene.id, 1) + '" title="Move down"' + (last ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowDown + '</button>';
+    html += '<button class="script-row-action" data-action="_deleteSceneRow" data-args="' + _args(scene.id) + '" title="Delete scene">' + SKETCHY_ICONS.trash + '</button>';
     html += '</div>';
   }
 
@@ -4732,3 +4796,32 @@ function _paintSharedEditor() {
     }, 300);
   }
 })();
+
+/* ---- KEYBOARD HELPERS (delegated) ---- */
+function taskRowKey(ev, sbId) {
+  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openEditTaskModal(sbId); }
+}
+function taskComposerKey(ev) {
+  if (ev.key === 'Enter') { ev.preventDefault(); saveNewTask(); }
+}
+function taskEditKey(ev) {
+  if (ev.key === 'Enter') { ev.preventDefault(); saveTaskEdits(); }
+}
+
+/* ---- ACTION REGISTRY (app.js + index.html) ---- */
+act({
+  // auth (index.html)
+  handleLogin, handleSignUp, handleForgot, handleSetPassword, handleLogout, showLogin, showSignUp, showForgot,
+  // media kit, inbox, calendar
+  exportMediaKitPDF, selectInboxItem, openAddEventModal, closeAddEventModal, saveCalendarEvent, deleteCalendarEvent,
+  calendarPrev, calendarNext, calendarToday,
+  // tasks
+  toggleTaskComplete, toggleTaskStar, deleteTask, openEditTaskModal, closeEditTaskModal, saveTaskEdits,
+  openTaskComposer, closeTaskComposer, saveNewTask, toggleCompletedTasks, clearCompletedTasks,
+  taskRowKey, taskComposerKey, taskEditKey,
+  // settings
+  switchSettingsTab, saveProfile, savePlatforms, addRateRow, deleteRateRow, saveRateCard, // saveContractDefaults: toolkit-views.js
+  saveAudience, exportAllData,
+  // scripts
+  _createNewScript, _deleteScript, _addScene, _removeThumb, _handleThumbUpload, _moveScene, _deleteSceneRow,
+});

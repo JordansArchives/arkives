@@ -10,7 +10,7 @@
     "test": "npm run test:checks && npm run test:smoke",
     "test:checks": "node tests/checks.mjs",
     "test:smoke": "node tests/smoke.mjs",
-    "serve": "python3 -m http.server 8741 --directory public",
+    "serve": "node --input-type=module -e \"import('./tests/_server.mjs').then(m => m.startServer(8741)).then(() => console.log('http://localhost:8741 (serving public/ with the production headers)'))\"",
     "test:live": "node tests/live.mjs"
   },
   "devDependencies": {

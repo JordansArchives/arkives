@@ -19,9 +19,10 @@ const VIEWS = ['dashboard', 'inbox', 'revenue', 'mediakit', 'analytics', 'outrea
 // Supabase calls fail under anon RLS in tests; that noise is expected.
 const NOISE = /supabase|Failed to fetch|net::ERR|fetch|NetworkError|Load failed|401|403|PGRST|JWT|favicon|ERR_INTERNET|ERR_NAME|fontshare/i;
 
-const POPULATED = `
+// Stubs run in the page as functions (never eval: the page CSP forbids it).
+const POPULATED = () => {
   CREATOR.name = 'Test Creator'; CREATOR.brand = 'Test Brand'; CREATOR.entity = 'Test LLC'; CREATOR.email = 't@example.com'; CREATOR._sbId = '00000000-0000-0000-0000-000000000001';
-  CREATOR.businessAddress = '1 Main St\\nDenver, CO'; CREATOR.bankName = 'Bank'; CREATOR.bankAccountNumber = '123'; CREATOR.invoiceNumbering = 'per_client'; CREATOR.invoicePrefix = 'INV'; CREATOR.invoiceTemplate = 'classic';
+  CREATOR.businessAddress = '1 Main St\nDenver, CO'; CREATOR.bankName = 'Bank'; CREATOR.bankAccountNumber = '123'; CREATOR.invoiceNumbering = 'per_client'; CREATOR.invoicePrefix = 'INV'; CREATOR.invoiceTemplate = 'classic';
   CREATOR.platforms.instagram.handle = '@test'; CREATOR.platforms.instagram.followers = '270K'; CREATOR.platforms.instagram.followersNum = 270000; CREATOR.platforms.instagram._sbId = 'p1';
   RATE_CARD.organic = [{ id: 'r1', name: 'Reel', rate: 15000, _sbId: 'rc1' }]; RATE_CARD.minimumRate = 15000;
   DEALS = [{ _sbId: 'd1', brand: 'Acme "Quotes" & <Co>', status: 'Active', value: 12000, contact: 'Jane', email: 'j@acme.com', paid: 6000, invoiced: 12000, outstanding: 6000, lastContact: '2026-08-01', negotiationHistory: [] },
@@ -36,12 +37,13 @@ const POPULATED = `
   MONTHLY_REVENUE = [{ _sbId: 'm', month: 'Aug 2026', earned: 5000 }];
   CAMPAIGN_RESULTS = [{ _sbId: 'cr', brand: '<i>Acme</i>', views: 100000, ctr: 1.2, conversion: null, revenue: 12000 }];
   OUTREACH_TARGETS = []; OUTREACH_LISTS = [];
-`;
-const EMPTY = `
+};
+const EMPTY = () => {
   CREATOR._sbId = '00000000-0000-0000-0000-000000000001';
   DEALS = []; TASKS = []; INVOICE_DATA = []; CLIENTS = []; CALENDAR_EVENTS = []; INBOX_ITEMS = []; MONTHLY_REVENUE = []; CAMPAIGN_RESULTS = [];
   OUTREACH_TARGETS = []; OUTREACH_LISTS = [];
-`;
+};
+
 
 const server = await startServer(PORT);
 const browser = await chromium.launch(launchOptions());
@@ -58,12 +60,12 @@ for (const state of ['populated', 'empty']) {
     page.on('pageerror', e => errors.push(`${currentView}: PAGEERROR ${String(e.message).slice(0, 200)}`));
     await page.goto(`http://localhost:${PORT}/#dashboard`, { waitUntil: 'load' });
     await page.waitForTimeout(1500);
-    await page.evaluate((stub) => {
+    await page.evaluate(() => {
       document.getElementById('loaderOverlay')?.remove();
       document.getElementById('authScreen').style.display = 'none';
       document.getElementById('appShell').style.display = '';
-      (0, eval)(stub);
-    }, state === 'populated' ? POPULATED : EMPTY);
+    });
+    await page.evaluate(state === 'populated' ? POPULATED : EMPTY);
 
     const flagged = [];
     for (const v of VIEWS) {

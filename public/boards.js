@@ -190,7 +190,7 @@ async function renderBoards() {
   let html = '<div class="boards-page">';
   html += '<div class="boards-header">';
   html += '<div><h2 class="view-title" style="margin:0">Boards</h2><p style="color:var(--text-secondary);margin:4px 0 0;font-size:13px">Storyboards and idea canvases</p></div>';
-  html += '<button class="btn btn-primary" onclick="_createNewBoard()">+ New Board</button>';
+  html += '<button class="btn btn-primary" data-action="_createNewBoard">+ New Board</button>';
   html += '</div>';
 
   if (BOARDS.length === 0) {
@@ -202,14 +202,14 @@ async function renderBoards() {
     html += '<div class="boards-grid">';
     BOARDS.forEach(function(b) {
       const date = new Date(b.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      html += '<div class="board-card" onclick="window.location.hash=\'board/' + b.id + '\';">';
+      html += '<div class="board-card" data-action="go" data-args="' + _args('board/' + b.id) + '">';
       html += '<div class="board-card-canvas"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4.2 5.1h6.1v5.2H4.2z"/><path d="M13.6 7.2h6.2"/><path d="M13.7 10.1h4.9"/><path d="M5.1 14.3c3.2 2.6 8.9-1.8 13.7 1.9"/></svg></div>';
       html += '<div class="board-card-title">' + _escHtml(b.title) + '</div>';
       const shareLabel = b.share_mode === 'view' ? 'View link' : (b.share_mode === 'edit' ? 'Edit link' : 'Private');
       const shareDot = (b.share_mode === 'view' || b.share_mode === 'edit') ? 'var(--teal)' : 'var(--text-secondary)';
       html += '<div class="board-card-meta"><span>' + date + '</span>';
       html += '<span style="display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:' + shareDot + ';display:inline-block"></span>' + shareLabel + '</span></div>';
-      html += '<button class="board-card-delete" onclick="event.stopPropagation(); _deleteBoard(\'' + b.id + '\')" title="Delete board">' + SKETCHY_ICONS.trash + '</button>';
+      html += '<button class="board-card-delete" data-action="_deleteBoard" data-args="' + _args(b.id) + '" data-stop title="Delete board">' + SKETCHY_ICONS.trash + '</button>';
       html += '</div>';
     });
     html += '</div>';
@@ -288,7 +288,7 @@ function _bdEditorShellHtml(shared) {
     '<div class="board-editor">' +
       '<div class="board-topbar">' +
       (shared ? '' :
-        '<button class="bd-back" onclick="window.location.hash=\'boards\'" title="Back to Boards">' + SKETCHY_ICONS.chevronLeft + '</button>') +
+        '<button class="bd-back" data-action="go" data-args="[&quot;boards&quot;]" title="Back to Boards">' + SKETCHY_ICONS.chevronLeft + '</button>') +
         '<div class="bd-title" id="bdTitle" contenteditable="false" spellcheck="false"' + (shared ? ' style="cursor:default"' : '') + '>' + _escHtml(_bdBoard.title) + '</div>' +
       (shared ? '<span class="bd-shared-tag">Shared board · can edit</span>' : '') +
         '<span class="bd-savestate" id="bdSaveState"></span>' +
@@ -301,9 +301,9 @@ function _bdEditorShellHtml(shared) {
           '<div id="bdShareLinks"></div>' +
         '</div>') +
         '<div class="bd-zoom">' +
-          '<button onclick="_bdZoomBtn(-1)" title="Zoom out">−</button>' +
-          '<button class="bd-zoom-pct" id="bdZoomPct" onclick="_bdZoomFit()" title="Fit to items">' + Math.round(_bdView.z * 100) + '%</button>' +
-          '<button onclick="_bdZoomBtn(1)" title="Zoom in">+</button>' +
+          '<button data-action="_bdZoomBtn" data-args="[-1]" title="Zoom out">−</button>' +
+          '<button class="bd-zoom-pct" id="bdZoomPct" data-action="_bdZoomFit" title="Fit to items">' + Math.round(_bdView.z * 100) + '%</button>' +
+          '<button data-action="_bdZoomBtn" data-args="[1]" title="Zoom in">+</button>' +
         '</div>' +
       '</div>' +
       '<div class="board-viewport" id="bdViewport">' +
@@ -315,11 +315,11 @@ function _bdEditorShellHtml(shared) {
           '<button class="bd-tool" data-tool="text" title="Text"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.1 6.2V4.1h15.8v2.1"/><path d="M12 4.2v15.7"/><path d="M9.1 19.9h5.8"/></svg></button>' +
           '<button class="bd-tool" data-tool="pen" title="Pen"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.1 3.2l3.8 3.7L7.2 20.7l-4.1.4.5-4z"/></svg></button>' +
           '<div class="bd-tool-sep"></div>' +
-          '<button class="bd-tool" data-action="image" title="Add image (or drag & drop / paste)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 4.1h17.6v15.8H3.2z"/><circle cx="8.6" cy="9" r="1.7"/><path d="M20.7 15.2l-4.8-4.9-9.7 9.6"/></svg></button>' +
-          '<button class="bd-tool" data-action="video" title="Add video link"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 5.1h17.6v13.8H3.2z"/><path d="M10.1 9.1l4.9 2.9-4.9 2.9z"/></svg></button>' +
+          '<button class="bd-tool" data-cmd="image" title="Add image (or drag & drop / paste)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 4.1h17.6v15.8H3.2z"/><circle cx="8.6" cy="9" r="1.7"/><path d="M20.7 15.2l-4.8-4.9-9.7 9.6"/></svg></button>' +
+          '<button class="bd-tool" data-cmd="video" title="Add video link"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 5.1h17.6v13.8H3.2z"/><path d="M10.1 9.1l4.9 2.9-4.9 2.9z"/></svg></button>' +
           '<div class="bd-tool-sep"></div>' +
-          '<button class="bd-tool" data-action="undo" id="bdUndoBtn" title="Undo (Ctrl+Z)" disabled><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.9 14.1L4.2 9.4l4.7-4.7"/><path d="M4.5 9.4h9.3c3.3 0 6 2.7 6 6s-2.7 6-6 6H8.1"/></svg></button>' +
-          '<button class="bd-tool" data-action="redo" id="bdRedoBtn" title="Redo (Ctrl+Shift+Z)" disabled><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.1 14.1l4.7-4.7-4.7-4.7"/><path d="M19.5 9.4h-9.3c-3.3 0-6 2.7-6 6s2.7 6 6 6h5.7"/></svg></button>' +
+          '<button class="bd-tool" data-cmd="undo" id="bdUndoBtn" title="Undo (Ctrl+Z)" disabled><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.9 14.1L4.2 9.4l4.7-4.7"/><path d="M4.5 9.4h9.3c3.3 0 6 2.7 6 6s-2.7 6-6 6H8.1"/></svg></button>' +
+          '<button class="bd-tool" data-cmd="redo" id="bdRedoBtn" title="Redo (Ctrl+Shift+Z)" disabled><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.1 14.1l4.7-4.7-4.7-4.7"/><path d="M19.5 9.4h-9.3c-3.3 0-6 2.7-6 6s2.7 6 6 6h5.7"/></svg></button>' +
         '</div>' +
         '<div class="bd-tool-options" id="bdPenOptions" style="display:none">' + penDots +
           '<div class="bd-opt-sep"></div>' +
@@ -329,7 +329,7 @@ function _bdEditorShellHtml(shared) {
         '<div class="bd-tool-options" id="bdStickyOptions" style="display:none">' + stickyDots + '</div>' +
         '<div class="bd-video-popover" id="bdVideoPopover" style="display:none">' +
           '<input type="text" id="bdVideoUrl" placeholder="Paste a YouTube, Vimeo, or any link…">' +
-          '<button class="btn btn-primary" onclick="_bdAddVideoFromPopover()">Add</button>' +
+          '<button class="btn btn-primary" data-action="_bdAddVideoFromPopover">Add</button>' +
         '</div>' +
         '<input type="file" id="bdFileInput" accept="image/*" multiple style="display:none">' +
         '<div class="bd-format-bar" id="bdFormatBar" style="display:none">' +
@@ -1149,10 +1149,10 @@ function _bdBindEditor() {
     const btn = e.target.closest('button');
     if (!btn) return;
     if (btn.dataset.tool) { _bdSetTool(btn.dataset.tool); return; }
-    if (btn.dataset.action === 'undo') { _bdUndo(); return; }
-    if (btn.dataset.action === 'redo') { _bdRedo(); return; }
-    if (btn.dataset.action === 'image') { document.getElementById('bdFileInput').click(); return; }
-    if (btn.dataset.action === 'video') {
+    if (btn.dataset.cmd === 'undo') { _bdUndo(); return; }
+    if (btn.dataset.cmd === 'redo') { _bdRedo(); return; }
+    if (btn.dataset.cmd === 'image') { document.getElementById('bdFileInput').click(); return; }
+    if (btn.dataset.cmd === 'video') {
       const pop = document.getElementById('bdVideoPopover');
       pop.style.display = pop.style.display === 'none' ? 'flex' : 'none';
       if (pop.style.display === 'flex') document.getElementById('bdVideoUrl').focus();
@@ -1607,9 +1607,9 @@ async function renderSharedBoard(token, mode) {
         '<div class="bd-title" style="cursor:default">' + _escHtml(board.title) + '</div>' +
         '<span class="bd-shared-tag">Shared board · view only</span>' +
         '<div class="bd-zoom" style="margin-left:auto">' +
-          '<button onclick="_bdZoomBtn(-1)" title="Zoom out">−</button>' +
-          '<button class="bd-zoom-pct" id="bdZoomPct" onclick="_bdZoomFit()" title="Fit to items">' + Math.round(_bdView.z * 100) + '%</button>' +
-          '<button onclick="_bdZoomBtn(1)" title="Zoom in">+</button>' +
+          '<button data-action="_bdZoomBtn" data-args="[-1]" title="Zoom out">−</button>' +
+          '<button class="bd-zoom-pct" id="bdZoomPct" data-action="_bdZoomFit" title="Fit to items">' + Math.round(_bdView.z * 100) + '%</button>' +
+          '<button data-action="_bdZoomBtn" data-args="[1]" title="Zoom in">+</button>' +
         '</div>' +
       '</div>' +
       '<div class="board-viewport" id="bdViewport">' +
@@ -1698,3 +1698,6 @@ async function _bdResolveSharedImages(loadToken) {
     } catch (e) { console.warn('Shared image load failed', e); }
   }));
 }
+
+/* ---- ACTION REGISTRY (boards.js) ---- */
+act({ _createNewBoard, _deleteBoard, _bdZoomBtn, _bdZoomFit, _bdAddVideoFromPopover });
