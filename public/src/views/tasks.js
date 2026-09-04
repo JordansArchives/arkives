@@ -1,6 +1,6 @@
 // Arkives — Tasks view.
 import { state } from '../state.js';
-import { db } from '../lib/sb.js';
+import { tasks } from '../stores/tasks.js';
 import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
 import { fmtDate } from '../lib/format.js';
@@ -230,119 +230,39 @@ async function saveNewTask() {
   const details = document.getElementById('taskNewDetails').value.trim();
   const dueDate = document.getElementById('taskNewDue').value;
   if (!title) { _showSaveError('Task needs a title'); return; }
-
-  state._taskSaving = true;
-  try {
-    const row = await db.sbAddTask({ title, details, dueDate });
-    if (!row) return;
-    state.TASKS.unshift({
-      _sbId: row.id, title: row.title || title, details: row.details || '',
-      dueDate: row.due_date || '', starred: !!row.starred, completed: !!row.completed,
-      completedAt: row.completed_at || '',
-      createdAt: row.created_at || new Date().toISOString()
-    });
-    // Clear inputs before re-render (the preserve-state logic would
-    // otherwise carry them over), then keep the composer open for
-    // rapid entry, Google Tasks style
-    document.getElementById('taskNewTitle').value = '';
-    document.getElementById('taskNewDetails').value = '';
-    document.getElementById('taskNewDue').value = '';
-    state._taskComposerFocusPending = true;
-    renderTasks();
-  } finally {
-    state._taskSaving = false;
-  }
-}
-
-// Optimistic: the checkbox flips now, the save follows; on failure it
-// flips back with the error toast. On a phone this is the difference
-// between "instant" and "laggy" for the most frequent action in the app.
-async function toggleTaskComplete(sbId) {
-  const t = state.TASKS.find(x => x._sbId === sbId);
-  if (!t || state._taskBusyIds[sbId]) return;
-  state._taskBusyIds[sbId] = true;
-  const before = { completed: t.completed, completedAt: t.completedAt };
-  const completed = !t.completed;
-  const completedAt = completed ? new Date().toISOString() : null;
-  t.completed = completed;
-  t.completedAt = completedAt || '';
+  const row = await tasks.add({ title, details, dueDate });
+  if (!row) return;
+  // Clear inputs before re-render (the preserve-state logic would
+  // otherwise carry them over), then keep the composer open for
+  // rapid entry, Google Tasks style
+  document.getElementById('taskNewTitle').value = '';
+  document.getElementById('taskNewDetails').value = '';
+  document.getElementById('taskNewDue').value = '';
+  state._taskComposerFocusPending = true;
   renderTasks();
-  try {
-    const ok = await db.sbUpdateTask(sbId, { completed: completed, completed_at: completedAt });
-    if (!ok) { t.completed = before.completed; t.completedAt = before.completedAt; renderTasks(); }
-  } finally {
-    delete state._taskBusyIds[sbId];
-  }
 }
-
-async function toggleTaskStar(sbId) {
-  const t = state.TASKS.find(x => x._sbId === sbId);
-  if (!t || state._taskBusyIds[sbId]) return;
-  state._taskBusyIds[sbId] = true;
-  const before = t.starred;
-  t.starred = !t.starred;
-  renderTasks();
-  try {
-    const ok = await db.sbUpdateTask(sbId, { starred: t.starred });
-    if (!ok) { t.starred = before; renderTasks(); }
-  } finally {
-    delete state._taskBusyIds[sbId];
-  }
-}
+// The store owns the write policy (optimistic toggles, undo-able delete);
+// the mounted view re-renders through its store subscription.
+function toggleTaskComplete(sbId) { return tasks.toggleComplete(sbId); }
+function toggleTaskStar(sbId) { return tasks.toggleStar(sbId); }
 function deleteTask(sbId) {
-  const t = state.TASKS.find(x => x._sbId === sbId);
-  if (!t || state._taskBusyIds[sbId] || state._taskPendingDeletes[sbId]) return;
-  state.TASKS = state.TASKS.filter(x => x._sbId !== sbId);
-  renderTasks();
-  const pending = { task: t, timer: setTimeout(function() { _commitTaskDelete(sbId); }, 5000) };
-  state._taskPendingDeletes[sbId] = pending;
-  _showUndoToast('Task deleted', function() {
-    if (!state._taskPendingDeletes[sbId]) return;
-    clearTimeout(pending.timer);
-    delete state._taskPendingDeletes[sbId];
-    state.TASKS.push(t);
-    renderTasks();
-  });
+  const undo = tasks.remove(sbId);
+  if (undo) _showUndoToast('Task deleted', undo);
 }
-
-async function _commitTaskDelete(sbId) {
-  const pending = state._taskPendingDeletes[sbId];
-  if (!pending) return;
-  delete state._taskPendingDeletes[sbId];
-  const ok = await db.sbDeleteTasks([sbId]);
-  if (!ok) { state.TASKS.push(pending.task); renderTasks(); }
-}
-
-function _flushTaskDeletes() {
-  Object.keys(state._taskPendingDeletes).forEach(function(id) {
-    clearTimeout(state._taskPendingDeletes[id].timer);
-    _commitTaskDelete(id);
-  });
-}
-
+function _flushTaskDeletes() { tasks.flushDeletes(); }
+// Leaving the view: pending deletes commit now instead of five seconds from now.
+function unmountTasks() { tasks.flushDeletes(); }
 function toggleCompletedTasks() {
   state._tasksCompletedOpen = !state._tasksCompletedOpen;
   renderTasks();
 }
-
 async function clearCompletedTasks() {
   if (state._taskSaving) return;
   const ids = state.TASKS.filter(t => t.completed).map(t => t._sbId);
   if (!ids.length) return;
   if (!confirm('Delete all ' + ids.length + ' completed task' + (ids.length === 1 ? '' : 's') + '?')) return;
-  state._taskSaving = true;
-  try {
-    const ok = await db.sbDeleteTasks(ids);
-    if (!ok) return;
-    // Prune by the ids actually deleted, not by completed-flag — a task
-    // checked off while the delete was in flight must stay
-    state.TASKS = state.TASKS.filter(t => ids.indexOf(t._sbId) === -1);
-    renderTasks();
-  } finally {
-    state._taskSaving = false;
-  }
+  await tasks.removeMany(ids);
 }
-
 function openEditTaskModal(sbId) {
   const t = state.TASKS.find(x => x._sbId === sbId);
   if (!t) return;
@@ -361,28 +281,18 @@ function closeEditTaskModal(event, el) {
 }
 
 async function saveTaskEdits() {
-  const t = state.TASKS.find(x => x._sbId === state._editingTaskId);
+  const t = tasks.find(state._editingTaskId);
   if (!t) { closeEditTaskModal(); return; }
   if (state._taskBusyIds[t._sbId]) return;
   const title = document.getElementById('etTitle').value.trim();
   const details = document.getElementById('etDetails').value.trim();
   const dueDate = document.getElementById('etDue').value;
   if (!title) { _showSaveError('Task needs a title'); return; }
-
-  state._taskBusyIds[t._sbId] = true;
-  try {
-    const ok = await db.sbUpdateTask(t._sbId, { title: title, details: details, due_date: dueDate || null });
-    if (!ok) return;
-    t.title = title;
-    t.details = details;
-    t.dueDate = dueDate || '';
-    state._editingTaskId = null;
-    renderTasks();
-  } finally {
-    delete state._taskBusyIds[t._sbId];
-  }
+  const ok = await tasks.update(t._sbId, { title, details, dueDate });
+  if (!ok) return;
+  state._editingTaskId = null;
+  renderTasks();
 }
-
 /* ---- KEYBOARD HELPERS (delegated) ---- */
 function taskRowKey(ev, sbId) {
   if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openEditTaskModal(sbId); }
@@ -402,4 +312,4 @@ export function __init() {
 
 act({ clearCompletedTasks, closeEditTaskModal, closeTaskComposer, deleteTask, openEditTaskModal, openTaskComposer, saveNewTask, saveTaskEdits, taskComposerKey, taskEditKey, taskRowKey, toggleCompletedTasks, toggleTaskComplete, toggleTaskStar });
 
-export { _commitTaskDelete, _ensureTaskModal, _flushTaskDeletes, _localISODate, _taskDueLabel, _taskRowHTML, clearCompletedTasks, closeEditTaskModal, closeTaskComposer, deleteTask, openEditTaskModal, openTaskComposer, renderTasks, saveNewTask, saveTaskEdits, taskComposerKey, taskEditKey, taskRowKey, toggleCompletedTasks, toggleTaskComplete, toggleTaskStar };
+export { _ensureTaskModal, _flushTaskDeletes, _localISODate, _taskDueLabel, _taskRowHTML, clearCompletedTasks, closeEditTaskModal, closeTaskComposer, deleteTask, openEditTaskModal, openTaskComposer, renderTasks, saveNewTask, saveTaskEdits, taskComposerKey, taskEditKey, taskRowKey, toggleCompletedTasks, toggleTaskComplete, toggleTaskStar, unmountTasks };

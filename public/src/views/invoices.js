@@ -1,9 +1,9 @@
 // Arkives — Invoices: list, editor, clients, payments, PDF and the red template.
 import { state } from '../state.js';
-import { db } from '../lib/sb.js';
+import { db } from '../lib/sb.js'; // saveInvoicingSettings writes the profile; the profile store owns no writes yet
+import { clients, invoices } from '../stores/invoices.js';
 import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
-import { _mapInvoiceRow } from '../lib/sb.js';
 import { _showSaveError, _showSaveSuccess } from '../lib/toast.js';
 import { _localISODate } from './tasks.js';
 
@@ -256,6 +256,9 @@ function _invStartEdit(sbId) {
    that opens a bottom sheet mounted on <body>. */
 function invOpenRowMenu(sbId) { state._invRowMenuId = sbId; _invSyncRowMenu(); }
 function invCloseRowMenu() { state._invRowMenuId = null; _invSyncRowMenu(); }
+// Leaving the view: the row sheet is body-mounted, so it would outlive the
+// view; the payment modal state must not greet the next visit either.
+function unmountInvoices() { invCloseRowMenu(); state._invPayingId = null; }
 function _invSyncRowMenu() {
   let host = document.getElementById('invSheetHost');
   if (!host) {
@@ -429,20 +432,8 @@ async function invSaveClient() {
     invoicePrefix: document.getElementById('clPrefix').value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12),
     billingAddress: document.getElementById('clAddress').value.trim()
   };
-  if (state._invClientEditingId === '__new') {
-    const row = await db.sbAddClient(data);
-    if (row) state.CLIENTS.push({ _sbId: row.id, ...data });
-  } else {
-    const ok = await db.sbUpdateClient(state._invClientEditingId, {
-      name: data.name, company: data.company, email: data.email,
-      invoice_prefix: data.invoicePrefix, billing_address: data.billingAddress
-    });
-    if (ok) {
-      const c = state.CLIENTS.find(x => x._sbId === state._invClientEditingId);
-      if (c) Object.assign(c, data);
-    }
-  }
-  state.CLIENTS.sort((a, b) => a.name.localeCompare(b.name));
+  if (state._invClientEditingId === '__new') await clients.add(data);
+  else await clients.update(state._invClientEditingId, data);
   state._invClientEditingId = null;
   renderInvoices();
 }
@@ -451,19 +442,14 @@ async function invDeleteClient(id) {
   const c = state.CLIENTS.find(x => x._sbId === id);
   if (!c) return;
   if (!confirm('Delete client "' + c.name + '"? Existing invoices keep their billing snapshot.')) return;
-  const ok = await db.sbDeleteClient(id);
-  if (ok) {
-    state.CLIENTS = state.CLIENTS.filter(x => x._sbId !== id);
-    renderInvoices();
-  }
+  if (await clients.remove(id)) renderInvoices();
 }
 
 /* ---- LIST ACTIONS ---- */
 async function invQuickStatus(sbId, status) {
   const inv = state.INVOICE_DATA.find(i => i._sbId === sbId);
   if (!inv) return;
-  const ok = await db.sbUpdateInvoice(sbId, { status });
-  if (ok) { inv.status = status; renderInvoices(); }
+  if (await invoices.setStatus(sbId, status)) renderInvoices();
 }
 
 function invRowPDF(sbId) {
@@ -475,11 +461,7 @@ async function invRowDelete(sbId) {
   const inv = state.INVOICE_DATA.find(i => i._sbId === sbId);
   if (!inv) return;
   if (!confirm('Delete invoice ' + inv.invoiceNumber + '? This can\'t be undone.')) return;
-  const ok = await db.sbDeleteInvoice(sbId);
-  if (ok) {
-    state.INVOICE_DATA = state.INVOICE_DATA.filter(i => i._sbId !== sbId);
-    renderInvoices();
-  }
+  if (await invoices.remove(sbId)) renderInvoices();
 }
 
 // Steps status back one: paid → sent, sent → draft
@@ -487,8 +469,7 @@ async function invUndoStatus(sbId) {
   const inv = state.INVOICE_DATA.find(i => i._sbId === sbId);
   if (!inv) return;
   const prev = inv.status === 'paid' ? 'sent' : 'draft';
-  const ok = await db.sbUpdateInvoice(sbId, { status: prev });
-  if (ok) { inv.status = prev; renderInvoices(); }
+  if (await invoices.setStatus(sbId, prev)) renderInvoices();
 }
 
 // Opens the editor as a NEW invoice pre-filled from the source —
@@ -554,12 +535,8 @@ async function invRecordPayment() {
   const newPaid = (Number(inv.amountPaid) || 0) + amt;
   // half-cent tolerance so float math can't strand a paid invoice at Sent
   const settled = newPaid >= invTotal(inv) - 0.005;
-  const updates = { amount_paid: newPaid };
-  if (settled) updates.status = 'paid';
-  const ok = await db.sbUpdateInvoice(inv._sbId, updates);
+  const ok = await invoices.recordPayment(inv._sbId, newPaid, settled);
   if (!ok) return;
-  inv.amountPaid = newPaid;
-  if (settled) inv.status = 'paid';
   invClosePay();
 }
 
@@ -862,11 +839,8 @@ async function invSaveNewClient() {
     invoicePrefix: '',
     billingAddress: document.getElementById('invNcAddress').value.trim()
   };
-  const row = await db.sbAddClient(data);
-  if (!row) return;
-  const client = { _sbId: row.id, ...data };
-  state.CLIENTS.push(client);
-  state.CLIENTS.sort((a, b) => a.name.localeCompare(b.name));
+  const client = await clients.add(data);
+  if (!client) return;
   state._invNewClientOpen = false;
   invPickClient(client._sbId);
 }
@@ -901,27 +875,15 @@ async function invSave() {
     ...(_invUsesRedDoc() ? { tax: Number(inv.tax) || 0 } : {})
   };
 
-  if (state._invEditingId) {
-    const ok = await db.sbUpdateInvoice(state._invEditingId, payload);
-    if (!ok) return;
-    const idx = state.INVOICE_DATA.findIndex(i => i._sbId === state._invEditingId);
-    if (idx !== -1) state.INVOICE_DATA[idx] = { ...state.INVOICE_DATA[idx], ..._mapInvoiceRow({ id: state._invEditingId, ...payload }) };
-  } else {
-    const row = await db.sbAddInvoice(payload);
-    if (!row) return;
-    state.INVOICE_DATA.unshift(_mapInvoiceRow(row));
-  }
+  const ok = await invoices.save(payload, state._invEditingId);
+  if (!ok) return;
   invBack();
 }
 
 async function invDelete() {
   if (!state._invEditingId) return;
   if (!confirm('Delete invoice ' + state._inv.invoiceNumber + '? This can\'t be undone.')) return;
-  const ok = await db.sbDeleteInvoice(state._invEditingId);
-  if (ok) {
-    state.INVOICE_DATA = state.INVOICE_DATA.filter(i => i._sbId !== state._invEditingId);
-    invBack();
-  }
+  if (await invoices.remove(state._invEditingId)) invBack();
 }
 
 /* ============================================================
@@ -1331,4 +1293,4 @@ function invCancelNewClient() { state._invNewClientOpen = false; renderInvoiceEd
 
 act({ invAddClientFromCard, invAddLine, invBack, invCancelClientForm, invCancelNewClient, invClosePay, invClosePayBackdrop, invCloseRowMenu, invCloseRowMenuBackdrop, invDelete, invDeleteClient, invDownloadPDF, invDuplicate, invEditClient, invExportCSV, invField, invLiField, invLiType, invNew, invOpen, invOpenPay, invOpenRowMenu, invPickClient, invQuickStatus, invRecordPayment, invRemoveLine, invRowDelete, invRowMenuPick, invRowPDF, invSave, invSaveClient, invSaveNewClient, invSearchInput, invSetFilter, invUndoStatus, saveInvoicingSettings });
 
-export { INVR_ICONS, INV_ORNAMENT_SVG, INV_TERM_DAYS, _invAddrLines, _invApplyRoute, _invCsvString, _invFilteredRows, _invFitRedPreview, _invLineSub, _invStartEdit, _invStartNew, _invSyncPayModal, _invSyncRowMenu, _invUpdatePreview, _invUsesRedDoc, _renderInvLineItems, _renderInvRows, fmtDocDate, fmtDocDateOrdinal, fmtMoney, fmtMoneyRed, invAddClientFromCard, invAddLine, invBack, invBalance, invCancelClientForm, invCancelNewClient, invClosePay, invClosePayBackdrop, invCloseRowMenu, invCloseRowMenuBackdrop, invDelete, invDeleteClient, invDisplayStatus, invDownloadPDF, invDuplicate, invEditClient, invExportCSV, invField, invIsOverdue, invLiField, invLiType, invLineAmount, invNew, invOpen, invOpenPay, invOpenRowMenu, invPickClient, invPrintDoc, invQuickStatus, invRecordPayment, invRemoveLine, invRowDelete, invRowMenuPick, invRowPDF, invSave, invSaveClient, invSaveNewClient, invSearchInput, invSetFilter, invSubtotal, invSuggestPrefix, invTermDueDate, invTermLabel, invTotal, invUndoStatus, nextInvoiceNumber, renderClientsCard, renderInvoiceDoc, renderInvoiceDocClassic, renderInvoiceDocRed, renderInvoiceEditor, renderInvoices, renderInvoicingSettings, renderPayModal, resetInvoiceViewState, saveInvoicingSettings };
+export { INVR_ICONS, INV_ORNAMENT_SVG, INV_TERM_DAYS, _invAddrLines, _invApplyRoute, _invCsvString, _invFilteredRows, _invFitRedPreview, _invLineSub, _invStartEdit, _invStartNew, _invSyncPayModal, _invSyncRowMenu, _invUpdatePreview, _invUsesRedDoc, _renderInvLineItems, _renderInvRows, fmtDocDate, fmtDocDateOrdinal, fmtMoney, fmtMoneyRed, invAddClientFromCard, invAddLine, invBack, invBalance, invCancelClientForm, invCancelNewClient, invClosePay, invClosePayBackdrop, invCloseRowMenu, invCloseRowMenuBackdrop, invDelete, invDeleteClient, invDisplayStatus, invDownloadPDF, invDuplicate, invEditClient, invExportCSV, invField, invIsOverdue, invLiField, invLiType, invLineAmount, invNew, invOpen, invOpenPay, invOpenRowMenu, invPickClient, invPrintDoc, invQuickStatus, invRecordPayment, invRemoveLine, invRowDelete, invRowMenuPick, invRowPDF, invSave, invSaveClient, invSaveNewClient, invSearchInput, invSetFilter, invSubtotal, invSuggestPrefix, invTermDueDate, invTermLabel, invTotal, invUndoStatus, nextInvoiceNumber, renderClientsCard, renderInvoiceDoc, renderInvoiceDocClassic, renderInvoiceDocRed, renderInvoiceEditor, renderInvoices, renderInvoicingSettings, renderPayModal, resetInvoiceViewState, saveInvoicingSettings, unmountInvoices };

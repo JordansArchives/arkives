@@ -31,7 +31,6 @@ state._sb = null;
 /* ---- AUTH STATE ---- */
 state._authUser = null;
 state._booted = false; // hashchange is ignored until init has run once
-state._rerenderWhenLoaded = false; // set when the boot fetch outlived its grace period
 /* ---- TASK STATE (loaded from Supabase) ---- */
 state.CONTRACT_RULES = [];
 state.TASKS = [];

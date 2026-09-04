@@ -53,7 +53,15 @@ page.on('console', m => { if (/act: duplicate|No handler registered|Bad data-/.t
 await page.goto(`http://localhost:${PORT}/#dashboard`, { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 
-const results = await page.evaluate(async (ACTION_NAMES) => {
+// Which store-owned state keys each view module reads (for the VIEW_STORES guard)
+const STORE_KEY_RE = /state\.(CREATOR|RATE_CARD|DEALS|CAMPAIGN_RESULTS|CALENDAR_EVENTS|MONTHLY_REVENUE|AUDIENCE_DATA|INBOX_ITEMS|TASKS|_tasksTableMissing|CLIENTS|_invoicingMigrationMissing|INVOICE_DATA|OUTREACH_LISTS|OUTREACH_TARGETS|_outreachMigrationMissing)\b/g;
+const VIEW_KEYS = {};
+for (const f of SRC.filter((x) => x.startsWith('src/views/'))) {
+  const view = f.replace('src/views/', '').replace('.js', '');
+  VIEW_KEYS[view] = [...new Set([...fs.readFileSync(ROOT + f, 'utf8').matchAll(STORE_KEY_RE)].map((m) => m[1]))];
+}
+
+const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   const out = [];
   const T = (name, cond, detail) => out.push({ name, pass: !!cond, detail: detail === undefined ? '' : String(detail) });
 
@@ -408,8 +416,126 @@ const results = await page.evaluate(async (ACTION_NAMES) => {
   // ---- jsPDF works under the CSP (no unsafe-eval) ----
   T('jsPDF renders under the CSP', (() => { try { const d = new jspdf.jsPDF(); d.text('csp', 10, 10); return /^data:application\/pdf/.test(d.output('datauristring')); } catch (e) { return false; } })());
 
+  // ---- Stores ----
+  const S = __arkives.stores;
+  T('every view declares stores covering the state keys it reads', (() => {
+    const owned = {}; S.ALL_STORES.forEach((st) => st.keys.forEach((k) => { owned[k] = st.name; }));
+    const bad = [];
+    for (const [view, keys] of Object.entries(VIEW_KEYS)) {
+      if (view === 'auth') continue; // resetAllState clears everything by design
+      const allowed = new Set([...S.profile.keys, ...(S.VIEW_STORES[view] || []).flatMap((st) => st.keys)]);
+      keys.forEach((k) => { if (owned[k] && !allowed.has(k)) bad.push(view + ' reads ' + k + ' (store ' + owned[k] + ')'); });
+    }
+    if (bad.length) console.error(bad.join('; '));
+    return bad.length === 0;
+  })());
+  T('store.load() is a no-op when signed out', (await S.deals.load()) === false && S.deals.loaded === false);
+  {
+    const st = __arkives.stores.tasks; const seen = [];
+    const off = st.subscribe(() => seen.push(1));
+    st.notify(); st.notify(); off(); st.notify();
+    T('subscribe/notify/unsubscribe', seen.length === 2);
+  }
+  T('storesFor: editors load nothing, unknown hash loads the dashboard set, invoices loads invoices+clients', S.storesFor('script/x').length === 0 && S.storesFor('board/x').length === 0 && S.storesFor('nope') === S.VIEW_STORES.dashboard && S.storesFor('invoices/abc').map((s) => s.name).join(',') === 'invoices,clients');
+  // ---- Router lifecycle ----
+  __arkives.db.sbUpdateTask = async () => true;
+  __arkives.db.sbDeleteTasks = async (ids) => { taskWrites.push({ del2: ids }); return true; };
+  __arkives.state.TASKS = [{ _sbId: 'u1', title: 'Leaving', details: '', dueDate: '', starred: false, completed: false, completedAt: '', createdAt: '2026-09-01' }];
+  __arkives.state._taskPendingDeletes = {};
+  location.hash = 'tasks'; __arkives.navigate('tasks');
+  T('router tracks the mounted view', __arkives.currentRoute()?.key === 'tasks');
+  __arkives.deleteTask('u1');
+  location.hash = 'calendar'; __arkives.navigate('calendar');
+  await new Promise(r => setTimeout(r, 10));
+  T('leaving Tasks commits the pending delete (unmount)', taskWrites.some(w => w.del2 && w.del2[0] === 'u1') && !__arkives.state._taskPendingDeletes.u1 && __arkives.currentRoute()?.key === 'calendar');
+  __arkives.state.TASKS = [{ _sbId: 'u2', title: 'Before', details: '', dueDate: '', starred: false, completed: false, completedAt: '', createdAt: '2026-09-01' }];
+  location.hash = 'tasks'; __arkives.navigate('tasks');
+  __arkives.state.TASKS[0].title = 'After notify';
+  __arkives.stores.tasks.notify();
+  T('a store notify re-renders the mounted view', /After notify/.test(document.getElementById('view-tasks').textContent));
+  location.hash = 'calendar'; __arkives.navigate('calendar');
+  __arkives.state.TASKS[0].title = 'Unmounted';
+  __arkives.stores.tasks.notify();
+  T('an unmounted view no longer re-renders on notify', !/Unmounted/.test(document.getElementById('view-tasks').textContent));
+  __arkives.state.INVOICE_DATA = [{ _sbId: 'i9', invoiceNumber: 'X-1', brand: 'B', billToName: 'B', billToAddress: '', date: '2026-08-01', dueDate: '', status: 'sent', lineItems: [], amount: 1, amountPaid: 0, tax: 0, notes: '', includePaymentInfo: false, paymentTerms: 'none', clientId: null, description: '' }];
+  location.hash = 'invoices'; __arkives.navigate('invoices');
+  __arkives.invOpenRowMenu('i9');
+  location.hash = 'tasks'; __arkives.navigate('tasks');
+  T('leaving Invoices closes the body-mounted row sheet (unmount)', document.getElementById('invSheetHost').innerHTML === '' && __arkives.state._invRowMenuId === null);
+  {
+    const saved = [];
+    __arkives.db.sbSaveSceneFields = async (id, fields) => { saved.push(id); };
+    __arkives.state._currentScriptId = 'S9'; __arkives.state._sharedScriptToken = null;
+    __arkives.state._currentScenes = [{ id: 'z', script_text: '', scene_description: '' }];
+    __arkives.state._sceneDirty = { z: { script_text: 'unsaved' } }; __arkives.state._titleDirty = null;
+    __arkives.navigate('script/S9');
+    __arkives.state._scriptLoadToken++; // abandon the editor fetch
+    location.hash = 'tasks'; __arkives.navigate('tasks');
+    await new Promise(r => setTimeout(r, 10));
+    T('leaving the script editor flushes dirty scene saves (unmount)', saved[0] === 'z' && Object.keys(__arkives.state._sceneDirty).length === 0);
+  }
+  {
+    const before = S.tasks.loaded; S.tasks.loaded = true; S.resetStores();
+    T('resetStores marks every store unloaded', S.ALL_STORES.every((st) => st.loaded === false)); S.tasks.loaded = before;
+  }
+
+  // ---- Loaders against a fake Supabase client (the code the boot used to run in one function) ----
+  {
+    const fake = (tables) => ({ from(t) {
+      const spec = tables[t] || { data: [] }; const b = { _single: false };
+      ['select', 'eq', 'order', 'limit', 'insert', 'update', 'delete'].forEach((m) => { b[m] = () => b; });
+      b.maybeSingle = () => { b._single = true; return b; }; b.single = b.maybeSingle;
+      b.then = (res, rej) => Promise.resolve(b._single ? { data: spec.single === undefined ? null : spec.single, error: spec.error || null } : { data: spec.data || [], error: spec.error || null }).then(res, rej);
+      return b;
+    } });
+    const st = __arkives.state; const realSb = st._sb;
+    st._authUser = { id: 'auth-1', email: 'me@x.com' };
+    st._sb = fake({
+      profiles: { single: { id: 'p1', name: 'Me', email: 'me@x.com', invoice_prefix: 'ME', invoice_template: 'red', mk_interests: ['film'] } },
+      platforms: { data: [{ id: 'pl1', platform: 'instagram', handle: '@me', followers: 270000, followers_display: '270K', engagement_rate: 4.2 }] },
+      rate_card_settings: { single: { minimum_rate: 15000, pricing_rule: 'flat' } },
+      rate_cards: { data: [{ id: 'rc1', item_id: 'r1', name: 'Reel', rate: 15000, category: 'organic' }, { id: 'rc2', item_id: 'r2', name: 'Bogus', rate: 1, category: 'nope' }] },
+      deals: { data: [{ id: 'd1', brand: 'Acme', status: 'Active', value: 12000, paid: 6000 }] },
+      tasks: { error: { code: 'PGRST205', message: 'missing' } },
+      clients: { data: [{ id: 'c1', name: 'Zed', invoice_prefix: 'ZED' }, { id: 'c2', name: 'Amy' }] },
+      invoices: { data: [{ id: 'i1', invoice_number: 'ME-1', brand: 'Acme', amount: 10, status: 'sent', line_items: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 10 }] }] },
+      outreach_lists: { data: [{ id: 'l1', name: 'Brands', sort_order: 1 }] },
+      outreach_targets: { data: [{ id: 't1', name: 'Nike', type: 'brand', status: 'new', list_ids: ['l1'], projects: [] }] },
+      calendar_events: { data: [{ id: 'e1', date: '2026-09-10', brand: 'Acme', type: 'Post', platform: 'instagram', status: 'scheduled' }] },
+      monthly_revenue: { data: [{ id: 'm1', month: 'Aug', year: 2026, amount: 5000 }] },
+      campaign_results: { data: [{ id: 'cr1', brand: 'Acme', views: 1000, revenue: 12000 }] },
+      audience_data: { data: [{ category: 'gender', data: { Male: 40, Female: 60 } }, { category: 'age', data: { '18-24': 30, '25-34': 50 } }] },
+      inbox_items: { data: [{ id: 'ib1', brand: 'Acme', from_name: 'Jane', subject: 'Hi', status: 'new', preview: 'p' }] },
+    });
+    S.resetStores();
+    T('profile loader maps the profile, platforms and rate card', (await S.profile.load()) === true && st.CREATOR._sbId === 'p1' && st.CREATOR.name === 'Me' && st.CREATOR.invoiceTemplate === 'red' && st.CREATOR.platforms.instagram.handle === '@me' && st.CREATOR.platforms.instagram.followers === '270K' && st.CREATOR.platforms.instagram.engagement === '4.2%' && st.RATE_CARD.minimumRate === 15000 && st.RATE_CARD.organic[0].name === 'Reel' && st.RATE_CARD.organic.length === 1, JSON.stringify({ id: st.CREATOR._sbId, ig: st.CREATOR.platforms.instagram, rc: st.RATE_CARD.organic }));
+    T('load() is memoized', S.profile.load() === S.profile.load() && S.profile.loaded === true);
+    await S.loadFor('tasks');
+    T('tasks loader records a missing table instead of failing', S.tasks.loaded === true && st._tasksTableMissing === true && st.TASKS.length === 0);
+    await S.loadFor('invoices/abc');
+    T('invoices route loads invoices and clients', S.invoices.loaded && S.clients.loaded && st.INVOICE_DATA[0].invoiceNumber === 'ME-1' && st.INVOICE_DATA[0].lineItems[0].fee === 10 && st.CLIENTS.length === 2 && st.CLIENTS[0].invoicePrefix === 'ZED' && st._invoicingMigrationMissing === false, JSON.stringify(st.INVOICE_DATA[0]));
+    await S.loadFor('dashboard');
+    T('dashboard route loads deals, calendar and revenue', st.DEALS[0].brand === 'Acme' && st.DEALS[0].paid === 6000 && st.CALENDAR_EVENTS[0].date === '2026-09-10' && st.MONTHLY_REVENUE[0].month === 'Aug 2026' && st.MONTHLY_REVENUE[0].earned === 5000);
+    await S.loadFor('outreach');
+    T('outreach loader maps lists and targets', st.OUTREACH_LISTS[0].name === 'Brands' && st.OUTREACH_TARGETS[0].name === 'Nike' && st._outreachMigrationMissing === false);
+    await Promise.all([S.audience.load(), S.inbox.load(), S.campaigns.load()]);
+    T('audience, inbox and campaign loaders map rows', st.AUDIENCE_DATA.gender.female === 60 && /25-34/.test(st.AUDIENCE_DATA.topAge) && st.AUDIENCE_DATA.interests[0] === 'film' && st.INBOX_ITEMS[0].status === 'needs_reply' && st.CAMPAIGN_RESULTS[0].views === 1000, JSON.stringify(st.AUDIENCE_DATA));
+    // Signed in, first visit to a view: skeleton, load, render
+    S.calendar.reset(); st.CALENDAR_EVENTS = [];
+    const navP = __arkives.navigate('calendar');
+    const skel = /skeleton/.test(document.getElementById('view-calendar').innerHTML);
+    await navP;
+    T('navigate loads an unloaded store behind a skeleton, then renders', skel && S.calendar.loaded && st.CALENDAR_EVENTS.length === 1 && !!document.querySelector('#view-calendar .calendar-cell'));
+    // A loader that throws leaves the store unloaded (so the next navigate retries) and toasts
+    st._sb = fake({ deals: null }); st._sb.from = () => { throw new Error('boom'); };
+    S.deals.reset();
+    T('a throwing loader leaves the store unloaded', (await S.deals.load()) === false && S.deals.loaded === false);
+    st._sb = realSb; st._authUser = null; S.resetStores(); __arkives.resetAllState();
+    location.hash = 'tasks'; __arkives.navigate('tasks');
+  }
+
   return { out, xss: !!window.__x };
-}, [...actionNames]);
+}, { ACTION_NAMES: [...actionNames], VIEW_KEYS });
 await browser.close();
 server.close();
 

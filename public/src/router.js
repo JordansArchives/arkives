@@ -1,19 +1,20 @@
 // Arkives — Hash routing, view switching, theme toggle and mobile nav.
 import { state } from './state.js';
 import { safeSet } from './lib/storage.js';
+import { storesFor } from './stores/index.js';
 import { renderAnalytics } from './views/analytics.js';
-import { _bdFlushPendingSaves, renderBoardEditor, renderBoards, renderSharedBoard } from './views/boards.js';
+import { _bdCommitActiveText, _bdFlushPendingSaves, _bdLiveLeave, renderBoardEditor, renderBoards, renderSharedBoard } from './views/boards.js';
 import { renderCalendar } from './views/calendar.js';
 import { renderContracts } from './views/contracts.js';
 import { renderDashboard } from './views/dashboard.js';
 import { renderInbox } from './views/inbox.js';
-import { renderInvoices } from './views/invoices.js';
+import { renderInvoices, unmountInvoices } from './views/invoices.js';
 import { renderMediaKit } from './views/mediakit.js';
 import { renderOutreach } from './views/outreach.js';
 import { renderRevenue } from './views/revenue.js';
 import { _flushScriptSaves, renderScriptEditor, renderScripts, renderSharedScript } from './views/scripts.js';
 import { renderSettings } from './views/settings.js';
-import { _flushTaskDeletes, renderTasks } from './views/tasks.js';
+import { renderTasks, unmountTasks } from './views/tasks.js';
 
 
 
@@ -22,12 +23,60 @@ function getHash() {
   return (window.location.hash || "#dashboard").replace("#", "");
 }
 
-function navigate(view) {
-  // Leaving an editor: land any debounced saves before the DOM is replaced
-  if (typeof _flushScriptSaves === 'function') _flushScriptSaves();
-  if (typeof _bdFlushPendingSaves === 'function') _bdFlushPendingSaves();
-  if (typeof _flushTaskDeletes === 'function') _flushTaskDeletes();
+/* ---- VIEW REGISTRY ----
+   One entry per view: how to render it, and (when it holds unsaved work
+   or body-mounted UI) how to leave it. The router calls unmount when the
+   route changes, subscribes the mounted view to its stores so a store
+   write re-renders it, and loads a view's stores before its first paint. */
+const VIEWS = {
+  dashboard: { render: renderDashboard },
+  revenue: { render: renderRevenue },
+  mediakit: { render: renderMediaKit },
+  analytics: { render: renderAnalytics },
+  outreach: { render: renderOutreach },
+  inbox: { render: renderInbox },
+  calendar: { render: renderCalendar },
+  settings: { render: renderSettings },
+  scripts: { render: renderScripts },
+  boards: { render: renderBoards },
+  contracts: { render: renderContracts },
+  invoices: { render: renderInvoices, unmount: unmountInvoices }, // render(sub) applies the route; render() keeps the editor
+  tasks: { render: renderTasks, unmount: unmountTasks },
+};
+// Editors and shared-link routes: keyed by the full hash so moving from
+// one script to another flushes the first.
+const EDITORS = {
+  'script/': { unmount: _flushScriptSaves },
+  'shared/': { unmount: _flushScriptSaves },
+  'board/': { unmount: unmountBoardEditor },
+  'bshared/': { unmount: unmountBoardEditor },
+};
+function unmountBoardEditor() { _bdCommitActiveText(); _bdFlushPendingSaves(); _bdLiveLeave(); }
+const SKELETON = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:200px;border-radius:12px"></div></div>';
+
+let _current = null;   // { key, def, sub, unsubs }
+let _navToken = 0;     // a navigate that finishes loading after a newer one started paints nothing
+
+function _leave(nextKey) {
+  if (!_current || _current.key === nextKey) return;
+  const leaving = _current;
+  _current = null;
+  leaving.unsubs.forEach((u) => u());
+  if (leaving.def && leaving.def.unmount) {
+    try { leaving.def.unmount(); } catch (e) { console.error('unmount ' + leaving.key + ' failed', e); }
+  }
+}
+function _enter(key, def, sub, base) {
+  if (_current && _current.key === key) { _current.sub = sub; return; }
+  const unsubs = base ? storesFor(base).map((s) => s.subscribe(() => { if (_current && _current.key === key) def.render(); })) : [];
+  _current = { key, def, sub, unsubs };
+}
+function currentRoute() { return _current ? { key: _current.key, sub: _current.sub } : null; }
+
+async function navigate(view) {
+  const token = ++_navToken;
   /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN, bshared/TOKEN */
+  if (/^(bshared|board|script|shared)\//.test(view)) _leave(view);
   if (view.startsWith('bshared/')) {
     // Public shared-board link — works logged out, sidebar hidden
     document.body.classList.add('editor-open');
@@ -41,6 +90,7 @@ function navigate(view) {
     var bsMc = document.querySelector('.main') || document.getElementById('mainContent');
     if (bsMc) bsMc.style.marginLeft = '0';
     if (typeof renderSharedBoard === 'function') renderSharedBoard(bsToken, bsMode);
+    _enter(view, EDITORS['bshared/'], '', null);
     return;
   }
   if (view.startsWith('board/')) {
@@ -55,6 +105,7 @@ function navigate(view) {
     document.getElementById('sidebar').classList.remove('open');
     var ovB = document.querySelector('.sidebar-overlay'); if (ovB) ovB.classList.remove('open');
     if (typeof renderBoardEditor === 'function') renderBoardEditor(boardId);
+    _enter(view, EDITORS['board/'], '', null);
     return;
   }
   if (view.startsWith('script/')) {
@@ -69,6 +120,7 @@ function navigate(view) {
     document.getElementById('sidebar').classList.remove('open');
     var ov = document.querySelector('.sidebar-overlay'); if (ov) ov.classList.remove('open');
     renderScriptEditor(scriptId);
+    _enter(view, EDITORS['script/'], '', null);
     return;
   }
   if (view.startsWith('shared/')) {
@@ -84,9 +136,9 @@ function navigate(view) {
     var mc = document.querySelector('.main') || document.getElementById('mainContent');
     if (mc) mc.style.marginLeft = '0';
     renderSharedScript(shareToken, shareMode);
+    _enter(view, EDITORS['shared/'], '', null);
     return;
   }
-
   /* Restore sidebar if it was hidden by shared view */
   document.getElementById('sidebar').style.display = '';
   var mc2 = document.querySelector('.main') || document.getElementById('mainContent');
@@ -100,6 +152,7 @@ function navigate(view) {
   var sub = parts.length > 1 ? parts.slice(1).join('/') : '';
   let el = document.getElementById("view-" + baseView);
   if (!el) { baseView = 'dashboard'; sub = ''; el = document.getElementById('view-dashboard'); }
+  _leave(baseView);
 
   document.querySelectorAll(".view").forEach(v => {
     v.style.display = "none";
@@ -119,25 +172,21 @@ function navigate(view) {
   const overlay = document.querySelector(".sidebar-overlay");
   if (overlay) overlay.classList.remove("open");
 
+  // First visit to a view this session: load its stores behind a skeleton.
+  // Signed out (tests, shared links) there is nothing to load and this is synchronous.
+  const pending = state._authUser ? storesFor(baseView).filter((s) => !s.loaded) : [];
+  if (pending.length) {
+    el.innerHTML = SKELETON;
+    await Promise.all(pending.map((s) => s.load()));
+    if (token !== _navToken) return;
+  }
+  _enter(baseView, VIEWS[baseView], sub, baseView);
   renderView(baseView, sub);
 }
 
 function renderView(view, sub) {
-  switch (view) {
-    case "dashboard": renderDashboard(); break;
-    case "revenue": renderRevenue(); break;
-    case "mediakit": renderMediaKit(); break;
-    case "analytics": renderAnalytics(); break;
-    case "outreach": if (typeof renderOutreach === "function") renderOutreach(); break;
-    case "inbox": renderInbox(); break;
-    case "calendar": renderCalendar(); break;
-    case "settings": renderSettings(); break;
-    case "scripts": renderScripts(); break;
-    case "boards": if (typeof renderBoards === "function") renderBoards(); break;
-    case "contracts": renderContracts(); break;
-    case "invoices": renderInvoices(sub || ''); break;
-    case "tasks": renderTasks(); break;
-  }
+  const def = VIEWS[view];
+  if (def) def.render(sub || '');
 }
 
 /* ---- SIDE EFFECTS ---- Registered from main.js in a fixed order, not at import time. */
@@ -181,4 +230,4 @@ export function __init() {
   })();
 }
 
-export { getHash, navigate, renderView };
+export { VIEWS, currentRoute, getHash, navigate, renderView };

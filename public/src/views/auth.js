@@ -1,6 +1,6 @@
 // Arkives — Auth screens, session handling and logout/reset.
 import { state } from '../state.js';
-import { db } from '../lib/sb.js';
+import { profile, resetStores } from '../stores/index.js';
 import { act } from '../lib/actions.js';
 import { _showSaveSuccess } from '../lib/toast.js';
 import { getHash, navigate } from '../router.js';
@@ -100,7 +100,7 @@ async function handleSetPassword(e) {
       state._authUser = (res.data && res.data.user) || state._authUser;
       updateSidebarUser();
       showApp();
-      if (!state.CREATOR._sbId) await db.sbFetchAllData();
+      if (!state.CREATOR._sbId) await profile.load(); // navigate() loads what the route needs
       navigate(getHash());
       _showSaveSuccess();
     }
@@ -133,8 +133,7 @@ async function handleLogin(e) {
     state._authUser = data.user;
     updateSidebarUser();
     showApp();
-    // Load data and navigate
-    await db.sbFetchAllData();
+    await profile.load(); // navigate() loads what the route needs
     navigate(getHash());
   } catch (err) {
     errEl.textContent = 'Connection error. Please try again.';
@@ -176,7 +175,7 @@ async function handleSignUp(e) {
       state._authUser = data.user;
       updateSidebarUser();
       showApp();
-      await db.sbFetchAllData();
+      await profile.load();
       navigate(getHash());
     }
   } catch (err) {
@@ -198,6 +197,7 @@ async function handleLogout() {
 // a second account on the same device never sees the first one's data.
 function resetAllState() {
   state._authUser = null;
+  resetStores(); // the next sign-in fetches everything again
   state.CREATOR = {
     name: "", brand: "", entity: "", email: "", niche: "",
     platforms: {

@@ -3,6 +3,7 @@
 import { state } from './state.js';
 import { db } from './lib/sb.js';
 import { _showSaveError } from './lib/toast.js';
+import * as stores from './stores/index.js';
 import { getHash, navigate } from './router.js';
 import { checkSession, showApp, showAuthScreen, updateSidebarUser } from './views/auth.js';
 import * as actions from './lib/actions.js';
@@ -42,15 +43,15 @@ async function boot() {
       if (session && session.user) {
         state._authUser = session.user;
         showApp();
-        // Load the account's data; the logo loader stays up until it lands.
-        // On a very slow connection paint after 20s anyway and repaint when
-        // the data arrives (sbFetchAllData checks _rerenderWhenLoaded).
+        // Load the profile and only what the first route needs; the logo
+        // loader stays up until it lands. On a very slow connection paint
+        // after 20s anyway: navigate() paints the view when its data arrives.
         var loaded = false;
-        var fetchP = db.sbFetchAllData().then(function() { loaded = true; });
-        await Promise.race([fetchP, new Promise(function(r) { setTimeout(r, 20000); })]);
-        if (!loaded) { state._rerenderWhenLoaded = true; _showSaveError('Still loading your data. The view will refresh when it arrives.'); }
+        var loadP = stores.profile.load().then(function() { return stores.loadFor(hash); }).then(function() { loaded = true; });
+        await Promise.race([loadP, new Promise(function(r) { setTimeout(r, 20000); })]);
+        if (!loaded) _showSaveError('Still loading your data. The view will refresh when it arrives.');
         updateSidebarUser();
-        navigate(getHash());
+        navigate(hash);
       } else {
         // No session — show login screen
         showAuthScreen();
@@ -92,7 +93,7 @@ tasks.__init();
 
 // window.__arkives: every export of every module, plus state and db. The
 // tests drive the app through it; it is also handy in the console.
-const __arkives = { state, db };
+const __arkives = { state, db, stores };
 for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, contracts, dashboard, inbox, invoices, mediakit, outreach, revenue, scripts, settings, tasks]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
 window.__arkives = __arkives;
 

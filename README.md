@@ -49,7 +49,8 @@ arkives/
 │   ├── src/                # the app, as native ES modules (no bundler; the browser resolves imports)
 │   │   ├── main.js         # entry: imports every module, runs the __init() hooks in order, exposes window.__arkives, boots
 │   │   ├── state.js        # every piece of shared mutable state, as properties of one `state` object
-│   │   ├── router.js       # hash routing, view switching, theme toggle, mobile nav
+│   │   ├── router.js       # hash routing with a view registry: loads a view's stores, mounts/unmounts (flushes), subscribes views to stores
+│   │   ├── stores/         # one store per domain: load() memoized per session, subscribe()/notify(), domain writes (tasks, invoices, clients)
 │   │   ├── lib/            # actions (event delegation), sb (Supabase client + `db`), toast, esc, format, icons, storage, share
 │   │   └── views/          # one module per view: auth, dashboard, revenue, mediakit, analytics, inbox, calendar, tasks, settings, scripts, invoices, outreach, boards, contracts
 │   ├── style.css           # full design system, all component styles
@@ -253,7 +254,7 @@ Add `https://arkives.xyz` to the allowed redirect URLs in:
 
 ### Quick Start
 1. Read this README first
-2. `public/src/state.js` lists every piece of shared state; `public/src/lib/sb.js` is the Supabase layer (`db.sbFetchAllData()` is the master loader)
+2. `public/src/state.js` lists every piece of shared state; `public/src/stores/` owns it per domain (`profile`, `tasks`, `invoices`, `clients`, `deals`, ...): each store has `load()` (memoized), `subscribe()`, and, where a domain has writes, the write methods; `public/src/lib/sb.js` is the Supabase layer underneath (one `db.sbFetchX()` loader per domain)
 3. Views live in `public/src/views/*.js`; each `renderXxx()` reads `state.*` → builds HTML → injects into `#view-xxx`
 4. Reads and writes are `db.sbXxx(...)` (e.g. `db.sbAddTask`, `db.sbUpdateInvoice`); views never touch the Supabase client directly
 5. `window.__arkives` (state, db, every export of every module) is how the tests and the browser console reach the app
@@ -262,6 +263,7 @@ Add `https://arkives.xyz` to the allowed redirect URLs in:
 - Pure vanilla JS — no React, no Vue, no framework
 - Native ES modules under `public/src/`, no bundler. Import what you use; `npm run lint` fails on anything undefined or unused
 - Shared mutable state lives on the `state` object (`import { state } from '../state.js'`), never as a module-level `let` another module needs. Module-private constants are `const`, exported
+- Data is loaded and written through stores (`public/src/stores/`). A view reads `state.*`, calls store methods to change it, and is re-rendered by the router when a store it depends on calls `notify()`. `VIEW_STORES` in `stores/index.js` says which stores each view needs; the router loads them (once per session) before the view's first paint, and `npm test` fails if a view reads a store-owned key its entry does not cover. Tasks, invoices and clients own their writes; the other domains are loaders for now
 - No side effects at import time. A module that needs listeners exports `__init()`, which `main.js` calls in a fixed order (dispatcher, Supabase client, auth listener, router, then the rest)
 - Template literals for HTML rendering
 - `var` in auth functions (broader compat), `const`/`let` elsewhere
@@ -310,6 +312,8 @@ npm run serve        # serves public/ on :8741 with the production headers from 
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint + test on every push and PR. Screenshots from the smoke run are uploaded as an artifact.
+
+**Boot.** Session, then the profile store, then only the stores the first route needs (`stores.loadFor(hash)`), then the first paint. Every later navigate loads what its view needs behind a skeleton the first time and is synchronous after that. Leaving a view runs its `unmount` (Tasks commits pending deletes, Invoices closes its body-mounted sheet, the Script and Board editors flush saves and leave the live channel).
 
 **Modules.** The app is native ES modules with no bundler: `index.html` loads `src/main.js` as a module and preloads every other module so the browser fetches the whole graph at once. Shared mutable state is the `state` object in `src/state.js`; all Supabase I/O is the `db` object in `src/lib/sb.js`; side effects run from `__init()` hooks that `main.js` calls in order. `main.js` also publishes `window.__arkives` (state, db, every export), which is the seam the tests use: `__arkives.state.TASKS = [...]`, `__arkives.db.sbUpdateTask = async () => true`, `__arkives.navigate('tasks')`. Adding a module? Put it under `src/lib/` or `src/views/`, import it from `main.js` so it lands in `__arkives`, and add a `<link rel="modulepreload">` for it in `index.html` (`tests/checks.mjs` fails if a module is missing from the preload list).
 

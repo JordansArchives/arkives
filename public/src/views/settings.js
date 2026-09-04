@@ -1,5 +1,6 @@
 // Arkives — Settings view (profile, platforms, rate card, contract defaults, audience, account).
 import { state } from '../state.js';
+import { loadAll } from '../stores/index.js';
 import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
 import { _showSaveError, _showSaveSuccess } from '../lib/toast.js';
@@ -462,6 +463,7 @@ function renderDangerZone() {
 }
 
 async function exportAllData() {
+  await loadAll(); // the export covers every domain, not just what this session has opened
   const dump = {
     exportedAt: new Date().toISOString(),
     profile: state.CREATOR,

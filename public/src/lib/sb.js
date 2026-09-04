@@ -1,7 +1,6 @@
 // Arkives — Supabase: the client and every read/write. All I/O goes through the `db` object so tests (and future callers) can swap a method.
 import { state } from '../state.js';
 import { _showSaveError, _showSaveSuccess } from './toast.js';
-import { getHash, navigate } from '../router.js';
 import { updateSidebarUser } from '../views/auth.js';
 
 
@@ -9,13 +8,22 @@ import { updateSidebarUser } from '../views/auth.js';
 const SUPABASE_URL = 'https://wqblmehsqcmsdstyweus.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_jYnmjabjsjkfnBvo1Eii0g_c3aKkCf2';
 
-/* ---- SUPABASE MASTER DATA LOADER ---- */
-async function sbFetchAllData() {
-  if (!state._sb) {
-    console.warn('Supabase not available — app will show empty data');
-    return;
-  }
+/* ---- LOADERS (one per domain; stores/index.js wires them) ----
+   Every query is scoped by the profile id, so sbFetchProfile() runs first
+   (the store layer enforces that). Each loader returns false when it could
+   not load, so the store stays unloaded and the next navigate retries.
+   Errors on optional tables map to empty data, as the old boot loader did. */
+function _own(table) { return state._sb.from(table).select('*').eq('user_id', state.CREATOR._sbId); }
+// 42P01 = Postgres undefined_table, PGRST205 = PostgREST table not in schema cache
+function _missingTable(err) { return !!err && (err.code === '42P01' || err.code === 'PGRST205'); }
+function _loadFailed(what, err) {
+  console.error(what + ' fetch error:', err);
+  _showSaveError('Failed to load ' + what + ': ' + (err && err.message || 'Unknown error'));
+  return false;
+}
 
+async function sbFetchProfile() {
+  if (!state._sb) { console.warn('Supabase not available — app will show empty data'); return false; }
   try {
     // Profile first: everything else is scoped by its id. Strictly by
     // auth_user_id, create a fresh one if missing. Never claim an existing
@@ -32,12 +40,12 @@ async function sbFetchAllData() {
         if (newProfile.error) {
           console.error('Profile creation failed:', newProfile.error);
           _showSaveError('Could not set up your account. Please refresh and try again.');
-          return;
+          return false;
         }
         profileRes = { data: newProfile.data };
       }
     }
-    if (!profileRes.data) return;
+    if (!profileRes.data) return false;
 
     const p = profileRes.data;
     state.CREATOR.name = p.name || '';
@@ -62,27 +70,11 @@ async function sbFetchAllData() {
     // Document template (migration 015) — undefined pre-migration, defaults to classic
     state.CREATOR.invoiceTemplate = p.invoice_template || 'classic';
     state.CREATOR._sbId = p.id;
-    const uid = state.CREATOR._sbId;
-
-    // Everything else in one round trip. Boards and Scripts load their
-    // own data when their tab opens; nothing here is needed by them.
-    const own = (table) => state._sb.from(table).select('*').eq('user_id', uid);
-    const [platRes, rcsRes, rcRes, dealsRes, crRes, ceRes, mrRes, adRes, ibRes, tkRes, clRes, orlRes, invRes] = await Promise.all([
-      own('platforms'),
-      own('rate_card_settings').limit(1).maybeSingle(),
-      own('rate_cards').order('sort_order'),
-      own('deals').order('sort_order'),
-      own('campaign_results'),
-      own('calendar_events').order('date'),
-      own('monthly_revenue').order('year').order('created_at'),
-      own('audience_data'),
-      state._sb.from('inbox_items').select('id, brand, from_name, from_email, subject, date, time, preview, status, suggested_action').eq('user_id', uid).order('created_at', { ascending: false }),
-      own('tasks').order('created_at', { ascending: false }),
-      own('clients').order('name'),
-      own('outreach_lists').order('sort_order'),
-      own('invoices').order('date', { ascending: false })
+    const [platRes, rcsRes, rcRes] = await Promise.all([
+      _own('platforms'),
+      _own('rate_card_settings').limit(1).maybeSingle(),
+      _own('rate_cards').order('sort_order')
     ]);
-
     // Platforms
     if (platRes.data) {
       platRes.data.forEach(pl => {
@@ -119,91 +111,128 @@ async function sbFetchAllData() {
       });
     }
 
+    updateSidebarUser();
+    return true;
+  } catch (err) { return _loadFailed('your profile', err); }
+}
+
+async function sbFetchDeals() {
+  try {
+    const dealsRes = await _own('deals').order('sort_order');
     // Deals (history is not loaded: no view reads it)
-    if (dealsRes.data) {
-      state.DEALS = dealsRes.data.map(d => ({
-        _sbId: d.id,
-        brand: d.brand || '',
-        status: d.status || 'Lead',
-        value: d.value || 0,
-        contact: d.contact || '',
-        email: d.email || '',
-        agency: d.agency || '',
-        campaign: d.campaign || '',
-        scope: d.scope || '',
-        deliverables: d.deliverables || '',
-        term: d.term || '',
-        notes: d.notes || '',
-        lastContact: d.last_contact || '',
-        contractStatus: d.contract_status || '',
-        invoiced: d.invoiced || 0,
-        paid: d.paid || 0,
-        outstanding: d.outstanding || 0,
-        negotiationHistory: []
-      }));
-    }
+    if (dealsRes.error) { console.error('deals fetch error:', dealsRes.error); state.DEALS = []; return true; }
+    state.DEALS = dealsRes.data.map(d => ({
+      _sbId: d.id,
+      brand: d.brand || '',
+      status: d.status || 'Lead',
+      value: d.value || 0,
+      contact: d.contact || '',
+      email: d.email || '',
+      agency: d.agency || '',
+      campaign: d.campaign || '',
+      scope: d.scope || '',
+      deliverables: d.deliverables || '',
+      term: d.term || '',
+      notes: d.notes || '',
+      lastContact: d.last_contact || '',
+      contractStatus: d.contract_status || '',
+      invoiced: d.invoiced || 0,
+      paid: d.paid || 0,
+      outstanding: d.outstanding || 0,
+      negotiationHistory: []
+    }));
+    return true;
+  } catch (err) { return _loadFailed('deals', err); }
+}
 
-    if (crRes.data) {
-      state.CAMPAIGN_RESULTS = crRes.data.map(c => ({
-        _sbId: c.id, brand: c.brand || '', views: c.views || 0,
-        ctr: c.ctr || null, conversion: c.conversion || null, revenue: c.revenue || 0
-      }));
-    }
+async function sbFetchCampaignResults() {
+  try {
+    const crRes = await _own('campaign_results');
+    if (crRes.error) { console.error('campaign_results fetch error:', crRes.error); state.CAMPAIGN_RESULTS = []; return true; }
+    state.CAMPAIGN_RESULTS = crRes.data.map(c => ({
+      _sbId: c.id, brand: c.brand || '', views: c.views || 0,
+      ctr: c.ctr || null, conversion: c.conversion || null, revenue: c.revenue || 0
+    }));
+    return true;
+  } catch (err) { return _loadFailed('campaign results', err); }
+}
 
-    if (ceRes.data) {
-      state.CALENDAR_EVENTS = ceRes.data.map(e => ({
-        _sbId: e.id, date: e.date || '', brand: e.brand || '',
-        type: e.type || '', platform: e.platform || '', status: e.status || 'draft'
-      }));
-    }
+async function sbFetchCalendarEvents() {
+  try {
+    const ceRes = await _own('calendar_events').order('date');
+    if (ceRes.error) { console.error('calendar_events fetch error:', ceRes.error); state.CALENDAR_EVENTS = []; return true; }
+    state.CALENDAR_EVENTS = ceRes.data.map(e => ({
+      _sbId: e.id, date: e.date || '', brand: e.brand || '',
+      type: e.type || '', platform: e.platform || '', status: e.status || 'draft'
+    }));
+    return true;
+  } catch (err) { return _loadFailed('calendar', err); }
+}
 
-    if (mrRes.data) {
-      state.MONTHLY_REVENUE = mrRes.data.map(r => ({
-        _sbId: r.id, month: r.month + ' ' + r.year, earned: r.amount || 0
-      }));
-    }
+async function sbFetchMonthlyRevenue() {
+  try {
+    const mrRes = await _own('monthly_revenue').order('year').order('created_at');
+    if (mrRes.error) { console.error('monthly_revenue fetch error:', mrRes.error); state.MONTHLY_REVENUE = []; return true; }
+    state.MONTHLY_REVENUE = mrRes.data.map(r => ({
+      _sbId: r.id, month: r.month + ' ' + r.year, earned: r.amount || 0
+    }));
+    return true;
+  } catch (err) { return _loadFailed('revenue', err); }
+}
 
-    if (adRes.data) {
-      adRes.data.forEach(row => {
-        if (row.category === 'age') {
-          const ageData = row.data || {};
-          const entries = Object.entries(ageData).sort((a, b) => b[1] - a[1]);
-          state.AUDIENCE_DATA.topAge = entries.length > 0 ? entries[0][0] + ' (' + entries[0][1] + '%)' : '';
-          state.AUDIENCE_DATA.ageRange = entries.length >= 2 ? entries[0][0].split('-')[0] + '-' + entries[1][0].split('-')[1] : '';
-        }
-        if (row.category === 'gender') {
-          const g = row.data || {};
-          state.AUDIENCE_DATA.gender = { male: g.Male || 0, female: g.Female || 0 };
-        }
-        if (row.category === 'topCountries') {
-          const c = row.data || {};
-          state.AUDIENCE_DATA.topCountries = Object.entries(c).map(([name, pct]) => ({ name, pct })).sort((a, b) => b.pct - a.pct);
-        }
-        if (row.category === 'topCities') {
-          state.AUDIENCE_DATA.topCities = row.data || {};
-        }
-      });
-      // Interests live on the profile (mk_interests, migration 013)
-      if (!state.AUDIENCE_DATA.interests || state.AUDIENCE_DATA.interests.length === 0) {
-        state.AUDIENCE_DATA.interests = state.CREATOR.mkInterests || [];
+async function sbFetchAudienceData() {
+  try {
+    const adRes = await _own('audience_data');
+    if (adRes.error) { console.error('audience_data fetch error:', adRes.error); return true; }
+    adRes.data.forEach(row => {
+      if (row.category === 'age') {
+        const ageData = row.data || {};
+        const entries = Object.entries(ageData).sort((a, b) => b[1] - a[1]);
+        state.AUDIENCE_DATA.topAge = entries.length > 0 ? entries[0][0] + ' (' + entries[0][1] + '%)' : '';
+        state.AUDIENCE_DATA.ageRange = entries.length >= 2 ? entries[0][0].split('-')[0] + '-' + entries[1][0].split('-')[1] : '';
       }
+      if (row.category === 'gender') {
+        const g = row.data || {};
+        state.AUDIENCE_DATA.gender = { male: g.Male || 0, female: g.Female || 0 };
+      }
+      if (row.category === 'topCountries') {
+        const c = row.data || {};
+        state.AUDIENCE_DATA.topCountries = Object.entries(c).map(([name, pct]) => ({ name, pct })).sort((a, b) => b.pct - a.pct);
+      }
+      if (row.category === 'topCities') {
+        state.AUDIENCE_DATA.topCities = row.data || {};
+      }
+    });
+    // Interests live on the profile (mk_interests, migration 013)
+    if (!state.AUDIENCE_DATA.interests || state.AUDIENCE_DATA.interests.length === 0) {
+      state.AUDIENCE_DATA.interests = state.CREATOR.mkInterests || [];
     }
+    return true;
+  } catch (err) { return _loadFailed('audience data', err); }
+}
 
-    if (ibRes.data) {
-      state.INBOX_ITEMS = ibRes.data.map((item, idx) => ({
-        _sbId: item.id, id: idx + 1, brand: item.brand || '', contact: item.from_name || '',
-        email: item.from_email || '', subject: item.subject || '', time: (item.date || '') + (item.time ? ', ' + item.time : ''),
-        snippet: item.preview || '', status: item.status === 'new' ? 'needs_reply' : (item.status || 'read'),
-        priority: 'medium', suggestedAction: item.suggested_action || 'reply',
-        context: item.preview || ''
-      }));
-    }
+async function sbFetchInboxItems() {
+  try {
+    const ibRes = await state._sb.from('inbox_items').select('id, brand, from_name, from_email, subject, date, time, preview, status, suggested_action').eq('user_id', state.CREATOR._sbId).order('created_at', { ascending: false });
+    if (ibRes.error) { console.error('inbox_items fetch error:', ibRes.error); state.INBOX_ITEMS = []; return true; }
+    state.INBOX_ITEMS = ibRes.data.map((item, idx) => ({
+      _sbId: item.id, id: idx + 1, brand: item.brand || '', contact: item.from_name || '',
+      email: item.from_email || '', subject: item.subject || '', time: (item.date || '') + (item.time ? ', ' + item.time : ''),
+      snippet: item.preview || '', status: item.status === 'new' ? 'needs_reply' : (item.status || 'read'),
+      priority: 'medium', suggestedAction: item.suggested_action || 'reply',
+      context: item.preview || ''
+    }));
+    return true;
+  } catch (err) { return _loadFailed('inbox', err); }
+}
 
-    // Tasks — table added in migration 010; tolerate a missing table so the
-    // Tasks view can show setup instructions instead of erroring
+// Tasks — table added in migration 010; tolerate a missing table so the
+// Tasks view can show setup instructions instead of erroring
+async function sbFetchTasks() {
+  try {
+    const tkRes = await _own('tasks').order('created_at', { ascending: false });
     if (tkRes.error) {
-      // 42P01 = Postgres undefined_table, PGRST205 = PostgREST table not in schema cache
-      state._tasksTableMissing = (tkRes.error.code === '42P01' || tkRes.error.code === 'PGRST205');
+      state._tasksTableMissing = _missingTable(tkRes.error);
       if (!state._tasksTableMissing) console.error('tasks fetch error:', tkRes.error);
       state.TASKS = [];
     } else {
@@ -215,9 +244,16 @@ async function sbFetchAllData() {
       }));
     }
 
-    // Clients — table added in migration 011
+    return true;
+  } catch (err) { return _loadFailed('tasks', err); }
+}
+
+// Clients — table added in migration 011
+async function sbFetchClients() {
+  try {
+    const clRes = await _own('clients').order('name');
     if (clRes.error) {
-      state._invoicingMigrationMissing = (clRes.error.code === '42P01' || clRes.error.code === 'PGRST205');
+      state._invoicingMigrationMissing = _missingTable(clRes.error);
       if (!state._invoicingMigrationMissing) console.error('clients fetch error:', clRes.error);
       state.CLIENTS = [];
     } else {
@@ -228,9 +264,16 @@ async function sbFetchAllData() {
       }));
     }
 
-    // Outreach lists + targets — tables added in migration 012
+    return true;
+  } catch (err) { return _loadFailed('clients', err); }
+}
+
+// Outreach lists + targets — tables added in migration 012
+async function sbFetchOutreach() {
+  try {
+    const orlRes = await _own('outreach_lists').order('sort_order');
     if (orlRes.error) {
-      state._outreachMigrationMissing = (orlRes.error.code === '42P01' || orlRes.error.code === 'PGRST205');
+      state._outreachMigrationMissing = _missingTable(orlRes.error);
       if (!state._outreachMigrationMissing) console.error('outreach_lists fetch error:', orlRes.error);
       state.OUTREACH_LISTS = [];
     } else {
@@ -240,9 +283,9 @@ async function sbFetchAllData() {
       }));
     }
     if (!state._outreachMigrationMissing) {
-      const ortRes = await own('outreach_targets').order('name');
+      const ortRes = await _own('outreach_targets').order('name');
       if (ortRes.error) {
-        state._outreachMigrationMissing = (ortRes.error.code === '42P01' || ortRes.error.code === 'PGRST205');
+        state._outreachMigrationMissing = _missingTable(ortRes.error);
         if (!state._outreachMigrationMissing) console.error('outreach_targets fetch error:', ortRes.error);
         state.OUTREACH_TARGETS = [];
       } else {
@@ -252,23 +295,18 @@ async function sbFetchAllData() {
       state.OUTREACH_TARGETS = [];
     }
 
-    // Invoices (table exists since 001; 011 columns default in the mapper)
-    if (invRes.error) {
-      console.error('invoices fetch error:', invRes.error);
-      state.INVOICE_DATA = [];
-    } else {
-      state.INVOICE_DATA = (invRes.data || []).map(_mapInvoiceRow);
-    }
+    return true;
+  } catch (err) { return _loadFailed('outreach', err); }
+}
 
-    updateSidebarUser();
-
-    // The boot painted before this landed (slow network): paint again.
-    if (state._rerenderWhenLoaded) { state._rerenderWhenLoaded = false; navigate(getHash()); }
-
-  } catch (err) {
-    console.error('sbFetchAllData error:', err);
-    _showSaveError('Failed to load data: ' + (err.message || 'Unknown error'));
-  }
+// Invoices (table exists since 001; 011 columns default in the mapper)
+async function sbFetchInvoices() {
+  try {
+    const invRes = await _own('invoices').order('date', { ascending: false });
+    if (invRes.error) { console.error('invoices fetch error:', invRes.error); state.INVOICE_DATA = []; return true; }
+    state.INVOICE_DATA = (invRes.data || []).map(_mapInvoiceRow);
+    return true;
+  } catch (err) { return _loadFailed('invoices', err); }
 }
 
 /* ---- SUPABASE CRUD: TASKS ---- */
@@ -696,7 +734,17 @@ export const db = {
   sbDeleteScene,
   sbDeleteScript,
   sbDeleteTasks,
-  sbFetchAllData,
+  sbFetchAudienceData,
+  sbFetchCalendarEvents,
+  sbFetchCampaignResults,
+  sbFetchClients,
+  sbFetchDeals,
+  sbFetchInboxItems,
+  sbFetchInvoices,
+  sbFetchMonthlyRevenue,
+  sbFetchOutreach,
+  sbFetchProfile,
+  sbFetchTasks,
   sbFetchBoardItems,
   sbFetchBoards,
   sbFetchScenes,
@@ -735,4 +783,4 @@ export function __init() {
   }
 }
 
-export { SUPABASE_ANON_KEY, SUPABASE_URL, _mapInvoiceRow, _mapOutreachRow, sbAddBoardItem, sbAddClient, sbAddInvoice, sbAddOutreachList, sbAddOutreachTarget, sbAddTask, sbCreateBoard, sbCreateScript, sbDeleteBoard, sbDeleteBoardItem, sbDeleteClient, sbDeleteInvoice, sbDeleteOutreachList, sbDeleteOutreachTarget, sbDeleteScene, sbDeleteScript, sbDeleteTasks, sbFetchAllData, sbFetchBoardItems, sbFetchBoards, sbFetchScenes, sbFetchScriptByToken, sbFetchScripts, sbReorderScenes, sbSaveSceneFields, sbUpdateBoard, sbUpdateBoardItem, sbUpdateClient, sbUpdateInvoice, sbUpdateOutreachList, sbUpdateOutreachTarget, sbUpdateProfile, sbUpdateScript, sbUpdateTask };
+export { SUPABASE_ANON_KEY, SUPABASE_URL, _mapInvoiceRow, _mapOutreachRow, sbAddBoardItem, sbAddClient, sbAddInvoice, sbAddOutreachList, sbAddOutreachTarget, sbAddTask, sbCreateBoard, sbCreateScript, sbDeleteBoard, sbDeleteBoardItem, sbDeleteClient, sbDeleteInvoice, sbDeleteOutreachList, sbDeleteOutreachTarget, sbDeleteScene, sbDeleteScript, sbDeleteTasks, sbFetchBoardItems, sbFetchBoards, sbFetchScenes, sbFetchScriptByToken, sbFetchScripts, sbReorderScenes, sbSaveSceneFields, sbUpdateBoard, sbUpdateBoardItem, sbUpdateClient, sbUpdateInvoice, sbUpdateOutreachList, sbUpdateOutreachTarget, sbUpdateProfile, sbUpdateScript, sbUpdateTask };
