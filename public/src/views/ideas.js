@@ -1,6 +1,8 @@
-// Arkives — Ideas view. A quick-capture list for content, scripts, and
-// whatever else: one line in, optional notes, archive it once it has been
-// used. Archived ideas stay findable under a collapsed section.
+// Arkives — Ideas view: a ruled notepad. The capture line is always ready
+// at the top (Enter adds), every idea sits on its own rule, and editing
+// happens in place on the line. No composer, no modal. Every line of text
+// is exactly one rule tall (see .ideas-sheet in style.css), which is what
+// keeps the text on the lines however much is written.
 import { state } from '../state.js';
 import { ideas } from '../stores/ideas.js';
 import { _args, act } from '../lib/actions.js';
@@ -21,59 +23,74 @@ function _ideaDateLabel(iso) {
 const ARCHIVE_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.3 7.1h17.4v2.8H3.3z"/><path d="M4.6 9.9v9.7c0 .7.5 1.2 1.2 1.2h12.4c.7 0 1.2-.5 1.2-1.2V9.9"/><path d="M9.9 13.6h4.2"/></svg>';
 const RESTORE_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.3 7.1h17.4v2.8H3.3z"/><path d="M4.6 9.9v9.7c0 .7.5 1.2 1.2 1.2h12.4c.7 0 1.2-.5 1.2-1.2V9.9"/><path d="M12 18.1v-6"/><path d="M9.4 14.6l2.6-2.5 2.6 2.5"/></svg>';
 
-function _ideaRowHTML(it) {
-  const when = _ideaDateLabel(it.archived ? it.archivedAt : it.createdAt);
-  const meta = it.archived ? (when ? 'Archived ' + when : 'Archived') : when;
+function _padActionsHTML(it) {
   // Two constant action names rather than one computed one: the static
   // guard in tests/checks.mjs reads data-action values from the source.
   const archiveBtn = it.archived
-    ? `<button class="idea-archive" data-action="restoreIdea" data-args="${_args(it._sbId)}" title="Restore" aria-label="Restore idea">${RESTORE_SVG}</button>`
-    : `<button class="idea-archive" data-action="archiveIdea" data-args="${_args(it._sbId)}" title="Archive" aria-label="Archive idea">${ARCHIVE_SVG}</button>`;
-  return `
-    <div class="idea-item ${it.archived ? 'archived' : ''}" data-id="${it._sbId}">
-      <div class="idea-body" role="button" tabindex="0" data-action="openEditIdeaModal" data-args="${_args(it._sbId)}" data-keydown="ideaRowKey" data-keydown-args="${_args('$event', it._sbId)}">
-        <div class="idea-title">${_esc(it.title)}</div>
-        ${it.notes ? `<div class="idea-notes">${_esc(it.notes)}</div>` : ''}
-        ${meta ? `<span class="idea-meta">${_esc(meta)}</span>` : ''}
+    ? `<button class="pad-archive" data-action="restoreIdea" data-args="${_args(it._sbId)}" title="Restore" aria-label="Restore idea">${RESTORE_SVG}</button>`
+    : `<button class="pad-archive" data-action="archiveIdea" data-args="${_args(it._sbId)}" title="Archive" aria-label="Archive idea">${ARCHIVE_SVG}</button>`;
+  return `<div class="pad-actions">${archiveBtn}<button class="pad-delete" data-action="deleteIdea" data-args="${_args(it._sbId)}" title="Delete" aria-label="Delete idea">&times;</button></div>`;
+}
+
+function _padEntryHTML(it) {
+  if (state._editingIdeaId === it._sbId && !it.archived) {
+    return `
+    <div class="pad-entry editing" data-id="${it._sbId}">
+      <div class="pad-line">
+        <textarea class="pad-input pad-edit-title" id="ideaEditTitle" rows="1" maxlength="500" aria-label="Idea" data-input="ideaEditGrow" data-input-args="[&quot;$el&quot;]" data-keydown="ideaEditKey" data-keydown-args="${_args('$event', it._sbId)}">${_esc(it.title)}</textarea>
+        ${_padActionsHTML(it)}
       </div>
-      <div class="idea-item-actions">
-        ${archiveBtn}
-        <button class="idea-delete" data-action="deleteIdea" data-args="${_args(it._sbId)}" title="Delete" aria-label="Delete idea">&times;</button>
+      <div class="pad-notes-edit">
+        <textarea class="pad-input pad-edit-notes" id="ideaEditNotes" rows="1" maxlength="5000" placeholder="Add notes" aria-label="Notes" data-input="ideaEditGrow" data-input-args="[&quot;$el&quot;]" data-keydown="ideaEditKey" data-keydown-args="${_args('$event', it._sbId)}">${_esc(it.notes)}</textarea>
       </div>
     </div>`;
+  }
+  const when = _ideaDateLabel(it.archived ? it.archivedAt : it.createdAt);
+  const meta = it.archived ? (when ? 'Archived ' + when : 'Archived') : when;
+  const editAttrs = it.archived ? '' : ` role="button" tabindex="0" data-action="openIdeaEdit" data-args="${_args(it._sbId)}" data-keydown="ideaLineKey" data-keydown-args="${_args('$event', it._sbId)}"`;
+  const notesAttrs = it.archived ? '' : ` data-action="openIdeaEdit" data-args="${_args(it._sbId)}"`;
+  return `
+    <div class="pad-entry ${it.archived ? 'archived' : ''}" data-id="${it._sbId}">
+      <div class="pad-line">
+        <div class="pad-text"${editAttrs}>${_esc(it.title)}</div>
+        ${meta ? `<span class="pad-date">${_esc(meta)}</span>` : ''}
+        ${_padActionsHTML(it)}
+      </div>
+      ${it.notes ? `<div class="pad-notes"${notesAttrs}>${_esc(it.notes)}</div>` : ''}
+    </div>`;
+}
+
+// A textarea with no padding and a line-height of one rule grows in whole
+// rules, so the sheet under it stays aligned. The title is a textarea too
+// (not an input) so a long line wraps onto the next rule while editing,
+// the way it does when it is not being edited; Enter still commits.
+function _growTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = el.scrollHeight + 'px';
 }
 
 function renderIdeas() {
   const container = document.getElementById('view-ideas');
+  const firstPaint = !state._ideaPadMounted;
+  state._ideaPadMounted = true;
 
-  // Preserve unsaved composer/modal input across re-renders — every idea
-  // mutation rebuilds this view's innerHTML, and typed text must survive
+  // Preserve typed text across re-renders: every store change rebuilds
+  // this view's innerHTML, and what is on the capture line or in an open
+  // edit must survive.
   const prevFocusId = document.activeElement ? document.activeElement.id : '';
-  let prevComposer = null;
-  if (state._ideaComposerOpen && document.getElementById('ideaNewTitle')) {
-    prevComposer = {
-      title: document.getElementById('ideaNewTitle').value,
-      notes: document.getElementById('ideaNewNotes').value
-    };
-  }
-  let prevModal = null;
-  const prevModalEl = document.getElementById('editIdeaModal');
-  if (state._editingIdeaId && prevModalEl && prevModalEl.style.display !== 'none') {
-    prevModal = {
-      title: document.getElementById('eiTitle').value,
-      notes: document.getElementById('eiNotes').value
+  const prevCaptureEl = document.getElementById('ideaCapture');
+  const prevCapture = prevCaptureEl ? prevCaptureEl.value : '';
+  let prevEdit = null;
+  if (state._editingIdeaId && document.getElementById('ideaEditTitle')) {
+    prevEdit = {
+      title: document.getElementById('ideaEditTitle').value,
+      notes: document.getElementById('ideaEditNotes') ? document.getElementById('ideaEditNotes').value : ''
     };
   }
 
   const header = `
     <div class="view-header">
-      <div>
-        <h1 class="view-title">Ideas</h1>
-        <p class="view-subtitle">Quick captures. Get it down now, sort it out later.</p>
-      </div>
-      <div class="view-header-actions">
-        <button class="btn btn-primary" data-action="openIdeaComposer">+ Add Idea</button>
-      </div>
+      <div><h1 class="view-title">Ideas</h1></div>
     </div>`;
 
   if (state._ideasTableMissing) {
@@ -87,6 +104,12 @@ function renderIdeas() {
     return;
   }
 
+  // An edit in progress on an idea that is gone or archived ends now
+  if (state._editingIdeaId) {
+    const editing = ideas.find(state._editingIdeaId);
+    if (!editing || editing.archived) state._editingIdeaId = null;
+  }
+
   const active = state.IDEAS.filter(i => !i.archived).sort((a, b) =>
     (b.createdAt || '').localeCompare(a.createdAt || '')
   );
@@ -96,193 +119,206 @@ function renderIdeas() {
 
   container.innerHTML = header + `
     <div class="ideas-container">
-      <div class="ideas-card">
-        <div class="idea-composer" id="ideaComposer" style="display:${state._ideaComposerOpen ? 'block' : 'none'}">
-          <div class="form-group">
-            <label for="ideaNewTitle">Idea</label>
-            <input type="text" id="ideaNewTitle" placeholder="What's the idea?" maxlength="500" data-keydown="ideaComposerKey" data-keydown-args="[&quot;$event&quot;]">
-          </div>
-          <div class="form-group">
-            <label for="ideaNewNotes">Notes (optional)</label>
-            <textarea id="ideaNewNotes" rows="3" maxlength="5000" placeholder="Hook, angle, reference, whatever you need to remember" data-keydown="ideaComposerKey" data-keydown-args="[&quot;$event&quot;]"></textarea>
-          </div>
-          <div class="idea-composer-actions">
-            <span class="idea-composer-hint">Enter adds it. From notes, &#8984;/Ctrl+Enter.</span>
-            <button class="btn btn-secondary btn-sm" data-action="closeIdeaComposer">Cancel</button>
-            <button class="btn btn-primary btn-sm" data-action="saveNewIdea">Add Idea</button>
-          </div>
+      <div class="ideas-sheet">
+        <div class="pad-capture">
+          <input type="text" class="pad-input" id="ideaCapture" placeholder="What's the idea?" maxlength="500" autocomplete="off" aria-label="New idea" data-keydown="ideaCaptureKey" data-keydown-args="[&quot;$event&quot;]">
+          <button class="pad-add" data-action="saveNewIdea" aria-label="Add idea">Add</button>
         </div>
-
-        ${active.length === 0 && archived.length === 0 ? `
-          <div class="dashboard-empty ideas-empty">
-            <p>No ideas yet. Next time one hits, get it down before it's gone.</p>
-          </div>
-        ` : ''}
-
-        <div class="idea-list">
-          ${active.map(_ideaRowHTML).join('')}
-        </div>
-
-        ${archived.length > 0 ? `
-          <div class="ideas-archived">
-            <button class="ideas-archived-toggle" data-action="toggleArchivedIdeas" aria-expanded="${state._ideasArchivedOpen}">
-              <span class="ideas-archived-chevron ${state._ideasArchivedOpen ? 'open' : ''}">&#8250;</span>
-              Archived (${archived.length})
-            </button>
-            ${state._ideasArchivedOpen ? `
-              <div class="idea-list idea-list-archived">
-                ${archived.map(_ideaRowHTML).join('')}
-              </div>
-            ` : ''}
-          </div>
-        ` : ''}
+        ${active.map(_padEntryHTML).join('')}
       </div>
+
+      ${archived.length > 0 ? `
+        <div class="ideas-archived">
+          <button class="ideas-archived-toggle" data-action="toggleArchivedIdeas" aria-expanded="${state._ideasArchivedOpen}">
+            <span class="ideas-archived-chevron ${state._ideasArchivedOpen ? 'open' : ''}">&#8250;</span>
+            Archived (${archived.length})
+          </button>
+          ${state._ideasArchivedOpen ? `
+            <div class="ideas-sheet ideas-sheet-archived">
+              ${archived.map(_padEntryHTML).join('')}
+            </div>
+          ` : ''}
+        </div>
+      ` : ''}
     </div>
   `;
-  _ensureIdeaModal();
 
   // Restore preserved input state after the rebuild
-  if (prevComposer && state._ideaComposerOpen && document.getElementById('ideaNewTitle')) {
-    document.getElementById('ideaNewTitle').value = prevComposer.title;
-    document.getElementById('ideaNewNotes').value = prevComposer.notes;
+  const captureEl = document.getElementById('ideaCapture');
+  if (captureEl && prevCapture) captureEl.value = prevCapture;
+  const editTitleEl = document.getElementById('ideaEditTitle');
+  const editNotesEl = document.getElementById('ideaEditNotes');
+  if (prevEdit && editTitleEl) {
+    editTitleEl.value = prevEdit.title;
+    if (editNotesEl) editNotesEl.value = prevEdit.notes;
   }
-  if (state._editingIdeaId && !state.IDEAS.some(i => i._sbId === state._editingIdeaId)) state._editingIdeaId = null;
-  if (prevModal && state._editingIdeaId) {
-    document.getElementById('eiTitle').value = prevModal.title;
-    document.getElementById('eiNotes').value = prevModal.notes;
-    document.getElementById('editIdeaModal').style.display = 'flex';
+  if (editTitleEl) _growTextarea(editTitleEl);
+  if (editNotesEl) _growTextarea(editNotesEl);
+
+  // Focus: an explicit request (after an add, opening an edit) wins; the
+  // first paint focuses the capture line on pointer devices (a phone would
+  // pop its keyboard over the list); otherwise put focus back where it was.
+  let focusEl = null;
+  if (state._ideaFocusPending) {
+    focusEl = document.getElementById(state._ideaFocusPending);
+    state._ideaFocusPending = null;
+  } else if (firstPaint && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+    focusEl = captureEl;
+  } else if (['ideaCapture', 'ideaEditTitle', 'ideaEditNotes'].indexOf(prevFocusId) !== -1) {
+    focusEl = document.getElementById(prevFocusId);
   }
-  if (state._ideaComposerFocusPending) {
-    state._ideaComposerFocusPending = false;
-    const titleEl = document.getElementById('ideaNewTitle');
-    if (titleEl) titleEl.focus();
-  } else if (['ideaNewTitle', 'ideaNewNotes', 'eiTitle', 'eiNotes'].indexOf(prevFocusId) !== -1) {
-    const el = document.getElementById(prevFocusId);
-    if (el) el.focus();
+  if (focusEl) {
+    focusEl.focus();
+    if (typeof focusEl.setSelectionRange === 'function') {
+      const n = focusEl.value.length;
+      try { focusEl.setSelectionRange(n, n); } catch (e) {}
+    }
   }
 }
 
-// Body-mounted so it stacks above the sidebar (see _ensureTaskModal)
-function _ensureIdeaModal() {
-  if (document.getElementById('editIdeaModal')) return;
-  var host = document.createElement('div');
-  host.id = 'ideaModalHost';
-  host.innerHTML = `
-    <div class="modal-overlay" id="editIdeaModal" style="display:none;" data-action="closeEditIdeaModal" data-args="[&quot;$event&quot;,&quot;$el&quot;]">
-      <div class="modal-card" data-action="stop" data-args="[&quot;$event&quot;]">
-        <h3>Edit Idea</h3>
-        <div class="form-group">
-          <label for="eiTitle">Idea</label>
-          <input type="text" id="eiTitle" maxlength="500" data-keydown="ideaEditKey" data-keydown-args="[&quot;$event&quot;]">
-        </div>
-        <div class="form-group">
-          <label for="eiNotes">Notes</label>
-          <textarea id="eiNotes" rows="6" maxlength="5000" placeholder="Hook, angle, reference, whatever you need to remember" data-keydown="ideaEditKey" data-keydown-args="[&quot;$event&quot;]"></textarea>
-        </div>
-        <div class="settings-actions">
-          <button class="btn btn-secondary" data-action="closeEditIdeaModal">Cancel</button>
-          <button class="btn btn-primary" data-action="saveIdeaEdits">Save</button>
-        </div>
-      </div>
-    </div>`;
-  document.body.appendChild(host);
-}
-
-function openIdeaComposer() {
-  if (state._ideasTableMissing) { _showSaveError('Run migrations/022_ideas.sql in Supabase first'); return; }
-  state._ideaComposerOpen = true;
-  state._ideaComposerFocusPending = true;
-  renderIdeas();
-}
-
-function closeIdeaComposer() {
-  state._ideaComposerOpen = false;
-  renderIdeas();
+/* ---- CAPTURE LINE ---- */
+function ideaCaptureKey(ev) {
+  if (ev.key === 'Enter') { ev.preventDefault(); saveNewIdea(); }
 }
 
 async function saveNewIdea() {
   if (state._ideaSaving) return; // in-flight guard: double Enter / double click must not duplicate
+  if (state._ideasTableMissing) { _showSaveError('Run migrations/022_ideas.sql in Supabase first'); return; }
   if (!state._sb || !state.CREATOR?._sbId) { _showSaveError('Not connected'); return; }
-  const title = document.getElementById('ideaNewTitle').value.trim();
-  const notes = document.getElementById('ideaNewNotes').value.trim();
-  if (!title) { _showSaveError('Idea needs a line'); return; }
-  const row = await ideas.add({ title, notes });
+  const input = document.getElementById('ideaCapture');
+  if (!input) return;
+  const title = input.value.trim();
+  if (!title) { input.focus(); return; } // an empty Enter just keeps the caret on the line
+  const row = await ideas.add({ title, notes: '' });
   if (!row) return;
-  // Clear inputs before re-render (the preserve-state logic would
-  // otherwise carry them over), then keep the composer open for
-  // rapid entry: ideas tend to arrive in bunches
-  document.getElementById('ideaNewTitle').value = '';
-  document.getElementById('ideaNewNotes').value = '';
-  state._ideaComposerFocusPending = true;
+  // Clear before re-render (the preserve logic would otherwise carry the
+  // text over), then keep the caret on the line: ideas arrive in bunches
+  const again = document.getElementById('ideaCapture');
+  if (again) again.value = '';
+  state._ideaFocusPending = 'ideaCapture';
   renderIdeas();
 }
-// The store owns the write policy (optimistic archive, undo-able delete);
-// the mounted view re-renders through its store subscription.
-function archiveIdea(sbId) { return ideas.setArchived(sbId, true); }
+
+/* ---- INLINE EDIT ---- */
+function openIdeaEdit(sbId) {
+  if (state._ideaCommitting) return;
+  const it = ideas.find(sbId);
+  if (!it || it.archived) return;
+  if (state._editingIdeaId && state._editingIdeaId !== sbId) _commitEditNow(state._editingIdeaId);
+  state._editingIdeaId = sbId;
+  state._ideaFocusPending = 'ideaEditTitle';
+  renderIdeas();
+}
+
+function cancelIdeaEdit() {
+  state._editingIdeaId = null;
+  renderIdeas();
+}
+
+function _readEdit() {
+  const t = document.getElementById('ideaEditTitle');
+  const n = document.getElementById('ideaEditNotes');
+  if (!t) return null;
+  // The title is one line: a pasted newline becomes a space
+  return { title: t.value.replace(/\s*\n\s*/g, ' ').trim(), notes: (n ? n.value : '').trim() };
+}
+
+// Commit on Enter, Cmd/Ctrl+Enter, or when focus leaves the entry.
+async function commitIdeaEdit(sbId) {
+  if (state._ideaCommitting || state._editingIdeaId !== sbId) return;
+  const it = ideas.find(sbId);
+  const edit = _readEdit();
+  if (!it || !edit) { state._editingIdeaId = null; renderIdeas(); return; }
+  if (!edit.title) {
+    _showSaveError('Idea needs a line');
+    state._ideaFocusPending = 'ideaEditTitle';
+    renderIdeas();
+    return;
+  }
+  if (edit.title === it.title && edit.notes === it.notes) { state._editingIdeaId = null; renderIdeas(); return; }
+  state._ideaCommitting = true;
+  try {
+    const ok = await ideas.update(sbId, edit);
+    if (ok) state._editingIdeaId = null;
+  } finally {
+    state._ideaCommitting = false;
+  }
+  renderIdeas();
+}
+
+// Fire-and-forget commit for the moments that cannot wait: leaving the
+// view, or opening a second edit. An emptied line is dropped, not saved.
+function _commitEditNow(sbId) {
+  const it = ideas.find(sbId);
+  const edit = _readEdit();
+  state._editingIdeaId = null;
+  if (!it || !edit || !edit.title) return;
+  if (edit.title === it.title && edit.notes === it.notes) return;
+  ideas.update(sbId, edit);
+}
+
+function ideaEditGrow(el) { _growTextarea(el); }
+
+/* ---- ROW ACTIONS ---- The store owns the write policy (optimistic
+   archive, undo-able delete); the mounted view re-renders through its
+   store subscription. */
+async function archiveIdea(sbId) {
+  if (state._editingIdeaId === sbId) await commitIdeaEdit(sbId);
+  return ideas.setArchived(sbId, true);
+}
 function restoreIdea(sbId) { return ideas.setArchived(sbId, false); }
 function deleteIdea(sbId) {
+  if (state._editingIdeaId === sbId) state._editingIdeaId = null;
   const undo = ideas.remove(sbId);
   if (undo) _showUndoToast('Idea deleted', undo);
 }
 function _flushIdeaDeletes() { ideas.flushDeletes(); }
-// Leaving the view: pending deletes commit now instead of five seconds from now.
-function unmountIdeas() { ideas.flushDeletes(); }
+// Leaving the view: an open edit is saved, pending deletes commit now.
+function unmountIdeas() {
+  if (state._editingIdeaId) _commitEditNow(state._editingIdeaId);
+  ideas.flushDeletes();
+  state._ideaPadMounted = false;
+}
 function toggleArchivedIdeas() {
   state._ideasArchivedOpen = !state._ideasArchivedOpen;
   renderIdeas();
 }
-function openEditIdeaModal(sbId) {
-  const it = ideas.find(sbId);
-  if (!it) return;
-  state._editingIdeaId = sbId;
-  document.getElementById('eiTitle').value = it.title;
-  document.getElementById('eiNotes').value = it.notes;
-  document.getElementById('editIdeaModal').style.display = 'flex';
-}
 
-function closeEditIdeaModal(event, el) {
-  if (event && event.target !== (el || event.currentTarget)) return;
-  state._editingIdeaId = null;
-  const m = document.getElementById('editIdeaModal');
-  if (m) m.style.display = 'none';
+/* ---- KEYBOARD HELPERS (delegated) ---- */
+function ideaLineKey(ev, sbId) {
+  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openIdeaEdit(sbId); }
 }
-
-async function saveIdeaEdits() {
-  const it = ideas.find(state._editingIdeaId);
-  if (!it) { closeEditIdeaModal(); return; }
-  if (state._ideaBusyIds[it._sbId]) return;
-  const title = document.getElementById('eiTitle').value.trim();
-  const notes = document.getElementById('eiNotes').value.trim();
-  if (!title) { _showSaveError('Idea needs a line'); return; }
-  const ok = await ideas.update(it._sbId, { title, notes });
-  if (!ok) return;
-  closeEditIdeaModal();
-  renderIdeas();
-}
-/* ---- KEYBOARD HELPERS (delegated) ----
-   Enter submits from the one-line field. In a notes textarea Enter is a
-   newline, and Cmd/Ctrl+Enter submits. */
-function _submitKey(ev) {
-  if (ev.key !== 'Enter') return false;
-  if (ev.target && ev.target.tagName === 'TEXTAREA' && !(ev.metaKey || ev.ctrlKey)) return false;
-  return true;
-}
-function ideaRowKey(ev, sbId) {
-  if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openEditIdeaModal(sbId); }
-}
-function ideaComposerKey(ev) {
-  if (_submitKey(ev)) { ev.preventDefault(); saveNewIdea(); }
-}
-function ideaEditKey(ev) {
-  if (_submitKey(ev)) { ev.preventDefault(); saveIdeaEdits(); }
+// Enter commits from the title line. In the notes textarea Enter is a
+// newline and Cmd/Ctrl+Enter commits. Escape cancels from either.
+function ideaEditKey(ev, sbId) {
+  if (ev.key === 'Escape') { ev.preventDefault(); cancelIdeaEdit(); return; }
+  if (ev.key !== 'Enter') return;
+  if (ev.target && ev.target.id === 'ideaEditNotes' && !(ev.metaKey || ev.ctrlKey)) return;
+  ev.preventDefault();
+  commitIdeaEdit(sbId);
 }
 
 /* ---- SIDE EFFECTS ---- Registered from main.js in a fixed order, not at import time. */
 export function __init() {
   document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushIdeaDeletes(); });
   window.addEventListener('pagehide', function() { _flushIdeaDeletes(); });
+  // Focus leaving an entry being edited commits it (a tap elsewhere, Tab
+  // away, the Add button). Moving between the title and the notes of the
+  // same entry does not. Checked a tick later so the new focus is known.
+  document.addEventListener('focusout', function(ev) {
+    if (!state._editingIdeaId || state._ideaCommitting) return;
+    const t = ev.target;
+    if (!(t instanceof Element) || !t.closest('.pad-entry.editing')) return;
+    setTimeout(function() {
+      if (!state._editingIdeaId || state._ideaCommitting) return;
+      const entry = document.querySelector('.pad-entry.editing');
+      const cur = document.activeElement;
+      if (entry && cur && entry.contains(cur)) return;
+      commitIdeaEdit(state._editingIdeaId);
+    }, 0);
+  });
 }
 
-act({ archiveIdea, closeEditIdeaModal, closeIdeaComposer, deleteIdea, ideaComposerKey, ideaEditKey, ideaRowKey, openEditIdeaModal, openIdeaComposer, restoreIdea, saveIdeaEdits, saveNewIdea, toggleArchivedIdeas });
+act({ archiveIdea, cancelIdeaEdit, commitIdeaEdit, deleteIdea, ideaCaptureKey, ideaEditGrow, ideaEditKey, ideaLineKey, openIdeaEdit, restoreIdea, saveNewIdea, toggleArchivedIdeas });
 
-export { _ensureIdeaModal, _flushIdeaDeletes, _ideaDateLabel, _ideaRowHTML, archiveIdea, closeEditIdeaModal, closeIdeaComposer, deleteIdea, ideaComposerKey, ideaEditKey, ideaRowKey, openEditIdeaModal, openIdeaComposer, renderIdeas, restoreIdea, saveIdeaEdits, saveNewIdea, toggleArchivedIdeas, unmountIdeas };
+export { _flushIdeaDeletes, _ideaDateLabel, _padEntryHTML, archiveIdea, cancelIdeaEdit, commitIdeaEdit, deleteIdea, ideaCaptureKey, ideaEditGrow, ideaEditKey, ideaLineKey, openIdeaEdit, renderIdeas, restoreIdea, saveNewIdea, toggleArchivedIdeas, unmountIdeas };

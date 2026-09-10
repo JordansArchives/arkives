@@ -3376,126 +3376,167 @@ a.mk-platform-link:hover {
 
 /* ============================================
    Ideas (views/ideas.js)
-   Quick-capture list, same bones as Tasks
+   A ruled notepad. The rules repeat every --rule
+   and every line of text is exactly one rule tall
+   (line-height = --rule, no vertical padding), so
+   text sits on the lines and the sheet stays
+   aligned however much is written on it.
    ============================================ */
 
-.ideas-container { max-width: 760px; }
-.ideas-card {
-  background: var(--bg-1);
+.ideas-container {
+  max-width: 760px;
+  --rule: 32px;
+}
+.ideas-sheet {
+  position: relative;
+  background-color: var(--bg-1);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(var(--rule) - 1px),
+    var(--bg-3) calc(var(--rule) - 1px),
+    var(--bg-3) var(--rule)
+  );
+  background-position: 0 -3px; /* the rule sits just under the baseline, like handwriting */
   border: 2px solid var(--border);
-  padding: 8px;
+  box-shadow: var(--shadow-sm);
+  padding: 0 0 calc(var(--rule) * 4); /* a few blank lines after the last entry */
+  min-height: calc(var(--rule) * 12);
 }
 
-/* Composer */
-.idea-composer {
-  border: 2px solid var(--border);
-  background: var(--bg-0);
-  padding: 16px;
-  margin: 8px 8px 12px;
-}
-.idea-composer textarea { resize: vertical; }
-.idea-composer-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.idea-composer-hint {
-  margin-right: auto;
-  font-size: 11.5px;
-  color: var(--text-muted);
-}
-
-/* Idea rows */
-.idea-list {
-  display: flex;
-  flex-direction: column;
-}
-.idea-item {
+/* One rule per line: the capture line, a title line, a notes line */
+.pad-capture, .pad-line {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 12px 10px;
-  border-bottom: 1px solid var(--bg-3);
-  transition: background 0.12s var(--ease);
+  gap: 8px;
+  padding: 0 12px 0 20px;
+  min-height: var(--rule);
 }
-.idea-item:last-child { border-bottom: none; }
-.idea-item:hover { background: var(--bg-2); }
-.idea-body {
+.pad-input {
   flex: 1;
   min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: var(--rule);
+  height: var(--rule);
+  color: var(--text-primary);
+  border-radius: 0;
+}
+/* No box around a focused line: the focus cue is the rule under it turning
+   to ink (drawn exactly over the sheet's rule, see .ideas-sheet), plus the
+   caret. The global :focus-visible ring (which is !important so that
+   nothing nulls it by accident) is replaced here on purpose, not removed:
+   the ink rule is the ring. */
+.pad-input:focus, .pad-input:focus-visible { outline: none !important; box-shadow: none; }
+.pad-input::placeholder { color: var(--text-faint); }
+.pad-capture:focus-within,
+.pad-entry.editing .pad-line:focus-within {
+  background-image: linear-gradient(var(--border), var(--border));
+  background-size: 100% 2px;
+  background-position: 0 calc(var(--rule) - 5px);
+  background-repeat: no-repeat;
+}
+.pad-add {
+  flex-shrink: 0;
+  align-self: center;
+  height: 22px;
+  padding: 0 10px;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border: 2px solid var(--border);
+  background: var(--text-primary);
+  color: var(--bg-0);
   cursor: pointer;
+  transition: transform 0.12s var(--ease), box-shadow 0.12s var(--ease);
 }
-.idea-body:focus-visible {
-  outline: 2px solid var(--border);
-  outline-offset: 2px;
+.pad-add:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 2px 2px 0 var(--border);
 }
-.idea-title {
-  font-size: 14.5px;
+
+/* Entries */
+.pad-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
   font-weight: 500;
-  line-height: 1.35;
+  line-height: var(--rule);
   overflow-wrap: break-word;
+  cursor: text;
 }
-.idea-notes {
-  font-size: 12.5px;
-  color: var(--text-secondary);
-  margin-top: 2px;
-  line-height: 1.4;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+.pad-text:focus-visible {
+  outline: 2px solid var(--border);
+  outline-offset: -2px;
 }
-.idea-meta {
-  display: inline-block;
-  margin-top: 6px;
+.pad-date {
+  flex-shrink: 0;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
+  line-height: var(--rule);
 }
-.idea-item.archived .idea-title { color: var(--text-muted); }
-.idea-item.archived .idea-notes { color: var(--text-faint); }
-.idea-item-actions {
+.pad-actions {
   display: flex;
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
+  height: var(--rule);
+  opacity: 0;
+  transition: opacity 0.12s var(--ease);
 }
-.idea-archive {
+.pad-entry:hover .pad-actions,
+.pad-entry:focus-within .pad-actions,
+.pad-entry.editing .pad-actions { opacity: 1; }
+.pad-archive, .pad-delete {
   background: none;
-  border: none;
-  padding: 4px;
+  border: 0;
+  padding: 0 5px;
+  height: var(--rule);
   cursor: pointer;
   color: var(--text-faint);
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  opacity: 0;
-  transition: color 0.12s var(--ease), opacity 0.12s var(--ease);
+  transition: color 0.12s var(--ease);
 }
-.idea-item:hover .idea-archive { opacity: 1; }
-.idea-archive:hover { color: var(--text-primary); }
-.idea-delete {
-  background: none;
-  border: none;
-  padding: 0 6px;
-  cursor: pointer;
-  color: var(--text-faint);
-  font-size: 18px;
-  line-height: 1;
-  opacity: 0;
-  transition: color 0.12s var(--ease), opacity 0.12s var(--ease);
+.pad-archive:hover { color: var(--text-primary); }
+.pad-delete { font-size: 18px; line-height: 1; }
+.pad-delete:hover { color: var(--red); }
+.pad-notes {
+  padding: 0 12px 0 36px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: var(--rule);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  cursor: text;
 }
-.idea-item:hover .idea-delete { opacity: 1; }
-.idea-delete:hover { color: var(--red); }
 
-/* Archived section */
-.ideas-archived {
-  margin-top: 8px;
-  padding: 8px 10px 4px;
-  border-top: 2px solid var(--border);
+/* Inline edit: the same line, now a textarea that grows in whole rules */
+.pad-edit-title, .pad-edit-notes {
+  display: block;
+  height: var(--rule);
+  resize: none;
+  overflow: hidden;
 }
+.pad-edit-title { font-weight: 500; }
+.pad-notes-edit { padding: 0 12px 0 36px; }
+.pad-edit-notes {
+  width: 100%;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+/* Archived: a second, quieter sheet under a collapsed toggle */
+.pad-entry.archived .pad-text { color: var(--text-muted); cursor: default; }
+.pad-entry.archived .pad-notes { color: var(--text-faint); cursor: default; }
+.ideas-archived { margin-top: 20px; }
 .ideas-archived-toggle {
   background: none;
   border: none;
@@ -3518,21 +3559,23 @@ a.mk-platform-link:hover {
   transition: transform 0.15s var(--ease);
 }
 .ideas-archived-chevron.open { transform: rotate(90deg); }
-.idea-list-archived .idea-archive,
-.idea-list-archived .idea-delete { opacity: 1; }
-
-.ideas-empty { padding: 40px 20px; }
+.ideas-sheet-archived {
+  margin-top: 8px;
+  min-height: 0;
+  padding-bottom: var(--rule);
+  box-shadow: none;
+}
+.ideas-sheet-archived .pad-actions { opacity: 1; }
 
 @media (max-width: 640px) {
-  .idea-archive, .idea-delete {
-    opacity: 1;
-    min-width: 40px;
-    min-height: 40px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .idea-composer-hint { display: none; }
+  .ideas-container { --rule: 36px; } /* 16px type (no iOS zoom) needs a taller line */
+  .pad-input, .pad-text { font-size: 16px; }
+  .pad-notes, .pad-edit-notes { font-size: 15px; }
+  .pad-capture, .pad-line { padding-left: 16px; }
+  .pad-notes, .pad-notes-edit { padding-left: 32px; }
+  .pad-actions { opacity: 1; }
+  .pad-archive, .pad-delete { min-width: 40px; justify-content: center; }
+  .pad-date { display: none; }
 }
 
 /* ============================================

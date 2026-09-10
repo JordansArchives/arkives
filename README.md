@@ -163,7 +163,7 @@ Every data type has Supabase-connected CRUD:
 | `#mediakit` | `renderMediaKit()` | Exportable media kit with PDF generation |
 | `#analytics` | `renderAnalytics()` | Per-platform analytics with growth charts |
 | `#scripts` | `renderScripts()` | Script manager with scene-by-scene editor |
-| `#ideas` | `renderIdeas()` | Quick-capture list: one line, optional notes, archive when used (store-owned writes, `stores/ideas.js`) |
+| `#ideas` | `renderIdeas()` | A ruled notepad: capture line always ready at the top (Enter adds), edit in place on the line, archive keeps it findable (store-owned writes, `stores/ideas.js`) |
 | `#boards` / `#board/{id}` | `renderBoards()` / `renderBoardEditor()` | Milanote-style storyboards: pan/zoom canvas, stickies, text, image uploads, video links, pen (boards.js) |
 | `#contentstudio` | Content Studio view | Content planning (in toolkit-views.js) |
 | `#contracts` | Contracts view | Contract builder (in toolkit-views.js) |

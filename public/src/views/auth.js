@@ -217,7 +217,7 @@ function resetAllState() {
   state.TASKS = []; state._tasksTableMissing = false;
   state._taskComposerOpen = false; state._tasksCompletedOpen = false; state._editingTaskId = null;
   state.IDEAS = []; state._ideasTableMissing = false;
-  state._ideaComposerOpen = false; state._ideasArchivedOpen = false; state._editingIdeaId = null;
+  state._ideasArchivedOpen = false; state._editingIdeaId = null; state._ideaPadMounted = false; state._ideaFocusPending = null;
   state.CLIENTS = []; state._invoicingMigrationMissing = false;
   state.OUTREACH_TARGETS = []; state.OUTREACH_LISTS = []; state._outreachMigrationMissing = false;
   state._scriptsCache = []; state._currentScriptId = null; state._currentScriptRow = null; state._currentScenes = [];

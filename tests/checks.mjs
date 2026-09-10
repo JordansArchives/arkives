@@ -247,58 +247,105 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   await new Promise(r => setTimeout(r, 10));
   T('flush commits a pending delete', taskWrites.some(w => w.del && w.del[0] === 't2') && !__arkives.state.TASKS.some(t => t._sbId === 't2'));
 
-  // ---- Ideas: store-owned writes, optimistic archive, undo-able delete ----
+  // ---- Ideas: a ruled notepad. Capture line, inline edit, store-owned writes ----
   const ideaWrites = [];
   __arkives.db.sbUpdateIdea = async (id, u) => { ideaWrites.push(u); return true; };
   __arkives.db.sbDeleteIdeas = async (ids) => { ideaWrites.push({ del: ids }); return true; };
   __arkives.db.sbAddIdea = async (d) => ({ id: 'new1', title: d.title, notes: d.notes, archived: false, created_at: '2026-09-10T00:00:00Z' });
   __arkives.state.IDEAS = [{ _sbId: 'i1', title: 'Hook: <b>bold</b>', notes: 'line one\nline two', archived: false, archivedAt: '', createdAt: '2026-09-01T00:00:00Z' },
            { _sbId: 'i2', title: 'Second', notes: '', archived: false, archivedAt: '', createdAt: '2026-09-02T00:00:00Z' }];
-  __arkives.state._ideaPendingDeletes = {}; __arkives.state._ideasArchivedOpen = false; __arkives.state._ideaComposerOpen = false;
+  __arkives.state._ideaPendingDeletes = {}; __arkives.state._ideasArchivedOpen = false; __arkives.state._editingIdeaId = null; __arkives.state._ideaPadMounted = false;
+  const prevCreatorId = __arkives.state.CREATOR._sbId; __arkives.state.CREATOR._sbId = 'u1'; // the add path refuses to write without a profile id
+  const tick = () => new Promise(r => setTimeout(r, 20));
+  const activeEntries = () => [...document.querySelectorAll('#view-ideas .ideas-sheet:not(.ideas-sheet-archived) .pad-entry')];
+  location.hash = 'tasks'; __arkives.navigate('tasks');
   location.hash = 'ideas'; __arkives.navigate('ideas');
-  T('ideas render newest first with escaped titles and pre-wrapped notes', (() => { const rows = [...document.querySelectorAll('#view-ideas .idea-list:not(.idea-list-archived) .idea-item')]; return rows.length === 2 && rows[0].dataset.id === 'i2' && /&lt;b&gt;/.test(rows[1].innerHTML) && !rows[1].querySelector('b') && getComputedStyle(rows[1].querySelector('.idea-notes')).whiteSpace === 'pre-wrap'; })());
+  T('ideas render newest first with escaped titles and pre-wrapped notes', (() => { const rows = activeEntries(); return rows.length === 2 && rows[0].dataset.id === 'i2' && /&lt;b&gt;/.test(rows[1].innerHTML) && !rows[1].querySelector('b') && getComputedStyle(rows[1].querySelector('.pad-notes')).whiteSpace === 'pre-wrap'; })());
+  T('the capture line is focused on mount and the header has no button', document.activeElement?.id === 'ideaCapture' && !document.querySelector('#view-ideas .view-header button') && !document.querySelector('#view-ideas .view-subtitle'));
+  const RULE = parseFloat(getComputedStyle(document.querySelector('#view-ideas .ideas-container')).getPropertyValue('--rule'));
+  const onRules = () => [...document.querySelectorAll('#view-ideas .pad-capture, #view-ideas .pad-entry')].every((el) => Math.abs(el.getBoundingClientRect().height % RULE) < 0.5);
+  T('every line is a whole number of rules tall (multi-line notes included)', RULE > 0 && onRules(), JSON.stringify({ RULE, hs: [...document.querySelectorAll('#view-ideas .pad-capture, #view-ideas .pad-entry')].map(e => e.getBoundingClientRect().height) }));
+  // Capture line: Enter adds through the store, clears, keeps the caret
+  const cap = document.getElementById('ideaCapture'); cap.value = 'Fresh';
+  cap.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await tick();
+  T('Enter on the capture line adds through the store, clears, and keeps focus', __arkives.state.IDEAS[0]._sbId === 'new1' && document.getElementById('ideaCapture').value === '' && document.activeElement?.id === 'ideaCapture' && activeEntries()[0]?.dataset.id === 'new1');
+  const emptyBefore = __arkives.state.IDEAS.length;
+  document.getElementById('ideaCapture').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await tick();
+  T('an empty Enter adds nothing', __arkives.state.IDEAS.length === emptyBefore);
+  // Inline edit
+  __arkives.openIdeaEdit('i1');
+  const et = document.getElementById('ideaEditTitle'), en = document.getElementById('ideaEditNotes');
+  T('tapping a line edits it in place with focus on the title, no modal', !!et && document.activeElement === et && et.value === 'Hook: <b>bold</b>' && en?.value === 'line one\nline two' && !document.getElementById('editIdeaModal'));
+  T('a focused line has no box, the rule under it turns to ink', getComputedStyle(et).outlineStyle === 'none' && getComputedStyle(et.closest('.pad-line')).backgroundImage !== 'none');
+  et.value = 'A much longer idea line that has to wrap onto the next rule of the sheet when it is being edited at this width'; et.dispatchEvent(new Event('input', { bubbles: true }));
+  T('a long title wraps onto a second rule while editing and stays on the rules', Math.abs(et.getBoundingClientRect().height - 2 * RULE) < 1 && onRules(), et.getBoundingClientRect().height);
+  et.value = 'Hook: <b>bold</b>'; et.dispatchEvent(new Event('input', { bubbles: true }));
+  T('the notes textarea grew to its lines and the sheet stays on the rules', Math.abs(en.getBoundingClientRect().height - 2 * RULE) < 1 && onRules(), en.getBoundingClientRect().height);
+  en.value = 'line one\nline two\nline three'; en.dispatchEvent(new Event('input', { bubbles: true }));
+  T('a new line in notes grows the textarea by one rule', Math.abs(en.getBoundingClientRect().height - 3 * RULE) < 1 && onRules(), en.getBoundingClientRect().height);
+  const plain = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }); en.dispatchEvent(plain);
+  T('Enter in the notes textarea is a newline, not a commit', !plain.defaultPrevented && !!document.getElementById('ideaEditTitle'));
+  et.value = 'Edited';
+  et.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await tick();
+  T('Enter on the title commits through the store and leaves edit mode', __arkives.state.IDEAS.find(i => i._sbId === 'i1').title === 'Edited' && ideaWrites.some(w => w.title === 'Edited' && w.notes === 'line one\nline two\nline three') && !document.getElementById('ideaEditTitle') && /Edited/.test(document.querySelector('#view-ideas .pad-entry[data-id="i1"] .pad-text').textContent));
+  let writesBefore = ideaWrites.length;
+  __arkives.openIdeaEdit('i2');
+  document.getElementById('ideaEditTitle').value = 'Nope';
+  document.getElementById('ideaEditTitle').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  T('Escape cancels the edit without a write', !document.getElementById('ideaEditTitle') && ideaWrites.length === writesBefore && __arkives.state.IDEAS.find(i => i._sbId === 'i2').title === 'Second');
+  __arkives.openIdeaEdit('i2');
+  document.getElementById('ideaEditTitle').value = 'Blurred';
+  document.getElementById('ideaCapture').focus();
+  await tick();
+  T('focus leaving the entry commits the edit', __arkives.state.IDEAS.find(i => i._sbId === 'i2').title === 'Blurred' && ideaWrites.some(w => w.title === 'Blurred') && !document.getElementById('ideaEditTitle'));
+  __arkives.openIdeaEdit('i2');
+  document.getElementById('ideaEditNotes').focus();
+  await tick();
+  T('moving from the title to the notes of the same entry does not commit', !!document.getElementById('ideaEditTitle') && __arkives.state._editingIdeaId === 'i2');
+  document.getElementById('ideaEditNotes').value = 'n2';
+  document.getElementById('ideaEditNotes').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true }));
+  await tick();
+  T('Cmd/Ctrl+Enter in notes commits', ideaWrites.some(w => w.notes === 'n2') && !document.getElementById('ideaEditTitle') && __arkives.state.IDEAS.find(i => i._sbId === 'i2').notes === 'n2');
+  writesBefore = ideaWrites.length;
+  __arkives.openIdeaEdit('i2');
+  document.getElementById('ideaEditTitle').value = '   ';
+  document.getElementById('ideaEditTitle').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  await tick();
+  T('an emptied line is refused and stays in edit mode', !!document.getElementById('ideaEditTitle') && document.activeElement?.id === 'ideaEditTitle' && ideaWrites.length === writesBefore && __arkives.state.IDEAS.find(i => i._sbId === 'i2').title === 'Blurred');
+  __arkives.cancelIdeaEdit();
+  __arkives.openIdeaEdit('i2');
+  document.getElementById('ideaEditTitle').value = 'Saved on leave';
+  location.hash = 'tasks'; __arkives.navigate('tasks');
+  await tick();
+  T('leaving the view saves an open edit', ideaWrites.some(w => w.title === 'Saved on leave') && __arkives.state._editingIdeaId === null && __arkives.state.IDEAS.find(i => i._sbId === 'i2').title === 'Saved on leave');
+  location.hash = 'ideas'; __arkives.navigate('ideas');
+  // Archive: optimistic, reverts on failure, archived sheet with Restore
   const pa = __arkives.archiveIdea('i1');
-  T('archive leaves the active list before the save resolves', __arkives.state.IDEAS.find(i => i._sbId === 'i1').archived === true && !document.querySelector('#view-ideas .idea-list:not(.idea-list-archived) .idea-item[data-id="i1"]') && /Archived \(1\)/.test(document.getElementById('view-ideas').textContent));
+  T('archive leaves the active sheet before the save resolves', __arkives.state.IDEAS.find(i => i._sbId === 'i1').archived === true && !document.querySelector('#view-ideas .ideas-sheet:not(.ideas-sheet-archived) .pad-entry[data-id="i1"]') && /Archived \(1\)/.test(document.getElementById('view-ideas').textContent));
   await pa;
   T('archive persisted with a timestamp', ideaWrites.some(w => w.archived === true && typeof w.archived_at === 'string'));
   __arkives.toggleArchivedIdeas();
-  T('archived section expands and shows the idea with a Restore action', !!document.querySelector('#view-ideas .idea-list-archived .idea-item[data-id="i1"] [data-action="restoreIdea"]'));
+  T('archived sheet expands and shows the idea with a Restore action and no edit affordance', !!document.querySelector('#view-ideas .ideas-sheet-archived .pad-entry[data-id="i1"] [data-action="restoreIdea"]') && !document.querySelector('#view-ideas .ideas-sheet-archived .pad-entry[data-id="i1"] [data-action="openIdeaEdit"]'));
   __arkives.db.sbUpdateIdea = async () => false;
   await __arkives.restoreIdea('i1');
   T('failed restore reverts to archived', __arkives.state.IDEAS.find(i => i._sbId === 'i1').archived === true);
   __arkives.db.sbUpdateIdea = async (id, u) => { ideaWrites.push(u); return true; };
+  // Delete: immediate, undo-able, committed on unmount
   __arkives.deleteIdea('i2');
   T('idea delete removes immediately with an Undo toast', !__arkives.state.IDEAS.some(i => i._sbId === 'i2') && document.getElementById('undo-toast')?.classList.contains('show'));
   document.querySelector('#undo-toast .undo-toast-btn').click();
   T('undo restores the idea without a DB call', __arkives.state.IDEAS.some(i => i._sbId === 'i2') && !ideaWrites.some(w => w.del) && !__arkives.state._ideaPendingDeletes.i2);
   __arkives.deleteIdea('i2');
   location.hash = 'tasks'; __arkives.navigate('tasks');
-  await new Promise(r => setTimeout(r, 10));
+  await tick();
   T('leaving Ideas commits the pending delete (unmount)', ideaWrites.some(w => w.del && w.del[0] === 'i2') && !__arkives.state.IDEAS.some(i => i._sbId === 'i2') && __arkives.currentRoute()?.key === 'tasks');
   location.hash = 'ideas'; __arkives.navigate('ideas');
-  __arkives.openEditIdeaModal('i1');
-  T('idea modal is body-mounted and prefilled', document.getElementById('ideaModalHost')?.parentElement === document.body && document.getElementById('editIdeaModal').style.display === 'flex' && document.getElementById('eiTitle').value === 'Hook: <b>bold</b>' && document.getElementById('eiNotes').value === 'line one\nline two');
-  document.getElementById('eiTitle').value = 'Edited'; document.getElementById('eiNotes').value = 'more';
-  await __arkives.saveIdeaEdits();
-  T('saving the modal updates the row through the store', __arkives.state.IDEAS.find(i => i._sbId === 'i1').title === 'Edited' && ideaWrites.some(w => w.title === 'Edited' && w.notes === 'more') && document.getElementById('editIdeaModal').style.display === 'none', JSON.stringify({ t: __arkives.state.IDEAS.find(i => i._sbId === 'i1').title, w: ideaWrites, d: document.getElementById('editIdeaModal').style.display, busy: __arkives.state._ideaBusyIds, editing: __arkives.state._editingIdeaId }));
-  const prevCreatorId = __arkives.state.CREATOR._sbId; __arkives.state.CREATOR._sbId = 'u1'; // the add path refuses to write without a profile id
-  __arkives.openIdeaComposer();
-  T('composer opens with focus on the line', __arkives.state._ideaComposerOpen && document.activeElement?.id === 'ideaNewTitle');
-  document.getElementById('ideaNewTitle').value = 'Fresh'; document.getElementById('ideaNewNotes').value = 'notes';
-  await __arkives.saveNewIdea();
-  T('composer adds through the store, clears, and stays open for the next one', __arkives.state.IDEAS[0]._sbId === 'new1' && __arkives.state._ideaComposerOpen && document.getElementById('ideaNewTitle').value === '' && !!document.querySelector('#view-ideas .idea-list:not(.idea-list-archived) .idea-item[data-id="new1"]'), JSON.stringify({ first: __arkives.state.IDEAS[0]?._sbId, open: __arkives.state._ideaComposerOpen, val: document.getElementById('ideaNewTitle')?.value, sb: !!__arkives.state._sb, creator: __arkives.state.CREATOR._sbId, saving: __arkives.state._ideaSaving, n: __arkives.state.IDEAS.length }));
-  T('Enter in the notes textarea is a newline, Cmd/Ctrl+Enter submits', (() => {
-    const ta = document.getElementById('ideaNewNotes'); let saved = 0; const real = __arkives.ACTIONS.saveNewIdea;
-    const plain = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }); ta.dispatchEvent(plain);
-    const meta = new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true });
-    __arkives.state._ideaSaving = true; // the submit path returns early without touching the DB
-    ta.dispatchEvent(meta); __arkives.state._ideaSaving = false;
-    return !plain.defaultPrevented && meta.defaultPrevented && real === __arkives.ACTIONS.saveNewIdea && saved === 0;
-  })());
-  __arkives.closeIdeaComposer(); __arkives.state.CREATOR._sbId = prevCreatorId;
   __arkives.state._ideasTableMissing = true; __arkives.renderIdeas();
-  T('ideas view explains the missing table', /022_ideas\.sql/.test(document.getElementById('view-ideas').textContent) && !document.querySelector('#view-ideas .idea-list'));
-  __arkives.state._ideasTableMissing = false; __arkives.state.IDEAS = [];
+  T('ideas view explains the missing table', /022_ideas\.sql/.test(document.getElementById('view-ideas').textContent) && !document.getElementById('ideaCapture'));
+  __arkives.state._ideasTableMissing = false; __arkives.state.IDEAS = []; __arkives.state.CREATOR._sbId = prevCreatorId;
   location.hash = 'tasks'; __arkives.navigate('tasks');
 
   // Saving the edit modal closes it (a re-render alone leaves an open modal open)
