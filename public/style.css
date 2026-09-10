@@ -3404,12 +3404,15 @@ a.mk-platform-link:hover {
   min-height: calc(var(--rule) * 12);
 }
 
-/* One rule per line: the capture line, a title line, a notes line */
+/* One rule per line: the capture line, a title line, a notes line.
+   Spacing is on an 8px grid inside a 32px rule: 20px inset both sides
+   (the ink border adds 2), a 12px gap before the right column, notes
+   hang 16px in from the title. */
 .pad-capture, .pad-line {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 0 12px 0 20px;
+  gap: 12px;
+  padding: 0 20px;
   min-height: var(--rule);
 }
 .pad-input {
@@ -3443,8 +3446,8 @@ a.mk-platform-link:hover {
 .pad-add {
   flex-shrink: 0;
   align-self: center;
-  height: 22px;
-  padding: 0 10px;
+  height: 24px;
+  padding: 0 12px;
   font-family: var(--font-body);
   font-size: 11px;
   font-weight: 700;
@@ -3475,42 +3478,64 @@ a.mk-platform-link:hover {
   outline: 2px solid var(--border);
   outline-offset: -2px;
 }
-.pad-date {
+/* The right column: one cell, as wide as the actions, flush with the
+   content edge (and so with the Add button). The date shows at rest; the
+   actions take its place on hover, focus or edit, so nothing moves. */
+.pad-end {
+  position: relative;
   flex-shrink: 0;
+  min-width: 48px;
+  height: var(--rule);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.pad-date {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-muted);
   line-height: var(--rule);
+  white-space: nowrap;
+  transition: opacity 0.12s var(--ease);
 }
 .pad-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: var(--rule);
   display: flex;
   align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-  height: var(--rule);
   opacity: 0;
   transition: opacity 0.12s var(--ease);
 }
+.pad-entry:hover .pad-date,
+.pad-entry:focus-within .pad-date,
+.pad-entry.editing .pad-date { opacity: 0; }
 .pad-entry:hover .pad-actions,
 .pad-entry:focus-within .pad-actions,
 .pad-entry.editing .pad-actions { opacity: 1; }
 .pad-archive, .pad-delete {
   background: none;
   border: 0;
-  padding: 0 5px;
   height: var(--rule);
   cursor: pointer;
   color: var(--text-faint);
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   transition: color 0.12s var(--ease);
 }
+.pad-archive { padding: 0 6px; }
 .pad-archive:hover { color: var(--text-primary); }
-.pad-delete { font-size: 18px; line-height: 1; }
+.pad-delete {
+  padding: 0 0 0 6px; /* the glyph's own side bearing lands it on the content edge */
+  font-size: 18px;
+  line-height: 1;
+}
 .pad-delete:hover { color: var(--red); }
 .pad-notes {
-  padding: 0 12px 0 36px;
-  font-size: 13.5px;
+  padding: 0 20px 0 36px;
+  font-size: 13px;
   color: var(--text-secondary);
   line-height: var(--rule);
   white-space: pre-wrap;
@@ -3526,10 +3551,10 @@ a.mk-platform-link:hover {
   overflow: hidden;
 }
 .pad-edit-title { font-weight: 500; }
-.pad-notes-edit { padding: 0 12px 0 36px; }
+.pad-notes-edit { padding: 0 20px 0 36px; }
 .pad-edit-notes {
   width: 100%;
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--text-secondary);
 }
 
@@ -3565,17 +3590,19 @@ a.mk-platform-link:hover {
   padding-bottom: var(--rule);
   box-shadow: none;
 }
-.ideas-sheet-archived .pad-actions { opacity: 1; }
 
 @media (max-width: 640px) {
   .ideas-container { --rule: 36px; } /* 16px type (no iOS zoom) needs a taller line */
   .pad-input, .pad-text { font-size: 16px; }
   .pad-notes, .pad-edit-notes { font-size: 15px; }
-  .pad-capture, .pad-line { padding-left: 16px; }
-  .pad-notes, .pad-notes-edit { padding-left: 32px; }
-  .pad-actions { opacity: 1; }
-  .pad-archive, .pad-delete { min-width: 40px; justify-content: center; }
+  .pad-capture, .pad-line { padding: 0 16px; }
+  .pad-notes, .pad-notes-edit { padding: 0 16px 0 32px; }
+  /* Touch: the actions are always there (44px targets), the date steps aside */
   .pad-date { display: none; }
+  .pad-actions { opacity: 1; }
+  .pad-end { min-width: 88px; }
+  .pad-archive, .pad-delete { width: 44px; padding: 0; }
+  .pad-delete { padding-left: 4px; }
 }
 
 /* ============================================

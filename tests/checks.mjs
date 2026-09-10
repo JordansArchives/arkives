@@ -278,6 +278,12 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   __arkives.openIdeaEdit('i1');
   const et = document.getElementById('ideaEditTitle'), en = document.getElementById('ideaEditNotes');
   T('tapping a line edits it in place with focus on the title, no modal', !!et && document.activeElement === et && et.value === 'Hook: <b>bold</b>' && en?.value === 'line one\nline two' && !document.getElementById('editIdeaModal'));
+  T('the date column and the Add button share one right edge, and the actions replace the date in place', (() => {
+    const add = document.querySelector('#view-ideas .pad-add').getBoundingClientRect();
+    const ends = [...document.querySelectorAll('#view-ideas .ideas-sheet:not(.ideas-sheet-archived) .pad-entry:not(.editing) .pad-end')];
+    const dates = [...document.querySelectorAll('#view-ideas .ideas-sheet:not(.ideas-sheet-archived) .pad-entry:not(.editing) .pad-date')];
+    return ends.length > 0 && ends.every((e) => Math.abs(e.getBoundingClientRect().right - add.right) < 1) && dates.every((d) => Math.abs(d.getBoundingClientRect().right - add.right) < 1) && ends.every((e) => Math.abs(e.querySelector('.pad-actions').getBoundingClientRect().right - add.right) < 1);
+  })());
   T('a focused line has no box, the rule under it turns to ink', getComputedStyle(et).outlineStyle === 'none' && getComputedStyle(et.closest('.pad-line')).backgroundImage !== 'none');
   et.value = 'A much longer idea line that has to wrap onto the next rule of the sheet when it is being edited at this width'; et.dispatchEvent(new Event('input', { bubbles: true }));
   T('a long title wraps onto a second rule while editing and stays on the rules', Math.abs(et.getBoundingClientRect().height - 2 * RULE) < 1 && onRules(), et.getBoundingClientRect().height);

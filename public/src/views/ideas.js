@@ -32,13 +32,20 @@ function _padActionsHTML(it) {
   return `<div class="pad-actions">${archiveBtn}<button class="pad-delete" data-action="deleteIdea" data-args="${_args(it._sbId)}" title="Delete" aria-label="Delete idea">&times;</button></div>`;
 }
 
+// The right end of a line: the date at rest, the actions on hover, focus
+// or edit, in the same cell so nothing shifts and the column lines up
+// with the Add button above it.
+function _padEndHTML(it, meta) {
+  return `<div class="pad-end">${meta ? `<span class="pad-date">${_esc(meta)}</span>` : ''}${_padActionsHTML(it)}</div>`;
+}
+
 function _padEntryHTML(it) {
   if (state._editingIdeaId === it._sbId && !it.archived) {
     return `
     <div class="pad-entry editing" data-id="${it._sbId}">
       <div class="pad-line">
         <textarea class="pad-input pad-edit-title" id="ideaEditTitle" rows="1" maxlength="500" aria-label="Idea" data-input="ideaEditGrow" data-input-args="[&quot;$el&quot;]" data-keydown="ideaEditKey" data-keydown-args="${_args('$event', it._sbId)}">${_esc(it.title)}</textarea>
-        ${_padActionsHTML(it)}
+        ${_padEndHTML(it, '')}
       </div>
       <div class="pad-notes-edit">
         <textarea class="pad-input pad-edit-notes" id="ideaEditNotes" rows="1" maxlength="5000" placeholder="Add notes" aria-label="Notes" data-input="ideaEditGrow" data-input-args="[&quot;$el&quot;]" data-keydown="ideaEditKey" data-keydown-args="${_args('$event', it._sbId)}">${_esc(it.notes)}</textarea>
@@ -53,8 +60,7 @@ function _padEntryHTML(it) {
     <div class="pad-entry ${it.archived ? 'archived' : ''}" data-id="${it._sbId}">
       <div class="pad-line">
         <div class="pad-text"${editAttrs}>${_esc(it.title)}</div>
-        ${meta ? `<span class="pad-date">${_esc(meta)}</span>` : ''}
-        ${_padActionsHTML(it)}
+        ${_padEndHTML(it, meta)}
       </div>
       ${it.notes ? `<div class="pad-notes"${notesAttrs}>${_esc(it.notes)}</div>` : ''}
     </div>`;
