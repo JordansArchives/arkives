@@ -163,6 +163,7 @@ Every data type has Supabase-connected CRUD:
 | `#mediakit` | `renderMediaKit()` | Exportable media kit with PDF generation |
 | `#analytics` | `renderAnalytics()` | Per-platform analytics with growth charts |
 | `#scripts` | `renderScripts()` | Script manager with scene-by-scene editor |
+| `#ideas` | `renderIdeas()` | Quick-capture list: one line, optional notes, archive when used (store-owned writes, `stores/ideas.js`) |
 | `#boards` / `#board/{id}` | `renderBoards()` / `renderBoardEditor()` | Milanote-style storyboards: pan/zoom canvas, stickies, text, image uploads, video links, pen (boards.js) |
 | `#contentstudio` | Content Studio view | Content planning (in toolkit-views.js) |
 | `#contracts` | Contracts view | Contract builder (in toolkit-views.js) |
@@ -289,7 +290,7 @@ Add `https://arkives.xyz` to the allowed redirect URLs in:
 
 ## Fresh Install (schema only, no personal data)
 
-Run in the Supabase SQL Editor, in this order: `001` → `020` → `005` → `007` → `008` → `009` → `010` → `011` → `012` → `013` → `015` → `016` → `017` → `018` → `019`. (`020` early because `001` leaves `profiles.id` without a default; on a fresh database `006` is redundant with `009`.)
+Run in the Supabase SQL Editor, in this order: `001` → `020` → `005` → `007` → `008` → `009` → `010` → `011` → `012` → `013` → `015` → `016` → `017` → `018` → `019` → `021` → `022`. (`020` early because `001` leaves `profiles.id` without a default; on a fresh database `006` is redundant with `009`.)
 Never run `003`, `004`, or the `full_migration` files on a fresh install: they contain Jordan's personal business data.
 
 ## Multi-Tenancy Rules (added 2026-07-13)
@@ -307,7 +308,7 @@ No build step. `public/` is what ships. Tooling lives outside it:
 ```bash
 npm install          # eslint, globals, playwright-core (no browser download; uses installed Chrome)
 npm run lint         # regenerates tools/app-globals.json, then ESLint over public/ tools/ tests/
-npm test             # tests/checks.mjs (logic, stubbed Supabase) + tests/smoke.mjs (13 views x populated/empty x desktop/phone)
+npm test             # tests/checks.mjs (logic, stubbed Supabase) + tests/smoke.mjs (14 views x populated/empty x desktop/phone)
 npm run serve        # serves public/ on :8741 with the production headers from public/_headers (CSP enforced)
 ```
 
@@ -319,6 +320,6 @@ CI (`.github/workflows/ci.yml`) runs lint + test on every push and PR. Screensho
 
 **Security headers.** `public/_headers` ships an enforced Content-Security-Policy with no `'unsafe-inline'` for scripts (switched from report-only on 2026-09-04 once the last inline handler was gone). The test server sends the same headers, so the smoke run exercises the app under the real policy, and `tests/checks.mjs` fails on any `on*=` attribute or inline `<script>` in `public/`, on any `data-action` name that has no registered handler, and on any constant `data-args` that is not a JSON array.
 
-**Migrations still run by hand** in the Supabase SQL editor. `migrations/020_share_hardening.sql` must be applied (it is idempotent and safe before or after deploy). `introspect.sql` at the repo root is a read-only schema dump for checking drift.
+**Migrations still run by hand** in the Supabase SQL editor. `migrations/020_share_hardening.sql`, `021_script_media.sql` and `022_ideas.sql` must be applied (each is idempotent and safe before or after deploy; the Ideas view explains itself until 022 exists). `introspect.sql` at the repo root is a read-only schema dump for checking drift.
 
 See `ARCHITECTURE-AUDIT.md` for the roadmap this tooling belongs to.

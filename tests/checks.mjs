@@ -54,7 +54,7 @@ await page.goto(`http://localhost:${PORT}/#dashboard`, { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 
 // Which store-owned state keys each view module reads (for the VIEW_STORES guard)
-const STORE_KEY_RE = /state\.(CREATOR|RATE_CARD|DEALS|CAMPAIGN_RESULTS|CALENDAR_EVENTS|MONTHLY_REVENUE|AUDIENCE_DATA|INBOX_ITEMS|TASKS|_tasksTableMissing|CLIENTS|_invoicingMigrationMissing|INVOICE_DATA|OUTREACH_LISTS|OUTREACH_TARGETS|_outreachMigrationMissing)\b/g;
+const STORE_KEY_RE = /state\.(CREATOR|RATE_CARD|DEALS|CAMPAIGN_RESULTS|CALENDAR_EVENTS|MONTHLY_REVENUE|AUDIENCE_DATA|INBOX_ITEMS|TASKS|_tasksTableMissing|IDEAS|_ideasTableMissing|CLIENTS|_invoicingMigrationMissing|INVOICE_DATA|OUTREACH_LISTS|OUTREACH_TARGETS|_outreachMigrationMissing)\b/g;
 const VIEW_KEYS = {};
 for (const f of SRC.filter((x) => x.startsWith('src/views/'))) {
   const view = f.replace('src/views/', '').replace('.js', '');
@@ -246,6 +246,67 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   __arkives._flushTaskDeletes();
   await new Promise(r => setTimeout(r, 10));
   T('flush commits a pending delete', taskWrites.some(w => w.del && w.del[0] === 't2') && !__arkives.state.TASKS.some(t => t._sbId === 't2'));
+
+  // ---- Ideas: store-owned writes, optimistic archive, undo-able delete ----
+  const ideaWrites = [];
+  __arkives.db.sbUpdateIdea = async (id, u) => { ideaWrites.push(u); return true; };
+  __arkives.db.sbDeleteIdeas = async (ids) => { ideaWrites.push({ del: ids }); return true; };
+  __arkives.db.sbAddIdea = async (d) => ({ id: 'new1', title: d.title, notes: d.notes, archived: false, created_at: '2026-09-10T00:00:00Z' });
+  __arkives.state.IDEAS = [{ _sbId: 'i1', title: 'Hook: <b>bold</b>', notes: 'line one\nline two', archived: false, archivedAt: '', createdAt: '2026-09-01T00:00:00Z' },
+           { _sbId: 'i2', title: 'Second', notes: '', archived: false, archivedAt: '', createdAt: '2026-09-02T00:00:00Z' }];
+  __arkives.state._ideaPendingDeletes = {}; __arkives.state._ideasArchivedOpen = false; __arkives.state._ideaComposerOpen = false;
+  location.hash = 'ideas'; __arkives.navigate('ideas');
+  T('ideas render newest first with escaped titles and pre-wrapped notes', (() => { const rows = [...document.querySelectorAll('#view-ideas .idea-list:not(.idea-list-archived) .idea-item')]; return rows.length === 2 && rows[0].dataset.id === 'i2' && /&lt;b&gt;/.test(rows[1].innerHTML) && !rows[1].querySelector('b') && getComputedStyle(rows[1].querySelector('.idea-notes')).whiteSpace === 'pre-wrap'; })());
+  const pa = __arkives.archiveIdea('i1');
+  T('archive leaves the active list before the save resolves', __arkives.state.IDEAS.find(i => i._sbId === 'i1').archived === true && !document.querySelector('#view-ideas .idea-list:not(.idea-list-archived) .idea-item[data-id="i1"]') && /Archived \(1\)/.test(document.getElementById('view-ideas').textContent));
+  await pa;
+  T('archive persisted with a timestamp', ideaWrites.some(w => w.archived === true && typeof w.archived_at === 'string'));
+  __arkives.toggleArchivedIdeas();
+  T('archived section expands and shows the idea with a Restore action', !!document.querySelector('#view-ideas .idea-list-archived .idea-item[data-id="i1"] [data-action="restoreIdea"]'));
+  __arkives.db.sbUpdateIdea = async () => false;
+  await __arkives.restoreIdea('i1');
+  T('failed restore reverts to archived', __arkives.state.IDEAS.find(i => i._sbId === 'i1').archived === true);
+  __arkives.db.sbUpdateIdea = async (id, u) => { ideaWrites.push(u); return true; };
+  __arkives.deleteIdea('i2');
+  T('idea delete removes immediately with an Undo toast', !__arkives.state.IDEAS.some(i => i._sbId === 'i2') && document.getElementById('undo-toast')?.classList.contains('show'));
+  document.querySelector('#undo-toast .undo-toast-btn').click();
+  T('undo restores the idea without a DB call', __arkives.state.IDEAS.some(i => i._sbId === 'i2') && !ideaWrites.some(w => w.del) && !__arkives.state._ideaPendingDeletes.i2);
+  __arkives.deleteIdea('i2');
+  location.hash = 'tasks'; __arkives.navigate('tasks');
+  await new Promise(r => setTimeout(r, 10));
+  T('leaving Ideas commits the pending delete (unmount)', ideaWrites.some(w => w.del && w.del[0] === 'i2') && !__arkives.state.IDEAS.some(i => i._sbId === 'i2') && __arkives.currentRoute()?.key === 'tasks');
+  location.hash = 'ideas'; __arkives.navigate('ideas');
+  __arkives.openEditIdeaModal('i1');
+  T('idea modal is body-mounted and prefilled', document.getElementById('ideaModalHost')?.parentElement === document.body && document.getElementById('editIdeaModal').style.display === 'flex' && document.getElementById('eiTitle').value === 'Hook: <b>bold</b>' && document.getElementById('eiNotes').value === 'line one\nline two');
+  document.getElementById('eiTitle').value = 'Edited'; document.getElementById('eiNotes').value = 'more';
+  await __arkives.saveIdeaEdits();
+  T('saving the modal updates the row through the store', __arkives.state.IDEAS.find(i => i._sbId === 'i1').title === 'Edited' && ideaWrites.some(w => w.title === 'Edited' && w.notes === 'more') && document.getElementById('editIdeaModal').style.display === 'none', JSON.stringify({ t: __arkives.state.IDEAS.find(i => i._sbId === 'i1').title, w: ideaWrites, d: document.getElementById('editIdeaModal').style.display, busy: __arkives.state._ideaBusyIds, editing: __arkives.state._editingIdeaId }));
+  const prevCreatorId = __arkives.state.CREATOR._sbId; __arkives.state.CREATOR._sbId = 'u1'; // the add path refuses to write without a profile id
+  __arkives.openIdeaComposer();
+  T('composer opens with focus on the line', __arkives.state._ideaComposerOpen && document.activeElement?.id === 'ideaNewTitle');
+  document.getElementById('ideaNewTitle').value = 'Fresh'; document.getElementById('ideaNewNotes').value = 'notes';
+  await __arkives.saveNewIdea();
+  T('composer adds through the store, clears, and stays open for the next one', __arkives.state.IDEAS[0]._sbId === 'new1' && __arkives.state._ideaComposerOpen && document.getElementById('ideaNewTitle').value === '' && !!document.querySelector('#view-ideas .idea-list:not(.idea-list-archived) .idea-item[data-id="new1"]'), JSON.stringify({ first: __arkives.state.IDEAS[0]?._sbId, open: __arkives.state._ideaComposerOpen, val: document.getElementById('ideaNewTitle')?.value, sb: !!__arkives.state._sb, creator: __arkives.state.CREATOR._sbId, saving: __arkives.state._ideaSaving, n: __arkives.state.IDEAS.length }));
+  T('Enter in the notes textarea is a newline, Cmd/Ctrl+Enter submits', (() => {
+    const ta = document.getElementById('ideaNewNotes'); let saved = 0; const real = __arkives.ACTIONS.saveNewIdea;
+    const plain = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }); ta.dispatchEvent(plain);
+    const meta = new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true, cancelable: true });
+    __arkives.state._ideaSaving = true; // the submit path returns early without touching the DB
+    ta.dispatchEvent(meta); __arkives.state._ideaSaving = false;
+    return !plain.defaultPrevented && meta.defaultPrevented && real === __arkives.ACTIONS.saveNewIdea && saved === 0;
+  })());
+  __arkives.closeIdeaComposer(); __arkives.state.CREATOR._sbId = prevCreatorId;
+  __arkives.state._ideasTableMissing = true; __arkives.renderIdeas();
+  T('ideas view explains the missing table', /022_ideas\.sql/.test(document.getElementById('view-ideas').textContent) && !document.querySelector('#view-ideas .idea-list'));
+  __arkives.state._ideasTableMissing = false; __arkives.state.IDEAS = [];
+  location.hash = 'tasks'; __arkives.navigate('tasks');
+
+  // Saving the edit modal closes it (a re-render alone leaves an open modal open)
+  __arkives.db.sbUpdateTask = async () => true;
+  __arkives.state.TASKS = [{ _sbId: 't3', title: 'Edit me', details: '', dueDate: '', starred: false, completed: false, completedAt: '', createdAt: '2026-09-01' }];
+  location.hash = 'tasks'; __arkives.navigate('tasks'); __arkives.openEditTaskModal('t3');
+  document.getElementById('etTitle').value = 'Edited'; await __arkives.saveTaskEdits();
+  T('saving the task modal updates the row and closes the modal', __arkives.state.TASKS[0].title === 'Edited' && document.getElementById('editTaskModal').style.display === 'none' && __arkives.state._editingTaskId === null);
 
   // ---- Invoices: routes + row sheet ----
   __arkives.state.INVOICE_DATA = [{ _sbId: 'i1', invoiceNumber: 'ACME-0001', brand: 'Acme', billToName: 'Acme Media', billToAddress: '', date: '2026-08-01', dueDate: '', status: 'sent', lineItems: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 100 }], amount: 100, amountPaid: 0, tax: 0, notes: '', includePaymentInfo: false, paymentTerms: 'none', clientId: null, description: 'Reel' }];
@@ -497,6 +558,7 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
       rate_cards: { data: [{ id: 'rc1', item_id: 'r1', name: 'Reel', rate: 15000, category: 'organic' }, { id: 'rc2', item_id: 'r2', name: 'Bogus', rate: 1, category: 'nope' }] },
       deals: { data: [{ id: 'd1', brand: 'Acme', status: 'Active', value: 12000, paid: 6000 }] },
       tasks: { error: { code: 'PGRST205', message: 'missing' } },
+      ideas: { data: [{ id: 'id1', title: 'Cold open', notes: 'x', archived: false, created_at: '2026-09-01' }, { id: 'id2', title: 'Old', notes: '', archived: true, archived_at: '2026-09-02', created_at: '2026-08-01' }] },
       clients: { data: [{ id: 'c1', name: 'Zed', invoice_prefix: 'ZED' }, { id: 'c2', name: 'Amy' }] },
       invoices: { data: [{ id: 'i1', invoice_number: 'ME-1', brand: 'Acme', amount: 10, status: 'sent', line_items: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 10 }] }] },
       outreach_lists: { data: [{ id: 'l1', name: 'Brands', sort_order: 1 }] },
@@ -512,6 +574,8 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('load() is memoized', S.profile.load() === S.profile.load() && S.profile.loaded === true);
     await S.loadFor('tasks');
     T('tasks loader records a missing table instead of failing', S.tasks.loaded === true && st._tasksTableMissing === true && st.TASKS.length === 0);
+    await S.loadFor('ideas');
+    T('ideas loader maps rows and the archived flag', S.ideas.loaded === true && st._ideasTableMissing === false && st.IDEAS.length === 2 && st.IDEAS[0].title === 'Cold open' && st.IDEAS[0].archived === false && st.IDEAS[1].archived === true && st.IDEAS[1].archivedAt === '2026-09-02', JSON.stringify(st.IDEAS));
     await S.loadFor('invoices/abc');
     T('invoices route loads invoices and clients', S.invoices.loaded && S.clients.loaded && st.INVOICE_DATA[0].invoiceNumber === 'ME-1' && st.INVOICE_DATA[0].lineItems[0].fee === 10 && st.CLIENTS.length === 2 && st.CLIENTS[0].invoicePrefix === 'ZED' && st._invoicingMigrationMissing === false, JSON.stringify(st.INVOICE_DATA[0]));
     await S.loadFor('dashboard');

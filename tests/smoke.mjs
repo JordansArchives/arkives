@@ -15,7 +15,7 @@ const PORT = 8741;
 const OUTDIR = fileURLToPath(new URL('./.shots/', import.meta.url));
 fs.mkdirSync(OUTDIR, { recursive: true });
 
-const VIEWS = ['dashboard', 'inbox', 'revenue', 'mediakit', 'analytics', 'outreach', 'boards', 'scripts', 'contracts', 'invoices', 'calendar', 'tasks', 'settings'];
+const VIEWS = ['dashboard', 'inbox', 'revenue', 'mediakit', 'analytics', 'outreach', 'boards', 'scripts', 'ideas', 'contracts', 'invoices', 'calendar', 'tasks', 'settings'];
 // Supabase calls fail under anon RLS in tests; that noise is expected.
 const NOISE = /supabase|Failed to fetch|net::ERR|fetch|NetworkError|Load failed|401|403|PGRST|JWT|favicon|ERR_INTERNET|ERR_NAME|fontshare/i;
 
@@ -29,6 +29,9 @@ const POPULATED = () => {
            { _sbId: 'd2', brand: 'Beta', status: 'Lead', value: 0, contact: '', email: '', paid: 0, invoiced: 0, outstanding: 0, lastContact: '2026-08-20', negotiationHistory: [] }];
   __arkives.state.TASKS = [{ _sbId: 't1', title: 'Send <b>deck</b>', details: 'x', dueDate: '2026-09-04', starred: true, completed: false, completedAt: '', createdAt: '2026-09-01T00:00:00Z' },
            { _sbId: 't2', title: 'Done thing', details: '', dueDate: '', starred: false, completed: true, completedAt: '2026-09-02T00:00:00Z', createdAt: '2026-09-01T00:00:00Z' }];
+  __arkives.state.IDEAS = [{ _sbId: 'id1', title: 'Hook: <img src=x onerror="window.__xss=1">', notes: 'line one\nline two <b>x</b>', archived: false, archivedAt: '', createdAt: '2026-09-01T00:00:00Z' },
+           { _sbId: 'id2', title: 'Used one', notes: '', archived: true, archivedAt: '2026-09-02T00:00:00Z', createdAt: '2026-08-01T00:00:00Z' }];
+  __arkives.state._ideasArchivedOpen = true;
   __arkives.state.INVOICE_DATA = [{ _sbId: 'i1', invoiceNumber: 'ACME-0001', brand: 'Acme', billToName: 'Acme Media', billToAddress: '2 St', date: '2026-08-01', dueDate: '2026-08-31', status: 'sent', lineItems: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 12000 }], amount: 12000, amountPaid: 0, tax: 0, notes: '', includePaymentInfo: true, paymentTerms: 'net30', clientId: 'c1', description: 'Reel' },
                   { _sbId: 'i2', invoiceNumber: 'ACME-0002', brand: 'Acme', billToName: 'Acme Media', billToAddress: '', date: '2026-09-01', dueDate: '', status: 'draft', lineItems: [{ type: 'hourly', desc: 'Edit', qty: 3, rate: 100, fee: 0 }], amount: 300, amountPaid: 0, tax: 0, notes: 'n', includePaymentInfo: false, paymentTerms: 'none', clientId: null, description: 'Edit' }];
   __arkives.state.CLIENTS = [{ _sbId: 'c1', name: 'Jane', company: 'Acme Media', email: 'j@acme.com', billingAddress: '2 St', invoicePrefix: 'ACME' }];
@@ -40,7 +43,7 @@ const POPULATED = () => {
 };
 const EMPTY = () => {
   __arkives.state.CREATOR._sbId = '00000000-0000-0000-0000-000000000001';
-  __arkives.state.DEALS = []; __arkives.state.TASKS = []; __arkives.state.INVOICE_DATA = []; __arkives.state.CLIENTS = []; __arkives.state.CALENDAR_EVENTS = []; __arkives.state.INBOX_ITEMS = []; __arkives.state.MONTHLY_REVENUE = []; __arkives.state.CAMPAIGN_RESULTS = [];
+  __arkives.state.DEALS = []; __arkives.state.TASKS = []; __arkives.state.IDEAS = []; __arkives.state.INVOICE_DATA = []; __arkives.state.CLIENTS = []; __arkives.state.CALENDAR_EVENTS = []; __arkives.state.INBOX_ITEMS = []; __arkives.state.MONTHLY_REVENUE = []; __arkives.state.CAMPAIGN_RESULTS = [];
   __arkives.state.OUTREACH_TARGETS = []; __arkives.state.OUTREACH_LISTS = [];
 };
 

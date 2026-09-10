@@ -3375,6 +3375,167 @@ a.mk-platform-link:hover {
 }
 
 /* ============================================
+   Ideas (views/ideas.js)
+   Quick-capture list, same bones as Tasks
+   ============================================ */
+
+.ideas-container { max-width: 760px; }
+.ideas-card {
+  background: var(--bg-1);
+  border: 2px solid var(--border);
+  padding: 8px;
+}
+
+/* Composer */
+.idea-composer {
+  border: 2px solid var(--border);
+  background: var(--bg-0);
+  padding: 16px;
+  margin: 8px 8px 12px;
+}
+.idea-composer textarea { resize: vertical; }
+.idea-composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.idea-composer-hint {
+  margin-right: auto;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* Idea rows */
+.idea-list {
+  display: flex;
+  flex-direction: column;
+}
+.idea-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--bg-3);
+  transition: background 0.12s var(--ease);
+}
+.idea-item:last-child { border-bottom: none; }
+.idea-item:hover { background: var(--bg-2); }
+.idea-body {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.idea-body:focus-visible {
+  outline: 2px solid var(--border);
+  outline-offset: 2px;
+}
+.idea-title {
+  font-size: 14.5px;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: break-word;
+}
+.idea-notes {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.idea-meta {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.idea-item.archived .idea-title { color: var(--text-muted); }
+.idea-item.archived .idea-notes { color: var(--text-faint); }
+.idea-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.idea-archive {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: color 0.12s var(--ease), opacity 0.12s var(--ease);
+}
+.idea-item:hover .idea-archive { opacity: 1; }
+.idea-archive:hover { color: var(--text-primary); }
+.idea-delete {
+  background: none;
+  border: none;
+  padding: 0 6px;
+  cursor: pointer;
+  color: var(--text-faint);
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0;
+  transition: color 0.12s var(--ease), opacity 0.12s var(--ease);
+}
+.idea-item:hover .idea-delete { opacity: 1; }
+.idea-delete:hover { color: var(--red); }
+
+/* Archived section */
+.ideas-archived {
+  margin-top: 8px;
+  padding: 8px 10px 4px;
+  border-top: 2px solid var(--border);
+}
+.ideas-archived-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+}
+.ideas-archived-toggle:hover { color: var(--text-primary); }
+.ideas-archived-chevron {
+  display: inline-block;
+  font-size: 14px;
+  transition: transform 0.15s var(--ease);
+}
+.ideas-archived-chevron.open { transform: rotate(90deg); }
+.idea-list-archived .idea-archive,
+.idea-list-archived .idea-delete { opacity: 1; }
+
+.ideas-empty { padding: 40px 20px; }
+
+@media (max-width: 640px) {
+  .idea-archive, .idea-delete {
+    opacity: 1;
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .idea-composer-hint { display: none; }
+}
+
+/* ============================================
    Invoice Builder (invoices.js)
    Two-pane editor + the branded document
    ============================================ */

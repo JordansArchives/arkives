@@ -7,6 +7,7 @@ import { _bdCommitActiveText, _bdFlushPendingSaves, _bdLiveLeave, renderBoardEdi
 import { renderCalendar } from './views/calendar.js';
 import { renderContracts } from './views/contracts.js';
 import { renderDashboard } from './views/dashboard.js';
+import { renderIdeas, unmountIdeas } from './views/ideas.js';
 import { renderInbox } from './views/inbox.js';
 import { renderInvoices, unmountInvoices } from './views/invoices.js';
 import { renderMediaKit } from './views/mediakit.js';
@@ -42,6 +43,7 @@ const VIEWS = {
   contracts: { render: renderContracts },
   invoices: { render: renderInvoices, unmount: unmountInvoices }, // render(sub) applies the route; render() keeps the editor
   tasks: { render: renderTasks, unmount: unmountTasks },
+  ideas: { render: renderIdeas, unmount: unmountIdeas },
 };
 // Editors and shared-link routes: keyed by the full hash so moving from
 // one script to another flushes the first.

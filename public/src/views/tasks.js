@@ -290,7 +290,7 @@ async function saveTaskEdits() {
   if (!title) { _showSaveError('Task needs a title'); return; }
   const ok = await tasks.update(t._sbId, { title, details, dueDate });
   if (!ok) return;
-  state._editingTaskId = null;
+  closeEditTaskModal(); // the re-render does not hide a modal that is already open
   renderTasks();
 }
 /* ---- KEYBOARD HELPERS (delegated) ---- */

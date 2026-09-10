@@ -68,6 +68,16 @@ state._taskComposerFocusPending = false;
 // Delete = remove now, offer Undo for a few seconds, then commit. No
 // confirm() dialog. Pending deletes are committed on navigation/unload.
 state._taskPendingDeletes = {};
+/* ---- IDEAS ---- */
+state.IDEAS = [];
+state._ideasTableMissing = false;
+state._ideasArchivedOpen = false;
+state._ideaComposerOpen = false;
+state._editingIdeaId = null;
+state._ideaSaving = false;
+state._ideaBusyIds = {};
+state._ideaComposerFocusPending = false;
+state._ideaPendingDeletes = {};
 state.INVOICE_DATA = [];
 state.CLIENTS = [];
 state._invoicingMigrationMissing = false;

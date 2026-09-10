@@ -310,6 +310,28 @@ async function sbFetchInvoices() {
 }
 
 /* ---- SUPABASE CRUD: TASKS ---- */
+async function sbFetchIdeas() {
+  try {
+    const res = await _own('ideas').order('created_at', { ascending: false });
+    if (res.error) {
+      state._ideasTableMissing = _missingTable(res.error);
+      if (!state._ideasTableMissing) console.error('ideas fetch error:', res.error);
+      state.IDEAS = [];
+    } else {
+      state._ideasTableMissing = false;
+      state.IDEAS = (res.data || []).map(_mapIdeaRow);
+    }
+    return true;
+  } catch (err) { return _loadFailed('ideas', err); }
+}
+function _mapIdeaRow(r) {
+  return {
+    _sbId: r.id, title: r.title || '', notes: r.notes || '',
+    archived: !!r.archived, archivedAt: r.archived_at || '',
+    createdAt: r.created_at || ''
+  };
+}
+
 async function sbAddTask(data) {
   if (!state._sb || !state.CREATOR._sbId) return null;
   // user_id is stamped by the DB default (current_profile_id) per the
@@ -333,6 +355,34 @@ async function sbUpdateTask(sbId, updates) {
 async function sbDeleteTasks(sbIds) {
   if (!state._sb || !sbIds.length) return false;
   const { error } = await state._sb.from('tasks').delete().in('id', sbIds);
+  if (error) { _showSaveError('Failed to delete'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbAddIdea(data) {
+  if (!state._sb || !state.CREATOR._sbId) return null;
+  // user_id is stamped by the DB default (current_profile_id) per the
+  // multi-tenancy rules — inserts must not pass it manually
+  const { data: row, error } = await state._sb.from('ideas').insert({
+    title: data.title, notes: data.notes || ''
+  }).select().single();
+  if (error) { _showSaveError('Failed to add idea'); console.error(error); return null; }
+  _showSaveSuccess();
+  return row;
+}
+
+async function sbUpdateIdea(sbId, updates) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('ideas').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to update idea'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbDeleteIdeas(sbIds) {
+  if (!state._sb || !sbIds.length) return false;
+  const { error } = await state._sb.from('ideas').delete().in('id', sbIds);
   if (error) { _showSaveError('Failed to delete'); console.error(error); return false; }
   _showSaveSuccess();
   return true;
@@ -719,6 +769,7 @@ async function sbDeleteBoardItem(itemId) {
 export const db = {
   sbAddBoardItem,
   sbAddClient,
+  sbAddIdea,
   sbAddInvoice,
   sbAddOutreachList,
   sbAddOutreachTarget,
@@ -728,6 +779,7 @@ export const db = {
   sbDeleteBoard,
   sbDeleteBoardItem,
   sbDeleteClient,
+  sbDeleteIdeas,
   sbDeleteInvoice,
   sbDeleteOutreachList,
   sbDeleteOutreachTarget,
@@ -739,6 +791,7 @@ export const db = {
   sbFetchCampaignResults,
   sbFetchClients,
   sbFetchDeals,
+  sbFetchIdeas,
   sbFetchInboxItems,
   sbFetchInvoices,
   sbFetchMonthlyRevenue,
@@ -755,6 +808,7 @@ export const db = {
   sbUpdateBoard,
   sbUpdateBoardItem,
   sbUpdateClient,
+  sbUpdateIdea,
   sbUpdateInvoice,
   sbUpdateOutreachList,
   sbUpdateOutreachTarget,
@@ -783,4 +837,4 @@ export function __init() {
   }
 }
 
-export { SUPABASE_ANON_KEY, SUPABASE_URL, _mapInvoiceRow, _mapOutreachRow, sbAddBoardItem, sbAddClient, sbAddInvoice, sbAddOutreachList, sbAddOutreachTarget, sbAddTask, sbCreateBoard, sbCreateScript, sbDeleteBoard, sbDeleteBoardItem, sbDeleteClient, sbDeleteInvoice, sbDeleteOutreachList, sbDeleteOutreachTarget, sbDeleteScene, sbDeleteScript, sbDeleteTasks, sbFetchBoardItems, sbFetchBoards, sbFetchScenes, sbFetchScriptByToken, sbFetchScripts, sbReorderScenes, sbSaveSceneFields, sbUpdateBoard, sbUpdateBoardItem, sbUpdateClient, sbUpdateInvoice, sbUpdateOutreachList, sbUpdateOutreachTarget, sbUpdateProfile, sbUpdateScript, sbUpdateTask };
+export { SUPABASE_ANON_KEY, SUPABASE_URL, _mapIdeaRow, _mapInvoiceRow, _mapOutreachRow, sbAddBoardItem, sbAddClient, sbAddIdea, sbAddInvoice, sbAddOutreachList, sbAddOutreachTarget, sbAddTask, sbCreateBoard, sbCreateScript, sbDeleteBoard, sbDeleteBoardItem, sbDeleteClient, sbDeleteIdeas, sbDeleteInvoice, sbDeleteOutreachList, sbDeleteOutreachTarget, sbDeleteScene, sbDeleteScript, sbDeleteTasks, sbFetchBoardItems, sbFetchBoards, sbFetchIdeas, sbFetchScenes, sbFetchScriptByToken, sbFetchScripts, sbReorderScenes, sbSaveSceneFields, sbUpdateBoard, sbUpdateBoardItem, sbUpdateClient, sbUpdateIdea, sbUpdateInvoice, sbUpdateOutreachList, sbUpdateOutreachTarget, sbUpdateProfile, sbUpdateScript, sbUpdateTask };

@@ -21,6 +21,7 @@ import * as boards from './views/boards.js';
 import * as calendar from './views/calendar.js';
 import * as contracts from './views/contracts.js';
 import * as dashboard from './views/dashboard.js';
+import * as ideas from './views/ideas.js';
 import * as inbox from './views/inbox.js';
 import * as invoices from './views/invoices.js';
 import * as mediakit from './views/mediakit.js';
@@ -90,11 +91,12 @@ share.__init();
 boards.__init();
 scripts.__init();
 tasks.__init();
+ideas.__init();
 
 // window.__arkives: every export of every module, plus state and db. The
 // tests drive the app through it; it is also handy in the console.
 const __arkives = { state, db, stores };
-for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, contracts, dashboard, inbox, invoices, mediakit, outreach, revenue, scripts, settings, tasks]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
+for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, revenue, scripts, settings, tasks]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
 window.__arkives = __arkives;
 
 boot();
