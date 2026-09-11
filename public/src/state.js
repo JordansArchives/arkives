@@ -135,6 +135,8 @@ state._bdMaxZ = 1;
 state._bdStickyColor = 'yellow';
 state._bdPenColor = 'ink';
 state._bdPenWidth = 3;
+state._bdPenStab = 0; // pen stabilization level (index into BD_PEN_STAB)
+state._bdPenFollow = null; // smoothed pen position during a stroke
 state._bdSignedUrls = {}; // storage path -> signed URL
 state._bdPtr = null; // active pointer gesture
 state._bdPenPts = null; // in-progress stroke points (board coords)
@@ -142,6 +144,8 @@ state._bdPendingSaves = {}; // item id -> {updates, timer}
 state._bdViewSaveTimer = null;
 state._bdListenersBound = false;
 state._bdSuppressClick = false; // eat the click that follows a drag gesture
+state._bdDownTarget = null; // pointerdown target (clicks retarget to the viewport under pointer capture)
+state._bdLastTap = null; // last still touch tap on an item: {id, t, x, y} (double-tap = edit)
 state._bdLoadToken = 0; // guards against stale async renders
 state._bdUndoStack = []; // session-local undo (cleared per board)
 state._bdRedoStack = [];

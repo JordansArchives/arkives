@@ -206,6 +206,46 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   ed.setAttribute('contenteditable', 'false');
   await __arkives._bdApplyRemoteOp({ board: 'B1', type: 'delete', id: 'r1' });
   T('remote delete removes item', !__arkives.state._bdItems.some(i => i.id === 'r1') && !document.querySelector('.bd-item[data-id="r1"]'));
+
+  // ---- Boards: double-click / double-tap to edit, alignment, pen stabilization ----
+  // Pointer capture retargets click/dblclick at the viewport, so the handler
+  // has to recover the real target from the pointerdown (or a hit test).
+  __arkives.db.sbAddBoardItem = async (it) => { window.__bdAdds = (window.__bdAdds || 0) + 1; return Object.assign({ id: 'new' + window.__bdAdds }, it); };
+  __arkives.state._bdItems.push({ id: 'i1', board_id: 'B1', kind: 'video', x: 300, y: 300, w: 200, h: 60, z: 3, content: { url: 'https://example.com/p', provider: 'link', vid: null, caption: '' } });
+  document.getElementById('bdPlane').appendChild(__arkives._bdItemEl(__arkives.state._bdItems.find(i => i.id === 'i1')));
+  const n1Text = document.querySelector('.bd-item[data-id="n1"] .bd-text-content');
+  n1Text.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 9, pointerType: 'mouse', button: 0, clientX: rect.left + 20, clientY: rect.top + 20, bubbles: true, isPrimary: true }));
+  vp.dispatchEvent(new PointerEvent('pointerup', { pointerId: 9, pointerType: 'mouse', clientX: rect.left + 20, clientY: rect.top + 20, bubbles: true }));
+  vp.dispatchEvent(new MouseEvent('dblclick', { clientX: rect.left + 20, clientY: rect.top + 20, bubbles: true })); // target = viewport, as Chrome does under capture
+  T('dblclick retargeted at the viewport still edits the item under the pointer', n1Text.getAttribute('contenteditable') === 'true' && !window.__bdAdds && __arkives.state._bdSelectedId === 'n1');
+  n1Text.blur(); n1Text.setAttribute('contenteditable', 'false');
+  T('empty-canvas dblclick still makes a quick sticky', (() => { __arkives.state._bdDownTarget = document.getElementById('bdPlane'); vp.dispatchEvent(new MouseEvent('dblclick', { clientX: rect.left + 5, clientY: rect.top + 5, bubbles: true })); return true; })());
+  T('dblclick on a media item edits its caption', __arkives._bdEditItem('i1') === true && document.querySelector('.bd-item[data-id="i1"] .bd-caption').getAttribute('contenteditable') === 'true' && !document.querySelector('.bd-item[data-id="i1"] .bd-caption').classList.contains('empty'));
+  document.querySelector('.bd-item[data-id="i1"] .bd-caption').blur();
+  T('pen strokes have nothing to edit', __arkives._bdEditItem('nope') === false);
+  // Touch: two still taps on the same item inside the window
+  const n1El = document.querySelector('.bd-item[data-id="n1"]');
+  const n1Body = n1El.querySelector('.bd-text-content'); n1Body.setAttribute('contenteditable', 'false');
+  const tap = (id) => { n1El.dispatchEvent(new PointerEvent('pointerdown', { pointerId: id, pointerType: 'touch', button: 0, clientX: rect.left + 30, clientY: rect.top + 30, bubbles: true, isPrimary: true })); vp.dispatchEvent(new PointerEvent('pointerup', { pointerId: id, pointerType: 'touch', clientX: rect.left + 31, clientY: rect.top + 30, bubbles: true, isPrimary: true })); };
+  tap(11); T('one touch tap only selects', n1Body.getAttribute('contenteditable') !== 'true' && !!__arkives.state._bdLastTap);
+  tap(12); T('touch double-tap edits', n1Body.getAttribute('contenteditable') === 'true' && __arkives.state._bdLastTap === null);
+  // Alignment: whole-item, allowlisted, undo-able, survives re-render
+  __arkives._bdShowFormatBar(n1Body);
+  const undoBefore = __arkives.state._bdUndoStack.length;
+  document.querySelector('#bdFormatBar [data-align="right"]').click();
+  T('align button sets content.align and the class', __arkives.state._bdItems.find(i => i.id === 'n1').content.align === 'right' && n1Body.classList.contains('bd-ta-right') && !n1Body.classList.contains('bd-ta-left') && document.querySelector('#bdFormatBar [data-align="right"]').classList.contains('active') && __arkives.state._bdUndoStack.length === undoBefore + 1);
+  document.querySelector('#bdFormatBar [data-align="right"]').click();
+  T('re-clicking the active alignment is a no-op', __arkives.state._bdUndoStack.length === undoBefore + 1);
+  n1Body.blur(); __arkives._bdHideFormatBar();
+  T('alignment survives a re-render', document.querySelector('.bd-item[data-id="n1"] .bd-text-content').classList.contains('bd-ta-right'));
+  T('unknown alignment renders as left', __arkives._bdAlignOf({ align: 'justify" onload="x' }) === 'left' && __arkives._bdItemEl({ id: 'z', kind: 'text', x: 0, y: 0, w: 10, h: 10, z: 1, content: { text: 'a', align: '<x>' } }).querySelector('.bd-text-content').classList.contains('bd-ta-left'));
+  // Pen stabilization: the follower closes a fraction of the gap; off = raw
+  T('stabilization off follows the raw pointer', JSON.stringify(__arkives._bdPenStep([0, 0], 10, 4, 0)) === '[10,4]');
+  T('stabilization high trails the pointer', (() => { const f = __arkives._bdPenStep([0, 0], 10, 0, __arkives.BD_PEN_STAB[3]); return f[0] > 0 && f[0] < 1; })());
+  T('stabilization levels are ordered and the strip renders them', __arkives.BD_PEN_STAB.every((v, i, a) => i === 0 || v > a[i - 1]) && document.querySelectorAll('#bdPenOptions .bd-stab').length === __arkives.BD_PEN_STAB.length);
+  document.querySelector('#bdPenOptions [data-pen-stab="2"]').click();
+  T('picking a stabilization level updates state and the active button', __arkives.state._bdPenStab === 2 && document.querySelector('#bdPenOptions [data-pen-stab="2"]').classList.contains('active') && !document.querySelector('#bdPenOptions [data-pen-stab="0"]').classList.contains('active'));
+  __arkives.state._bdPenStab = 0;
   T('crafted remote item is rendered inert', (() => { __arkives._bdApplyRemoteOp({ board: 'B1', type: 'upsert', item: { id: 'x1', board_id: 'B1', kind: 'video', x: 0, y: 0, w: 10, h: 10, z: 1, content: { url: 'https://a', provider: 'youtube', vid: '"><img src=x onerror=window.__x=1>' } } }); return !window.__x; })());
 
   // ---- Scripts: move up/down ----

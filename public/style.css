@@ -4800,6 +4800,18 @@ a.mk-platform-link:hover {
 }
 .bd-width span { display: block; width: 100%; border-radius: 2px; background: var(--text-secondary); }
 .bd-width.active span { background: var(--accent); }
+.bd-stab {
+  width: 22px; height: 16px;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  color: var(--text-secondary);
+}
+.bd-stab:hover { background: var(--bg-2); }
+.bd-stab.active { color: var(--accent); background: var(--accent-dim); }
 
 /* ---- Video popover & drop hint ---- */
 .bd-video-popover {
@@ -4883,6 +4895,11 @@ a.mk-platform-link:hover {
 .bd-kind-note .bd-text-content.bd-ts-large { font-size: 18px; }
 .bd-kind-note .bd-text-content.bd-ts-title { font-size: 24px; }
 
+/* Text alignment (whole-item, set from the format bar) */
+.bd-text-content.bd-ta-left { text-align: left; }
+.bd-text-content.bd-ta-center { text-align: center; }
+.bd-text-content.bd-ta-right { text-align: right; }
+
 /* Highlighter */
 .bd-text-content mark { background: #F7E9A9; color: #1A1714; padding: 0 1px; border-radius: 1px; }
 
@@ -4911,6 +4928,7 @@ a.mk-platform-link:hover {
   min-width: 26px;
   padding: 5px 6px;
 }
+.bd-format-bar button svg { display: block; }
 .bd-format-bar button:hover { background: var(--bg-2); }
 .bd-format-bar button.active { background: var(--accent-dim); color: var(--accent); }
 .bd-fmt-sep { width: 1.5px; align-self: stretch; margin: 2px 3px; background: var(--border); opacity: 0.4; }

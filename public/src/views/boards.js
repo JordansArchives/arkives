@@ -16,6 +16,18 @@ const BD_PEN_COLORS = {
 };
 const BD_MIN_ZOOM = 0.1, BD_MAX_ZOOM = 4;
 const BD_TEXT_SIZES = ['small', 'body', 'large', 'title'];
+const BD_TEXT_ALIGNS = ['left', 'center', 'right'];
+const BD_TAP_MS = 350, BD_TAP_PX = 24; // touch double-tap window
+// Pen stabilization: how much of the gap to the pointer the stroke closes per
+// move event (0 = raw, 0.92 = heavy streamline). Index = state._bdPenStab.
+const BD_PEN_STAB = [0, 0.55, 0.8, 0.92];
+const BD_PEN_STAB_LABELS = ['off', 'low', 'medium', 'high'];
+function _bdStabIconPath(level) {
+  // A wobbly line whose wobble shrinks with the level (icon only)
+  const amp = [4, 2.6, 1.3, 0][level] || 0;
+  if (!amp) return 'M1.5 6h15';
+  return 'M1.5 6c2-' + amp + ' 3.5-' + amp + ' 5 0s3 ' + amp + ' 5 0 3.5-' + amp + ' 5 0';
+}
 const BD_HILITE = '#F7E9A9';
 const BD_HILITE_RGB = 'rgb(247, 233, 169)';
 
@@ -150,6 +162,10 @@ function _bdEditorShellHtml(shared) {
     '<button class="bd-dot' + (c === state._bdPenColor ? ' active' : '') + '" data-pen-color="' + c + '" style="background:' + BD_PEN_COLORS[c] + '" title="' + c + '"></button>').join('');
   const stickyDots = Object.keys(BD_STICKY_COLORS).map(c =>
     '<button class="bd-dot' + (c === state._bdStickyColor ? ' active' : '') + '" data-sticky-color="' + c + '" style="background:' + BD_STICKY_COLORS[c] + '" title="' + c + '"></button>').join('');
+  // Stabilization: four steps, drawn as a wobble that settles as the level rises
+  const stabBtns = BD_PEN_STAB.map((s, i) =>
+    '<button class="bd-stab' + (i === state._bdPenStab ? ' active' : '') + '" data-pen-stab="' + i + '" title="Stabilization: ' + BD_PEN_STAB_LABELS[i] + '">' +
+    '<svg width="18" height="12" viewBox="0 0 18 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="' + _bdStabIconPath(i) + '"/></svg></button>').join('');
 
   return (
     '<div class="board-editor">' +
@@ -192,6 +208,7 @@ function _bdEditorShellHtml(shared) {
           '<div class="bd-opt-sep"></div>' +
           '<button class="bd-width' + (state._bdPenWidth === 3 ? ' active' : '') + '" data-pen-width="3" title="Thin"><span style="height:2px"></span></button>' +
           '<button class="bd-width' + (state._bdPenWidth === 6 ? ' active' : '') + '" data-pen-width="6" title="Thick"><span style="height:5px"></span></button>' +
+          '<div class="bd-opt-sep"></div>' + stabBtns +
         '</div>' +
         '<div class="bd-tool-options" id="bdStickyOptions" style="display:none">' + stickyDots + '</div>' +
         '<div class="bd-video-popover" id="bdVideoPopover" style="display:none">' +
@@ -208,6 +225,10 @@ function _bdEditorShellHtml(shared) {
           '<button data-size="body" title="Normal text">M</button>' +
           '<button data-size="large" title="Large text">L</button>' +
           '<button data-size="title" title="Title text">XL</button>' +
+          '<div class="bd-fmt-sep"></div>' +
+          '<button data-align="left" title="Align left"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3.5 5.5h17"/><path d="M3.5 10.5h10"/><path d="M3.5 15.5h17"/><path d="M3.5 20.5h10"/></svg></button>' +
+          '<button data-align="center" title="Align center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3.5 5.5h17"/><path d="M7 10.5h10"/><path d="M3.5 15.5h17"/><path d="M7 20.5h10"/></svg></button>' +
+          '<button data-align="right" title="Align right"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3.5 5.5h17"/><path d="M10.5 10.5h10"/><path d="M3.5 15.5h17"/><path d="M10.5 20.5h10"/></svg></button>' +
         '</div>' +
         '<div class="bd-drop-hint" id="bdDropHint">Drop images to add them</div>' +
       '</div>' +
@@ -400,6 +421,11 @@ function _bdRotFor(id) {
   return ((h % 21) - 10) / 12; // -0.83deg .. +0.83deg
 }
 
+// Whole-item text alignment; anything off the allowlist renders as left
+function _bdAlignOf(c) {
+  return BD_TEXT_ALIGNS.indexOf(c && c.align) >= 0 ? c.align : 'left';
+}
+
 function _bdItemEl(it) {
   const el = document.createElement('div');
   el.className = 'bd-item bd-kind-' + it.kind + (it.id === state._bdSelectedId ? ' selected' : '');
@@ -410,7 +436,7 @@ function _bdItemEl(it) {
   el.style.zIndex = it.z || 1;
   const c = it.content || {};
 
-  const sizeCls = ' bd-ts-' + (BD_TEXT_SIZES.indexOf(c.size) >= 0 ? c.size : 'body');
+  const sizeCls = ' bd-ts-' + (BD_TEXT_SIZES.indexOf(c.size) >= 0 ? c.size : 'body') + ' bd-ta-' + _bdAlignOf(c);
   if (it.kind === 'note') {
     el.style.height = it.h + 'px';
     el.style.background = BD_STICKY_COLORS[c.color] || BD_STICKY_COLORS.yellow;
@@ -541,6 +567,8 @@ function _bdShowFormatBar(el) {
   const it = itemEl && state._bdItems.find(i => i.id === itemEl.dataset.id);
   const size = (it && BD_TEXT_SIZES.indexOf(it.content.size) >= 0) ? it.content.size : 'body';
   bar.querySelectorAll('[data-size]').forEach(b => b.classList.toggle('active', b.dataset.size === size));
+  const align = _bdAlignOf(it && it.content);
+  bar.querySelectorAll('[data-align]').forEach(b => b.classList.toggle('active', b.dataset.align === align));
   bar.style.display = 'flex';
   _bdPositionFormatBar();
 }
@@ -565,7 +593,7 @@ function _bdPositionFormatBar() {
   bar.style.right = '';
   const vpRect = vp.getBoundingClientRect();
   const r = itemEl.getBoundingClientRect();
-  const x = Math.max(8, Math.min(r.left - vpRect.left, vpRect.width - 260));
+  const x = Math.max(8, Math.min(r.left - vpRect.left, vpRect.width - (bar.offsetWidth || 260) - 8));
   const y = Math.max(8, r.top - vpRect.top - 44);
   bar.style.left = x + 'px';
   bar.style.top = y + 'px';
@@ -919,13 +947,53 @@ function _bdSelect(id) {
 
 function _bdStartTextEdit(id) {
   const el = document.querySelector('.bd-item[data-id="' + id + '"] .bd-text-content');
-  if (!el) return;
-  el.setAttribute('contenteditable', 'true');
+  if (el) _bdEditEl(el);
+}
+
+// Put one text-bearing element (sticky/text body or media caption) into
+// edit mode with the cursor at the end. Idempotent.
+function _bdEditEl(el) {
+  if (!el || state._bdReadOnly) return;
+  el.classList.remove('empty'); // a hidden empty caption has to show to be typed into
+  if (el.getAttribute('contenteditable') !== 'true') el.setAttribute('contenteditable', 'true');
   el.focus();
-  // Cursor to end
   const range = document.createRange();
   range.selectNodeContents(el); range.collapse(false);
   const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+}
+
+// Double-click / double-tap on an item: edit whatever text it carries.
+// Stickies and text blocks edit their body; images and videos edit their
+// caption; pen strokes have nothing to edit. Returns true when editing began.
+function _bdEditItem(id) {
+  const it = state._bdItems.find(i => i.id === id);
+  const itemEl = document.querySelector('.bd-item[data-id="' + id + '"]');
+  if (!it || !itemEl) return false;
+  const sel = (it.kind === 'note' || it.kind === 'text') ? '.bd-text-content'
+    : ((it.kind === 'image' || it.kind === 'video') ? '.bd-caption' : null);
+  const el = sel && itemEl.querySelector(sel);
+  if (!el) return false;
+  _bdSelect(id);
+  _bdEditEl(el);
+  return true;
+}
+
+// The element really under a click. Pointer capture on the viewport makes
+// Chrome retarget click/dblclick at the viewport itself, so e.target lies
+// whenever a drag gesture was armed on pointerdown; the pointerdown target
+// (recorded before capture) or a hit test gives the truth.
+function _bdHitTarget(e) {
+  if (e.target && e.target.closest && e.target.closest('.bd-item')) return e.target;
+  const down = state._bdDownTarget;
+  if (down && down.isConnected && down.closest && down.closest('.bd-item')) return down;
+  const hit = document.elementFromPoint(e.clientX, e.clientY);
+  return hit || e.target;
+}
+
+// One streamline step: move the follower a fraction of the way to the
+// pointer. s=0 is the raw pointer, s→1 a stroke that trails far behind.
+function _bdPenStep(follow, rawX, rawY, s) {
+  return [follow[0] + (rawX - follow[0]) * (1 - s), follow[1] + (rawY - follow[1]) * (1 - s)];
 }
 
 function _bdCommitTextEdit(target) {
@@ -1035,6 +1103,11 @@ function _bdBindEditor() {
         state._bdPenWidth = Number(btn.dataset.penWidth);
         btn.parentElement.querySelectorAll('.bd-width').forEach(d => d.classList.toggle('active', d === btn));
       }
+      if (btn.dataset.penStab !== undefined) {
+        const lvl = Number(btn.dataset.penStab);
+        state._bdPenStab = BD_PEN_STAB[lvl] === undefined ? 0 : lvl;
+        btn.parentElement.querySelectorAll('.bd-stab').forEach(d => d.classList.toggle('active', d === btn));
+      }
       if (btn.dataset.stickyColor) {
         state._bdStickyColor = btn.dataset.stickyColor;
         btn.parentElement.querySelectorAll('.bd-dot').forEach(d => d.classList.toggle('active', d === btn));
@@ -1103,6 +1176,7 @@ function _bdBindEditor() {
     if (sharePop) sharePop.style.display = 'none';
     if (e.target.closest('.board-toolbar, .bd-tool-options, .bd-video-popover, .bd-format-bar, .bd-zoom')) return;
     if (e.target.isContentEditable) return; // typing, leave it alone
+    state._bdDownTarget = e.target; // the true target, before capture retargets clicks
     const itemEl = e.target.closest('.bd-item');
 
     // Item action buttons act on pointerdown's click, not as gestures
@@ -1118,6 +1192,7 @@ function _bdBindEditor() {
     if (state._bdTool === 'pen') {
       const p = _bdScreenToBoard(e.clientX, e.clientY);
       state._bdPenPts = [[p.x, p.y]];
+      state._bdPenFollow = [p.x, p.y]; // smoothed pen position (streamline)
       state._bdPtr = { mode: 'pen' };
       const live = document.getElementById('bdPenLive');
       live.innerHTML = '<path d="" fill="none" stroke="' + BD_PEN_COLORS[state._bdPenColor] + '" stroke-width="' + state._bdPenWidth + '" stroke-linecap="round" stroke-linejoin="round"/>';
@@ -1163,9 +1238,14 @@ function _bdBindEditor() {
     }
     const p = _bdScreenToBoard(e.clientX, e.clientY);
     if (state._bdPtr.mode === 'pen') {
+      // Stabilization: the stroke follows a point that trails the pointer,
+      // so hand jitter averages out. Off = the raw pointer.
+      const s = BD_PEN_STAB[state._bdPenStab] || 0;
+      const f = state._bdPenFollow ? _bdPenStep(state._bdPenFollow, p.x, p.y, s) : [p.x, p.y];
+      state._bdPenFollow = f;
       const last = state._bdPenPts[state._bdPenPts.length - 1];
-      if (Math.hypot(p.x - last[0], p.y - last[1]) > 2 / state._bdView.z) {
-        state._bdPenPts.push([Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]);
+      if (Math.hypot(f[0] - last[0], f[1] - last[1]) > 2 / state._bdView.z) {
+        state._bdPenPts.push([Math.round(f[0] * 10) / 10, Math.round(f[1] * 10) / 10]);
         const path = document.querySelector('#bdPenLive path');
         if (path) path.setAttribute('d', _bdPathD(state._bdPenPts));
       }
@@ -1202,6 +1282,18 @@ function _bdBindEditor() {
     if (g.mode === 'pen' && state._bdPenPts) {
       state._bdSuppressClick = true; // stroke ending over a video shouldn't play it
       const pts = state._bdPenPts; state._bdPenPts = null;
+      // Stabilized strokes trail the pointer: let the tail catch up to where
+      // the pen actually lifted, in smooth steps, so the end isn't clipped.
+      const s = BD_PEN_STAB[state._bdPenStab] || 0;
+      if (s && e && state._bdPenFollow && pts.length > 1) {
+        const end = _bdScreenToBoard(e.clientX, e.clientY);
+        let f = state._bdPenFollow;
+        for (let i = 0; i < 40 && Math.hypot(end.x - f[0], end.y - f[1]) > 0.5 / state._bdView.z; i++) {
+          f = _bdPenStep(f, end.x, end.y, s);
+          pts.push([Math.round(f[0] * 10) / 10, Math.round(f[1] * 10) / 10]);
+        }
+      }
+      state._bdPenFollow = null;
       document.getElementById('bdPenLive').innerHTML = '';
       if (pts.length > 1) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1223,21 +1315,40 @@ function _bdBindEditor() {
         if (g.before) _bdPushUndo({ type: 'update', id: g.id, before: g.before, after: after });
         _bdQueueItemSave(g.id, after);
       }
+      state._bdLastTap = null;
+      return;
+    }
+    /* Touch double-tap = edit (phones don't reliably fire dblclick): two
+       still taps on the same item inside the tap window. */
+    if (g.mode === 'drag' && !g.moved && e && e.pointerType === 'touch') {
+      const now = Date.now(), prev = state._bdLastTap;
+      if (prev && prev.id === g.id && now - prev.t < BD_TAP_MS && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < BD_TAP_PX) {
+        state._bdLastTap = null;
+        if (_bdEditItem(g.id)) state._bdSuppressClick = true;
+        return;
+      }
+      state._bdLastTap = { id: g.id, t: now, x: e.clientX, y: e.clientY };
     }
   }
   vp.addEventListener('pointerup', endGesture);
   vp.addEventListener('pointercancel', endGesture);
 
-  /* Double-click: edit text / captions */
+  /* Double-click: edit the item under the pointer (body text or caption).
+     e.target is resolved through _bdHitTarget because pointer capture
+     retargets the event at the viewport. */
   vp.addEventListener('dblclick', function(e) {
-    const textEl = e.target.closest('.bd-text-content, .bd-caption');
-    if (textEl) {
-      textEl.setAttribute('contenteditable', 'true');
-      textEl.focus();
+    if (e.target.closest('.board-toolbar, .bd-tool-options, .bd-video-popover, .bd-format-bar, .bd-zoom')) return;
+    const target = _bdHitTarget(e);
+    if (target.isContentEditable) return; // already typing here
+    const itemEl = target.closest && target.closest('.bd-item');
+    if (itemEl) {
+      const textEl = target.closest('.bd-text-content, .bd-caption');
+      if (textEl) { _bdSelect(itemEl.dataset.id); _bdEditEl(textEl); return; }
+      _bdEditItem(itemEl.dataset.id);
       return;
     }
     // Double-click on empty canvas = quick sticky (Milanote habit)
-    if (!e.target.closest('.bd-item') && state._bdTool === 'select') {
+    if (state._bdTool === 'select') {
       const p = _bdScreenToBoard(e.clientX, e.clientY);
       _bdAddNoteAt(p.x, p.y);
     }
@@ -1281,6 +1392,18 @@ function _bdBindEditor() {
       _bdPushUndo({ type: 'update', id: it.id, before: { content: before }, after: { content: _bdClone(it.content) } });
       _bdQueueItemSave(it.id, { content: it.content });
       _bdPositionFormatBar();
+    } else if (btn.dataset.align) {
+      const align = BD_TEXT_ALIGNS.indexOf(btn.dataset.align) >= 0 ? btn.dataset.align : 'left';
+      const itemEl = state._bdEditingEl.closest('.bd-item');
+      const it = itemEl && state._bdItems.find(i => i.id === itemEl.dataset.id);
+      if (!it || _bdAlignOf(it.content) === align) return;
+      const before = _bdClone(it.content);
+      it.content = Object.assign({}, it.content, { align: align });
+      BD_TEXT_ALIGNS.forEach(a => state._bdEditingEl.classList.remove('bd-ta-' + a));
+      state._bdEditingEl.classList.add('bd-ta-' + align);
+      fmtBar.querySelectorAll('[data-align]').forEach(b => b.classList.toggle('active', b === btn));
+      _bdPushUndo({ type: 'update', id: it.id, before: { content: before }, after: { content: _bdClone(it.content) } });
+      _bdQueueItemSave(it.id, { content: it.content });
     }
   });
 
@@ -1564,4 +1687,4 @@ export function __init() {
 
 act({ _bdAddVideoFromPopover, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard });
 
-export { BD_HILITE, BD_HILITE_RGB, BD_MAX_ZOOM, BD_MIN_ZOOM, BD_PEN_COLORS, BD_STICKY_COLORS, BD_TEXT_SIZES, _bdAddImageFiles, _bdAddNoteAt, _bdAddTextAt, _bdAddVideoAt, _bdAddVideoFromPopover, _bdApplyOp, _bdApplyRemoteOp, _bdApplyView, _bdBindEditor, _bdBindPinch, _bdBindShared, _bdCaptionHtml, _bdCapture, _bdClone, _bdCommitActiveText, _bdCommitTextEdit, _bdCreateItem, _bdDeleteItem, _bdEditorActive, _bdEditorShellHtml, _bdEmbedSrc, _bdFlushOrphans, _bdFlushPendingSaves, _bdHandlesHtml, _bdHideFormatBar, _bdItemEl, _bdLiveJoin, _bdLiveLeave, _bdLiveSend, _bdNum, _bdParseVideoUrl, _bdPathD, _bdPositionFormatBar, _bdPrepareImage, _bdPushUndo, _bdQueueItemSave, _bdQueueViewSave, _bdRedo, _bdRefreshItem, _bdRemoveItemLocal, _bdResolveSharedImages, _bdResolveSignedUrls, _bdRestoreItem, _bdRotFor, _bdSafeUrl, _bdSanitizeHtml, _bdScreenToBoard, _bdSelect, _bdSerializeRich, _bdSetBoardShare, _bdSetSaveState, _bdSetTool, _bdShareLink, _bdShowFormatBar, _bdStartTextEdit, _bdSyncSharePopover, _bdSyncUndoButtons, _bdTextHtml, _bdUndo, _bdUrlForPath, _bdValidVid, _bdVideoInnerHtml, _bdZoomAt, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard, renderBoardEditor, renderBoards, renderSharedBoard };
+export { BD_HILITE, BD_HILITE_RGB, BD_MAX_ZOOM, BD_MIN_ZOOM, BD_PEN_COLORS, BD_PEN_STAB, BD_STICKY_COLORS, BD_TEXT_ALIGNS, BD_TEXT_SIZES, _bdAlignOf, _bdEditEl, _bdEditItem, _bdHitTarget, _bdPenStep, _bdStabIconPath, _bdAddImageFiles, _bdAddNoteAt, _bdAddTextAt, _bdAddVideoAt, _bdAddVideoFromPopover, _bdApplyOp, _bdApplyRemoteOp, _bdApplyView, _bdBindEditor, _bdBindPinch, _bdBindShared, _bdCaptionHtml, _bdCapture, _bdClone, _bdCommitActiveText, _bdCommitTextEdit, _bdCreateItem, _bdDeleteItem, _bdEditorActive, _bdEditorShellHtml, _bdEmbedSrc, _bdFlushOrphans, _bdFlushPendingSaves, _bdHandlesHtml, _bdHideFormatBar, _bdItemEl, _bdLiveJoin, _bdLiveLeave, _bdLiveSend, _bdNum, _bdParseVideoUrl, _bdPathD, _bdPositionFormatBar, _bdPrepareImage, _bdPushUndo, _bdQueueItemSave, _bdQueueViewSave, _bdRedo, _bdRefreshItem, _bdRemoveItemLocal, _bdResolveSharedImages, _bdResolveSignedUrls, _bdRestoreItem, _bdRotFor, _bdSafeUrl, _bdSanitizeHtml, _bdScreenToBoard, _bdSelect, _bdSerializeRich, _bdSetBoardShare, _bdSetSaveState, _bdSetTool, _bdShareLink, _bdShowFormatBar, _bdStartTextEdit, _bdSyncSharePopover, _bdSyncUndoButtons, _bdTextHtml, _bdUndo, _bdUrlForPath, _bdValidVid, _bdVideoInnerHtml, _bdZoomAt, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard, renderBoardEditor, renderBoards, renderSharedBoard };
