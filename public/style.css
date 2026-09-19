@@ -3543,6 +3543,26 @@ a.mk-platform-link:hover {
   cursor: text;
 }
 
+/* Where one idea ends. The rule under an entry's last line is drawn in
+   ink (the same 2px, in the same place, as the focus cue on a line), so a
+   title that wraps onto a second rule reads as one idea and the next idea
+   starts under the ink. Hovering or focusing an entry washes the whole of
+   it faintly, so its extent shows before anything is clicked. Both are
+   backgrounds, not borders: an entry stays a whole number of rules tall. */
+.pad-entry {
+  background-image: linear-gradient(var(--border), var(--border));
+  background-size: 100% 2px;
+  background-position: left 0 bottom 3px;
+  background-repeat: no-repeat;
+  transition: background-color 0.12s var(--ease);
+}
+.pad-entry:hover,
+.pad-entry:focus-within,
+.pad-entry.editing { background-color: color-mix(in srgb, var(--text-primary) 4%, transparent); }
+.pad-entry.archived { background-image: linear-gradient(var(--bg-4), var(--bg-4)); }
+.pad-entry.archived:hover,
+.pad-entry.archived:focus-within { background-color: transparent; }
+
 /* Inline edit: the same line, now a textarea that grows in whole rules */
 .pad-edit-title, .pad-edit-notes {
   display: block;

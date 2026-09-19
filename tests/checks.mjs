@@ -305,6 +305,7 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   const RULE = parseFloat(getComputedStyle(document.querySelector('#view-ideas .ideas-container')).getPropertyValue('--rule'));
   const onRules = () => [...document.querySelectorAll('#view-ideas .pad-capture, #view-ideas .pad-entry')].every((el) => Math.abs(el.getBoundingClientRect().height % RULE) < 0.5);
   T('every line is a whole number of rules tall (multi-line notes included)', RULE > 0 && onRules(), JSON.stringify({ RULE, hs: [...document.querySelectorAll('#view-ideas .pad-capture, #view-ideas .pad-entry')].map(e => e.getBoundingClientRect().height) }));
+  T('each idea ends on an ink rule, so a wrapped title reads as one idea and the next starts under the ink', activeEntries().length > 0 && activeEntries().every((e) => { const cs = getComputedStyle(e); return cs.backgroundImage !== 'none' && cs.backgroundSize === '100% 2px' && cs.backgroundRepeat === 'no-repeat'; }));
   // Capture line: Enter adds through the store, clears, keeps the caret
   const cap = document.getElementById('ideaCapture'); cap.value = 'Fresh';
   cap.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
