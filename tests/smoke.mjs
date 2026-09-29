@@ -104,6 +104,70 @@ for (const state of ['populated', 'empty']) {
       }
     }
 
+    if (state === 'populated') {
+      // Public shared board (#bshared/TOKEN): fills the window, fits its
+      // items to this screen, shows no app chrome, and hands the app back.
+      currentView = 'shared-board';
+      await page.evaluate(() => {
+        const st = __arkives.state;
+        window.__realSb = st._sb;
+        const board = { id: 'SB1', title: 'Campaign <b>board</b>', share_mode: 'view', user_id: 'U1', view_x: 900, view_y: -700, view_zoom: 1.4 };
+        const items = [
+          { id: 'i1', board_id: 'SB1', kind: 'note', x: -400, y: 200, w: 300, h: 200, z: 1, content: { text: '', color: 'yellow' } },
+          { id: 'i2', board_id: 'SB1', kind: 'text', x: 300, y: 300, w: 300, h: 40, z: 2, content: { text: 'Hero concept', size: 'body' } },
+          { id: 'i3', board_id: 'SB1', kind: 'image', x: 700, y: 900, w: 300, h: 300, z: 3, content: { path: 'U1/SB1/missing.webp' } },
+        ];
+        // Only the two calls a shared board makes are stubbed; everything
+        // else (a fetch another view still has in flight) reaches the real client
+        st._sb = Object.create(window.__realSb || null, {
+          rpc: { value: async (name) => ({ data: name === 'get_shared_board' ? [board] : items }) },
+          storage: { value: { from: () => ({ download: async () => ({ data: null, error: { message: 'Object not found' } }) }) } },
+          channel: { value: undefined },
+        });
+        location.hash = 'bshared/tok'; __arkives.navigate('bshared/tok');
+      });
+      await page.waitForTimeout(500);
+      const sh = await page.evaluate(() => {
+        const vpEl = document.getElementById('bdViewport');
+        const r = vpEl ? vpEl.getBoundingClientRect() : { left: 0, right: 0, top: 0, bottom: 0, width: 0 };
+        const rects = [...document.querySelectorAll('.bd-item')].map(e => e.getBoundingClientRect());
+        const tb = document.querySelector('.board-topbar');
+        const shown = (sel) => { const e = document.querySelector(sel); return !!e && getComputedStyle(e).display !== 'none'; };
+        return {
+          vw: window.innerWidth, vh: window.innerHeight, w: Math.round(r.width), bottom: Math.round(r.bottom),
+          items: rects.length,
+          inside: rects.filter(b => b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1).length,
+          topbarClipped: !!tb && [...tb.children].some(c => getComputedStyle(c).display !== 'none' && c.getBoundingClientRect().right > window.innerWidth + 1),
+          chrome: ['#sidebar', '.mobile-header', '#tabbar'].filter(shown),
+          title: document.title, injected: !!document.querySelector('.bd-title b'),
+          missing: document.querySelectorAll('.bd-media-missing').length,
+          placeholder: getComputedStyle(document.querySelector('.bd-kind-note .bd-text-content'), '::before').content,
+          scrollX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+        };
+      });
+      if (sh.w < sh.vw - 2) flagged.push(`shared board is ${sh.w}px wide in a ${sh.vw}px window`);
+      if (sh.bottom < sh.vh - 2) flagged.push(`shared board stops at ${sh.bottom}px in a ${sh.vh}px window`);
+      if (sh.items !== 3 || sh.inside !== 3) flagged.push(`shared board opens with ${sh.inside}/${sh.items} items in view`);
+      if (sh.topbarClipped) flagged.push('shared board top bar runs off the screen');
+      if (sh.chrome.length) flagged.push(`shared board shows app chrome: ${sh.chrome.join(', ')}`);
+      if (sh.title !== 'Campaign <b>board</b> · Arkives') flagged.push(`shared board tab title is "${sh.title}"`);
+      if (sh.injected) flagged.push('shared board title rendered as HTML');
+      if (sh.missing !== 1) flagged.push('an image that failed to load is not marked unavailable');
+      if (!/none|normal/.test(sh.placeholder)) flagged.push(`empty sticky shows a placeholder to viewers (${sh.placeholder})`);
+      if (sh.scrollX) flagged.push('shared board: horizontal page overflow');
+      await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-shared-board.png`), animations: 'disabled' });
+      const back = await page.evaluate(() => {
+        __arkives.state._sb = window.__realSb;
+        location.hash = 'dashboard'; __arkives.navigate('dashboard');
+        const sb = document.getElementById('sidebar');
+        return { cls: document.body.className, sidebar: getComputedStyle(sb).display, title: document.title,
+                 mainW: Math.round(document.querySelector('.main').getBoundingClientRect().width), vw: window.innerWidth };
+      });
+      if (/share-/.test(back.cls)) flagged.push(`shared chrome left on after leaving (${back.cls})`);
+      if (back.sidebar === 'none') flagged.push('sidebar still hidden after leaving a shared board');
+      if (/Campaign/.test(back.title)) flagged.push('tab title not restored after leaving a shared board');
+      if (vp.name === 'desktop' && back.mainW > back.vw - 200) flagged.push(`app layout not restored after a shared board (main ${back.mainW}px)`);
+    }
     if (state === 'populated' && vp.name === 'phone') {
       // Script editor at phone width: rows stack as cards, header hidden
       currentView = 'script-editor-phone';

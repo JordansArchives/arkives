@@ -290,7 +290,7 @@ Add `https://arkives.xyz` to the allowed redirect URLs in:
 
 ## Fresh Install (schema only, no personal data)
 
-Run in the Supabase SQL Editor, in this order: `001` → `020` → `005` → `007` → `008` → `009` → `010` → `011` → `012` → `013` → `015` → `016` → `017` → `018` → `019` → `021` → `022`. (`020` early because `001` leaves `profiles.id` without a default; on a fresh database `006` is redundant with `009`.)
+Run in the Supabase SQL Editor, in this order: `001` → `020` → `005` → `007` → `008` → `009` → `010` → `011` → `012` → `013` → `015` → `016` → `017` → `018` → `019` → `021` → `022` → `023`. (`020` early because `001` leaves `profiles.id` without a default; on a fresh database `006` is redundant with `009`.)
 Never run `003`, `004`, or the `full_migration` files on a fresh install: they contain Jordan's personal business data.
 
 ## Multi-Tenancy Rules (added 2026-07-13)
@@ -320,6 +320,6 @@ CI (`.github/workflows/ci.yml`) runs lint + test on every push and PR. Screensho
 
 **Security headers.** `public/_headers` ships an enforced Content-Security-Policy with no `'unsafe-inline'` for scripts (switched from report-only on 2026-09-04 once the last inline handler was gone). The test server sends the same headers, so the smoke run exercises the app under the real policy, and `tests/checks.mjs` fails on any `on*=` attribute or inline `<script>` in `public/`, on any `data-action` name that has no registered handler, and on any constant `data-args` that is not a JSON array.
 
-**Migrations still run by hand** in the Supabase SQL editor. `migrations/020_share_hardening.sql`, `021_script_media.sql` and `022_ideas.sql` must be applied (each is idempotent and safe before or after deploy; the Ideas view explains itself until 022 exists). `introspect.sql` at the repo root is a read-only schema dump for checking drift.
+**Migrations still run by hand** in the Supabase SQL editor. `migrations/020_share_hardening.sql`, `021_script_media.sql`, `022_ideas.sql` and `023_shared_board_media_fix.sql` must be applied (each is idempotent and safe before or after deploy; the Ideas view explains itself until 022 exists, and images on a shared board read "Image unavailable" to logged-out visitors until 023 exists). `introspect.sql` at the repo root is a read-only schema dump for checking drift.
 
 See `ARCHITECTURE-AUDIT.md` for the roadmap this tooling belongs to.

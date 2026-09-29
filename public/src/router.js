@@ -56,6 +56,25 @@ const EDITORS = {
 function unmountBoardEditor() { _bdCommitActiveText(); _bdFlushPendingSaves(); _bdLiveLeave(); }
 const SKELETON = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:200px;border-radius:12px"></div></div>';
 
+/* Public shared links (#shared/TOKEN, #bshared/TOKEN) have no sidebar. The
+   shell is a two-column grid, so hiding the sidebar alone drops the page
+   into the sidebar's 240px track: `share-open` collapses the grid to one
+   column, `share-board` makes a shared board fill the window. Every route
+   passes through here, so leaving a shared link always restores the app. */
+const _baseTitle = document.title;
+function _setShareChrome(view) {
+  const share = /^(bshared|shared)\//.test(view);
+  document.body.classList.toggle('share-open', share);
+  document.body.classList.toggle('share-board', view.startsWith('bshared/'));
+  if (!share) {
+    const sb = document.getElementById('sidebar');
+    if (sb) sb.style.display = '';
+    const mc = document.querySelector('.main') || document.getElementById('mainContent');
+    if (mc) mc.style.marginLeft = '';
+    if (document.title !== _baseTitle) document.title = _baseTitle;
+  }
+}
+
 let _current = null;   // { key, def, sub, unsubs }
 let _navToken = 0;     // a navigate that finishes loading after a newer one started paints nothing
 
@@ -77,6 +96,7 @@ function currentRoute() { return _current ? { key: _current.key, sub: _current.s
 
 async function navigate(view) {
   const token = ++_navToken;
+  _setShareChrome(view);
   /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN, bshared/TOKEN */
   if (/^(bshared|board|script|shared)\//.test(view)) _leave(view);
   if (view.startsWith('bshared/')) {

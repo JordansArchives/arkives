@@ -32,6 +32,21 @@ S('no inline event handlers in public/', inlineHits.length === 0, inlineHits.joi
 S('no inline <script> blocks in index.html', !/<script(?![^>]*\ssrc=)[^>]*>/i.test(fs.readFileSync(ROOT + 'index.html', 'utf8')));
 S('every constant data-*-args attribute is a JSON array', badArgs.length === 0, badArgs.join(' | '));
 S('action names are plain identifiers', [...actionNames].every(n => /^[A-Za-z_$][\w$]*$/.test(n)), [...actionNames].filter(n => !/^[A-Za-z_$][\w$]*$/.test(n)).join(', '));
+// A storage policy's subquery runs as the caller. boards is owner-only, so a
+// shared-board policy that reads it directly refuses every visitor. The last
+// migration to define each policy must go through the SECURITY DEFINER helper.
+{
+  const MIG = ROOT + '../migrations/';
+  const latest = {};
+  for (const f of fs.readdirSync(MIG).filter((n) => /^\d{3}_.*\.sql$/.test(n)).sort()) {
+    const sql = fs.readFileSync(MIG + f, 'utf8');
+    for (const m of sql.matchAll(/CREATE POLICY "(board_media_\w+_shared)"[\s\S]*?;/g)) latest[m[1]] = { file: f, body: m[0] };
+  }
+  const names = Object.keys(latest);
+  const direct = names.filter((n) => /FROM\s+(public\.)?boards\b/i.test(latest[n].body));
+  S('shared-board storage policies exist for read, write and delete', names.length === 3, names.join(', '));
+  S('shared-board storage policies do not query boards as the visitor', direct.length === 0, direct.map((n) => n + ' in ' + latest[n].file).join(', '));
+}
 const html = fs.readFileSync(ROOT + 'index.html', 'utf8');
 const preloads = [...html.matchAll(/<link rel="modulepreload" href="([^"]+)">/g)].map((m) => m[1]);
 const moduleFiles = SRC.filter((f) => f.startsWith('src/') && f !== 'src/main.js');

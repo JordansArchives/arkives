@@ -138,6 +138,7 @@ state._bdPenWidth = 3;
 state._bdPenStab = 0; // pen stabilization level (index into BD_PEN_STAB)
 state._bdPenFollow = null; // smoothed pen position during a stroke
 state._bdSignedUrls = {}; // storage path -> signed URL
+state._bdImgFailed = {}; // storage path -> true when a shared session could not load the image
 state._bdPtr = null; // active pointer gesture
 state._bdPenPts = null; // in-progress stroke points (board coords)
 state._bdPendingSaves = {}; // item id -> {updates, timer}

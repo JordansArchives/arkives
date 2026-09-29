@@ -138,6 +138,7 @@ async function renderBoardEditor(boardId) {
   state._bdTool = 'select';
   state._bdSelectedId = null;
   state._bdSignedUrls = {};
+  state._bdImgFailed = {};
   state._bdPtr = null; state._bdPenPts = null;
 
   state._bdItems = await db.sbFetchBoardItems(boardId);
@@ -402,7 +403,7 @@ function _bdZoomFit() {
     maxX = Math.max(maxX, it.x + it.w); maxY = Math.max(maxY, it.y + it.h);
   });
   const vp = document.getElementById('bdViewport').getBoundingClientRect();
-  const pad = 60;
+  const pad = vp.width < 600 ? 20 : 60; // a phone cannot spare 120px of margin
   const z = Math.min(BD_MAX_ZOOM, Math.max(BD_MIN_ZOOM, Math.min(
     (vp.width - pad * 2) / Math.max(1, maxX - minX),
     (vp.height - pad * 2) / Math.max(1, maxY - minY), 1.5)));
@@ -451,7 +452,9 @@ function _bdItemEl(it) {
     el.innerHTML =
       '<div class="bd-media-frame">' + (url
         ? '<img src="' + _esc(url) + '" draggable="false" alt="">'
-        : '<div class="bd-media-loading">…</div>') + '</div>' +
+        : (state._bdImgFailed[c.path]
+          ? '<div class="bd-media-loading bd-media-missing">Image unavailable</div>'
+          : '<div class="bd-media-loading">…</div>')) + '</div>' +
       _bdCaptionHtml(c.caption) + _bdHandlesHtml(it);
   } else if (it.kind === 'video') {
     el.style.height = it.h + 'px';
@@ -743,7 +746,7 @@ async function _bdResolveSignedUrls() {
   if (state._bdSharedToken || state._bdReadOnly) {
     await Promise.all(paths.map(async function(p) {
       const url = await _bdUrlForPath(p);
-      if (url) state._bdSignedUrls[p] = url;
+      if (url) state._bdSignedUrls[p] = url; else state._bdImgFailed[p] = true;
     }));
   } else {
     const res = await state._sb.storage.from('board-media').createSignedUrls(paths, 60 * 60 * 12);
@@ -753,7 +756,7 @@ async function _bdResolveSignedUrls() {
     });
   }
   state._bdItems.forEach(function(it) {
-    if (it.kind === 'image' && it.content && state._bdSignedUrls[it.content.path]) _bdRefreshItem(it.id);
+    if (it.kind === 'image' && it.content && (state._bdSignedUrls[it.content.path] || state._bdImgFailed[it.content.path])) _bdRefreshItem(it.id);
   });
 }
 
@@ -1535,6 +1538,7 @@ async function renderSharedBoard(token, mode) {
   state._bdSharedOwnerId = null;
   state._bdSelectedId = null;
   state._bdSignedUrls = {};
+  state._bdImgFailed = {};
   state._bdPtr = null;
   state._bdUndoStack = []; state._bdRedoStack = [];
   state._bdEditingEl = null;
@@ -1573,7 +1577,8 @@ async function renderSharedBoard(token, mode) {
     state._bdBoard = { id: board.id, title: board.title, share_mode: 'edit', share_token: null,
                  view_x: board.view_x, view_y: board.view_y, view_zoom: board.view_zoom };
     container.innerHTML = _bdEditorShellHtml(true);
-    _bdApplyView();
+    document.title = _bdSharedTitle(board.title);
+    _bdZoomFit(); // the saved viewport is the owner's screen, not this one
     const editPlane = document.getElementById('bdPlane');
     state._bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => editPlane.appendChild(_bdItemEl(it)));
     _bdBindEditor();
@@ -1586,7 +1591,7 @@ async function renderSharedBoard(token, mode) {
     '<div class="board-editor bd-ro">' +
       '<div class="board-topbar">' +
         '<div class="bd-title" style="cursor:default">' + _escHtml(board.title) + '</div>' +
-        '<span class="bd-shared-tag">Shared board · view only</span>' +
+        '<span class="bd-shared-tag"><span class="bd-tag-long">Shared board · view only</span><span class="bd-tag-short">View only</span></span>' +
         '<div class="bd-zoom" style="margin-left:auto">' +
           '<button data-action="_bdZoomBtn" data-args="[-1]" title="Zoom out">−</button>' +
           '<button class="bd-zoom-pct" id="bdZoomPct" data-action="_bdZoomFit" title="Fit to items">' + Math.round(state._bdView.z * 100) + '%</button>' +
@@ -1601,7 +1606,8 @@ async function renderSharedBoard(token, mode) {
   // Read-only sessions still hold the board row so live ops can be matched
   state._bdBoard = { id: board.id, title: board.title, share_mode: board.share_mode, share_token: null,
                view_x: board.view_x, view_y: board.view_y, view_zoom: board.view_zoom };
-  _bdApplyView();
+  document.title = _bdSharedTitle(board.title);
+  _bdZoomFit(); // the saved viewport is the owner's screen, not this one
   const plane = document.getElementById('bdPlane');
   state._bdItems.slice().sort((a, b) => (a.z || 1) - (b.z || 1)).forEach(it => plane.appendChild(_bdItemEl(it)));
   _bdBindShared();
@@ -1670,14 +1676,23 @@ async function _bdResolveSharedImages(loadToken) {
   if (!state._sb) return;
   const imgs = state._bdItems.filter(i => i.kind === 'image' && i.content && i.content.path);
   await Promise.all(imgs.map(async function(it) {
+    let blob = null;
     try {
       const res = await state._sb.storage.from('board-media').download(it.content.path);
-      if (res.data && loadToken === state._bdLoadToken) {
-        state._bdSignedUrls[it.content.path] = URL.createObjectURL(res.data);
-        _bdRefreshItem(it.id);
-      }
+      blob = res && res.data;
     } catch (e) { console.warn('Shared image load failed', e); }
+    if (loadToken !== state._bdLoadToken) return;
+    // A failed download settles into a quiet label, never an endless "…"
+    if (blob) state._bdSignedUrls[it.content.path] = URL.createObjectURL(blob);
+    else state._bdImgFailed[it.content.path] = true;
+    _bdRefreshItem(it.id);
   }));
+}
+
+// Browser tab and history entry for a shared link: the board's own name
+function _bdSharedTitle(title) {
+  const t = String(title || '').trim();
+  return (t ? t + ' · ' : '') + 'Arkives';
 }
 
 /* ---- SIDE EFFECTS ---- Registered from main.js in a fixed order, not at import time. */

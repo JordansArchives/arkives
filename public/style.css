@@ -5029,8 +5029,48 @@ a.mk-platform-link:hover {
 }
 .bd-ro .board-viewport { cursor: grab; }
 .bd-ro .bd-caption.empty { display: none !important; }
+/* An empty sticky is a backing card to a viewer, not a prompt to type */
+.bd-ro .bd-text-content:empty::before { content: none; }
 .bd-ro .bd-item { cursor: default; }
 .bd-ro .bd-text-content, .bd-ro .bd-caption { cursor: default; }
+
+.bd-tag-short { display: none; }
+.bd-media-missing { font-size: 12px; text-align: center; padding: 8px; }
+
+/* Public shared links (#shared/…, #bshared/…): no sidebar, so the shell is
+   one column. Without this the page lands in the sidebar's 240px track. */
+body.share-open .dashboard { grid-template-columns: 1fr; }
+body.share-open .sidebar,
+body.share-open .sidebar-overlay { display: none !important; }
+
+/* A shared board fills the window edge to edge, with no app chrome */
+body.share-board .dashboard { grid-template-rows: 1fr; }
+body.share-board .mobile-header,
+body.share-board .tabbar { display: none !important; }
+body.share-board .main { padding: 0; overflow: hidden; }
+body.share-board .board-editor {
+  height: 100vh;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+}
+body.share-board .board-topbar {
+  padding: calc(10px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 10px calc(16px + env(safe-area-inset-left, 0px));
+}
+body.share-board .bd-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.share-board .bd-shared-tag,
+body.share-board .bd-zoom { flex-shrink: 0; }
+@media (max-width: 600px) {
+  body.share-board .board-topbar { gap: 8px; }
+  body.share-board .bd-tag-long { display: none; }
+  body.share-board .bd-tag-short { display: inline; }
+}
 
 /* Shared share-popover bits (Boards + Scripts) */
 .script-editor-topbar { position: relative; }
