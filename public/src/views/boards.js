@@ -319,6 +319,7 @@ async function _bdApplyRemoteOp(op) {
     const el = document.querySelector('.bd-item[data-id="' + op.id + '"]');
     if (el) el.remove();
     if (state._bdSelectedId === op.id) state._bdSelectedId = null;
+    _bdQueueOnNote();
     return;
   }
   if (op.type === 'upsert' && op.item && op.item.id) {
@@ -436,6 +437,7 @@ function _bdItemEl(it) {
   el.style.width = it.w + 'px';
   el.style.zIndex = it.z || 1;
   const c = it.content || {};
+  _bdQueueOnNote();
 
   const sizeCls = ' bd-ts-' + (BD_TEXT_SIZES.indexOf(c.size) >= 0 ? c.size : 'body') + ' bd-ta-' + _bdAlignOf(c);
   if (it.kind === 'note') {
@@ -465,7 +467,7 @@ function _bdItemEl(it) {
     const pts = c.points || [];
     el.innerHTML =
       '<svg width="100%" height="100%" viewBox="0 0 ' + Math.max(1, it.w) + ' ' + Math.max(1, it.h) + '" style="overflow:visible;display:block">' +
-      '<path d="' + _bdPathD(pts) + '" fill="none" stroke="' + (BD_PEN_COLORS[c.color] || BD_PEN_COLORS.ink) + '" stroke-width="' + _bdNum(c.width, 3, 1, 40) + '" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+      '<path' + (BD_PEN_COLORS[c.color] && c.color !== 'ink' ? '' : ' class="bd-ink"') + ' d="' + _bdPathD(pts) + '" fill="none" stroke="' + (BD_PEN_COLORS[c.color] || BD_PEN_COLORS.ink) + '" stroke-width="' + _bdNum(c.width, 3, 1, 40) + '" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
       _bdHandlesHtml(it);
   }
   return el;
@@ -496,6 +498,27 @@ function _bdVideoInnerHtml(itemId, c) {
   let domain = '';
   try { domain = new URL(c.url).hostname.replace('www.', ''); } catch (e) { domain = c.url; }
   return '<div class="bd-link-card"><span class="bd-link-icon">' + SKETCHY_ICONS.link + '</span><span class="bd-link-domain">' + _escHtml(domain) + '</span></div>';
+}
+
+// A sticky keeps its paper colour in both themes, so a text block sitting on
+// one takes ink instead of the theme's text colour (which is light in dark
+// mode and unreadable on yellow or white). Decided by where the block's
+// first line sits; queued so one pass covers a whole render or gesture.
+function _bdQueueOnNote() {
+  if (state._bdOnNoteQueued) return;
+  state._bdOnNoteQueued = true;
+  queueMicrotask(function() { state._bdOnNoteQueued = false; _bdSyncOnNote(); });
+}
+function _bdSyncOnNote() {
+  const items = state._bdItems || [];
+  const notes = items.filter(i => i.kind === 'note');
+  items.forEach(function(it) {
+    if (it.kind !== 'text') return;
+    const el = document.querySelector('.bd-item[data-id="' + it.id + '"]');
+    if (!el) return;
+    const px = it.x + it.w / 2, py = it.y + 14;
+    el.classList.toggle('bd-on-note', notes.some(n => px >= n.x && px <= n.x + n.w && py >= n.y && py <= n.y + n.h));
+  });
 }
 
 function _bdRefreshItem(id) {
@@ -684,6 +707,7 @@ async function _bdRemoveItemLocal(id) {
   const el = document.querySelector('.bd-item[data-id="' + id + '"]');
   if (el) el.remove();
   if (state._bdSelectedId === id) state._bdSelectedId = null;
+  _bdQueueOnNote();
   await db.sbDeleteBoardItem(id);
   _bdLiveSend({ board: state._bdBoard && state._bdBoard.id, type: 'delete', id: id });
   if (it.kind === 'image' && it.content && it.content.path) state._bdOrphanPaths.push(it.content.path);
@@ -1198,7 +1222,7 @@ function _bdBindEditor() {
       state._bdPenFollow = [p.x, p.y]; // smoothed pen position (streamline)
       state._bdPtr = { mode: 'pen' };
       const live = document.getElementById('bdPenLive');
-      live.innerHTML = '<path d="" fill="none" stroke="' + BD_PEN_COLORS[state._bdPenColor] + '" stroke-width="' + state._bdPenWidth + '" stroke-linecap="round" stroke-linejoin="round"/>';
+      live.innerHTML = '<path' + (state._bdPenColor === 'ink' ? ' class="bd-ink"' : '') + ' d="" fill="none" stroke="' + BD_PEN_COLORS[state._bdPenColor] + '" stroke-width="' + state._bdPenWidth + '" stroke-linecap="round" stroke-linejoin="round"/>';
       _bdCapture(vp, e);
       return;
     }
@@ -1280,6 +1304,7 @@ function _bdBindEditor() {
   });
 
   function endGesture(e) {
+    _bdQueueOnNote();
     if (!state._bdPtr) return;
     const g = state._bdPtr; state._bdPtr = null;
     if (g.mode === 'pen' && state._bdPenPts) {

@@ -4684,7 +4684,10 @@ a.mk-platform-link:hover {
   cursor: default;
   min-height: 22px;
 }
+.bd-kind-text.bd-on-note .bd-text-content { color: #1A1714; }
+.bd-kind-draw path.bd-ink, #bdPenLive path.bd-ink { stroke: var(--text-primary); }
 .bd-kind-text .bd-text-content[contenteditable="true"] { cursor: text; background: var(--bg-1); box-shadow: 0 0 0 4px var(--bg-1); }
+.bd-kind-text.bd-on-note .bd-text-content[contenteditable="true"] { color: var(--text-primary); }
 .bd-text-title {
   font-family: var(--font-display) !important;
   font-size: 28px !important;

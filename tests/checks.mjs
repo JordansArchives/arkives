@@ -253,6 +253,27 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   T('re-clicking the active alignment is a no-op', __arkives.state._bdUndoStack.length === undoBefore + 1);
   n1Body.blur(); __arkives._bdHideFormatBar();
   T('alignment survives a re-render', document.querySelector('.bd-item[data-id="n1"] .bd-text-content').classList.contains('bd-ta-right'));
+  // Text laid over a sticky takes ink in both themes; text on the canvas and
+  // the ink pen follow the theme (both were unreadable in dark mode).
+  {
+    const mk = (o) => { __arkives.state._bdItems.push(o); document.getElementById('bdPlane').appendChild(__arkives._bdItemEl(o)); };
+    mk({ id: 't-on', board_id: 'B1', kind: 'text', x: 10, y: 10, w: 60, h: 24, z: 5, content: { text: 'on the sticky' } });
+    mk({ id: 't-off', board_id: 'B1', kind: 'text', x: 900, y: 900, w: 60, h: 24, z: 5, content: { text: 'on the canvas' } });
+    mk({ id: 'd-ink', board_id: 'B1', kind: 'draw', x: 600, y: 600, w: 50, h: 50, z: 5, content: { color: 'ink', width: 3, points: [[0, 0], [50, 50]] } });
+    mk({ id: 'd-red', board_id: 'B1', kind: 'draw', x: 700, y: 600, w: 50, h: 50, z: 5, content: { color: 'red', width: 3, points: [[0, 0], [50, 50]] } });
+    await new Promise((r) => setTimeout(r, 0));
+    const prevTheme = document.documentElement.getAttribute('data-theme');
+    document.documentElement.setAttribute('data-theme', 'dark');
+    const col = (sel, prop) => getComputedStyle(document.querySelector(sel))[prop];
+    const ink = 'rgb(26, 23, 20)';
+    T('dark mode: text on a sticky stays ink', col('.bd-item[data-id="t-on"] .bd-text-content', 'color') === ink, col('.bd-item[data-id="t-on"] .bd-text-content', 'color'));
+    T('dark mode: text on the canvas follows the theme', col('.bd-item[data-id="t-off"] .bd-text-content', 'color') !== ink);
+    T('dark mode: ink pen strokes follow the theme', col('.bd-item[data-id="d-ink"] path', 'stroke') !== ink, col('.bd-item[data-id="d-ink"] path', 'stroke'));
+    T('dark mode: coloured pen strokes keep their colour', col('.bd-item[data-id="d-red"] path', 'stroke') === 'rgb(199, 53, 57)');
+    document.documentElement.setAttribute('data-theme', prevTheme || 'light');
+    T('light mode: ink pen strokes are ink', col('.bd-item[data-id="d-ink"] path', 'stroke') === ink);
+    ['t-on', 't-off', 'd-ink', 'd-red'].forEach((id) => { __arkives.state._bdItems = __arkives.state._bdItems.filter(i => i.id !== id); const e = document.querySelector('.bd-item[data-id="' + id + '"]'); if (e) e.remove(); });
+  }
   T('unknown alignment renders as left', __arkives._bdAlignOf({ align: 'justify" onload="x' }) === 'left' && __arkives._bdItemEl({ id: 'z', kind: 'text', x: 0, y: 0, w: 10, h: 10, z: 1, content: { text: 'a', align: '<x>' } }).querySelector('.bd-text-content').classList.contains('bd-ta-left'));
   // Pen stabilization: the follower closes a fraction of the gap; off = raw
   T('stabilization off follows the raw pointer', JSON.stringify(__arkives._bdPenStep([0, 0], 10, 4, 0)) === '[10,4]');
