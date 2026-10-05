@@ -2036,6 +2036,103 @@ a.mk-platform-link:hover {
 .script-scene-row:hover .script-row-action { opacity: 1; }
 .script-row-action:hover { color: var(--accent); }
 
+/* --- Scene blocks + tag pills (025) ---
+   A scene cell stacks shot and transition blocks. Each block has a row
+   of pills (shot / angle / light, or the transition type) above its
+   text. Colour is per kind, from the badge palette: shot blue, angle
+   purple, light orange, transition teal. */
+.sc-blocks { display: flex; flex-direction: column; width: 100%; }
+.sc-block { position: relative; padding: 2px 0 6px; }
+.sc-block + .sc-block { border-top: 1px dashed var(--bg-3); margin-top: 4px; padding-top: 8px; }
+.sc-block .script-cell-textarea { min-height: 44px; }
+.sc-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 2px 6px 4px; }
+.sc-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px 2px 7px;
+  font-family: var(--font-body); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.4px; text-transform: uppercase; line-height: 1.5;
+  border: 1.5px solid currentColor; border-radius: 2px;
+  background: var(--bg-1); color: var(--text-secondary);
+  white-space: nowrap; cursor: pointer;
+}
+button.sc-tag { appearance: none; }
+.sc-tag-k { font-weight: 500; opacity: 0.55; text-transform: none; letter-spacing: 0; }
+.sc-tag-shot       { color: var(--blue);   background: var(--blue-dim); }
+.sc-tag-angle      { color: var(--purple); background: var(--purple-dim); }
+.sc-tag-light      { color: var(--orange); background: var(--orange-dim); }
+.sc-tag-transition { color: var(--teal);   background: var(--teal-dim); }
+.sc-tag-x { opacity: 0.5; margin-left: 2px; font-weight: 500; font-size: 13px; line-height: 1; }
+.sc-tag-x:hover { opacity: 1; }
+/* Unset pills: dashed ghosts that only show on hover / focus within the row */
+.sc-tag-ghost {
+  color: var(--text-muted); background: transparent;
+  border-style: dashed; border-color: var(--bg-4);
+  font-weight: 500; letter-spacing: 0.2px; text-transform: none;
+}
+.sc-tag-ghost::before { content: '+'; font-weight: 700; margin-right: -2px; }
+.sc-tag-ghost.sc-tag-transition { color: var(--teal); }
+.sc-tag-ghost:hover, .sc-tag-ghost:focus-visible { color: var(--text-primary); border-color: var(--border); }
+.script-scene-row .sc-tag-ghost { opacity: 0; transition: opacity 0.15s; }
+.script-scene-row:hover .sc-tag-ghost, .script-scene-row:focus-within .sc-tag-ghost, .sc-tag-ghost:focus-visible { opacity: 0.85; }
+.sc-block-add { display: flex; gap: 6px; padding: 4px 6px 2px; }
+/* Per-block tools (move / remove) sit at the right end of the pill row */
+.sc-block-tools { margin-left: auto; display: inline-flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+.sc-block:hover .sc-block-tools, .sc-block:focus-within .sc-block-tools { opacity: 1; }
+.sc-block-tool {
+  width: 22px; height: 22px; border: none; background: none; cursor: pointer;
+  color: var(--text-faint); display: inline-flex; align-items: center; justify-content: center;
+  font-size: 15px; line-height: 1; border-radius: 2px;
+}
+.sc-block-tool svg { width: 14px; height: 14px; }
+.sc-block-tool:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-2); }
+.sc-block-tool:disabled { opacity: 0.3; cursor: default; }
+.sc-block-x:hover:not(:disabled) { color: var(--accent); }
+#view-shared-script .sc-tag-ghost, #view-shared-script .sc-block-tools { opacity: 1; }
+
+/* Tag picker: body-mounted; popover on wide screens, sheet on the phone */
+.sc-pick-overlay { position: fixed; inset: 0; z-index: 3000; }
+.sc-pick {
+  position: fixed; width: 324px; max-width: calc(100vw - 16px);
+  background: var(--bg-1); border: 2px solid var(--border); box-shadow: var(--shadow-md);
+  padding: 8px;
+}
+.sc-pick-h {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+  padding: 2px 4px 8px;
+  font-family: var(--font-display); font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-muted);
+}
+.sc-pick-h span:last-child { font-family: var(--font-body); font-size: 10px; letter-spacing: 0.2px; text-transform: none; }
+.sc-pick-grid { display: flex; flex-wrap: wrap; gap: 6px; max-height: 40vh; overflow: auto; }
+.sc-pick-grid .sc-tag { background: transparent; color: var(--text-secondary); border-color: var(--bg-3); }
+.sc-pick-grid .sc-tag:hover { border-color: currentColor; }
+.sc-pick-shot .sc-pick-grid .sc-tag.on       { color: var(--blue);   background: var(--blue-dim);   border-color: currentColor; }
+.sc-pick-angle .sc-pick-grid .sc-tag.on      { color: var(--purple); background: var(--purple-dim); border-color: currentColor; }
+.sc-pick-light .sc-pick-grid .sc-tag.on      { color: var(--orange); background: var(--orange-dim); border-color: currentColor; }
+.sc-pick-transition .sc-pick-grid .sc-tag.on { color: var(--teal);   background: var(--teal-dim);   border-color: currentColor; }
+.sc-pick-custom { margin-top: 8px; border-top: 1px solid var(--bg-3); padding-top: 8px; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--text-muted); }
+.sc-pick-custom input { flex: 1; min-width: 0; border: 1.5px solid var(--bg-3); background: var(--bg-0); padding: 5px 8px; font: inherit; font-size: 13px; color: var(--text-primary); border-radius: 2px; }
+.sc-pick-custom input:focus { border-color: var(--border); outline: none; }
+.sc-pick-cancel { display: none; }
+@media (max-width: 640px) {
+  .sc-pick-overlay { background: rgba(26, 23, 20, 0.45); display: flex; align-items: flex-end; justify-content: center; }
+  .sc-pick {
+    position: static; width: 100%; max-width: 480px;
+    border-bottom: none; border-radius: 14px 14px 0 0; box-shadow: var(--shadow-lg);
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .sc-pick-grid .sc-tag { min-height: 36px; padding: 6px 12px; font-size: 12px; }
+  .sc-pick-custom input { font-size: 16px; }
+  .sc-pick-cancel { display: block; width: 100%; margin-top: 8px; padding: 12px; background: none; border: none; color: var(--text-secondary); font: inherit; font-size: 15px; }
+  /* Ghost pills are always visible on touch: there is no hover */
+  .script-scene-row .sc-tag-ghost, .sc-block-tools { opacity: 0.85; }
+}
+
+/* Thumbnails: a vertical stack, upload affordance shrinks once one exists */
+.sc-thumbs { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 170px; align-items: stretch; }
+.sc-thumbs .script-thumb-preview { max-width: none; }
+.script-thumb-upload.sc-thumb-more { flex-direction: row; gap: 6px; padding: 8px 10px; }
+.script-thumb-upload.sc-thumb-more svg { width: 16px; height: 16px; }
+
 /* Add scene button */
 .script-add-scene-btn {
   display: block;

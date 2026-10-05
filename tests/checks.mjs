@@ -139,6 +139,68 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   T('typing updates in-memory scenes and the dirty set', __arkives.state._currentScenes[0].script_text === 'typed' && __arkives.state._sceneDirty.a?.script_text === 'typed');
   clearTimeout(__arkives.state._scriptAutoSaveTimer); __arkives.state._sceneDirty = {};
 
+  // Scene blocks (025): legacy fallback, pills, picker, add/move/delete,
+  // the scene_description mirror, and the thumbnail list
+  {
+    const PX = 'data:image/jpeg;base64,/9j/4AAQSkZJRg==';
+    // focus needs a visible editor: the shell is still hidden at this point
+    const shell = document.getElementById('appShell'), shellDisplay = shell.style.display;
+    shell.style.display = ''; const cDisplay = c.style.display; c.style.display = 'block';
+    __arkives.state.CREATOR.sceneTagPresets = { light: ['Candle'] };
+    __arkives.state._currentScenes = [
+      { id: 'a', script_text: '', scene_description: 'legacy text', blocks: null, thumbnail_data: PX, thumbnails: null },
+      { id: 'b', script_text: '', scene_description: '', blocks: [{ kind: 'shot', shot: 'Medium', angle: 'Top-down', text: 'first' }, { kind: 'transition', type: 'Match cut', text: 'cut' }], thumbnails: [PX, PX] }
+    ];
+    __arkives._renderEditorUI(c, __arkives.state._currentScriptRow, __arkives.state._currentScenes, false);
+    const q = (sel) => c.querySelector(sel), qa = (sel) => c.querySelectorAll(sel);
+    T('a legacy scene renders one untagged shot block with its description', qa('.sc-blocks[data-scene-id="a"] .sc-block').length === 1 && q('.sc-block-text[data-scene-id="a"]').value === 'legacy text' && qa('.sc-blocks[data-scene-id="a"] .sc-tag:not(.sc-tag-ghost)').length === 0);
+    T('a legacy scene has no block tools until a second block exists', !q('.sc-blocks[data-scene-id="a"] .sc-block-tools'));
+    T('set pills render with kind colour classes, unset ones as ghosts', q('.sc-blocks[data-scene-id="b"] .sc-tag-shot:not(.sc-tag-ghost)')?.textContent.includes('Medium') && q('.sc-blocks[data-scene-id="b"] .sc-tag-light.sc-tag-ghost') && q('.sc-blocks[data-scene-id="b"] .sc-block-transition .sc-tag-transition')?.textContent.includes('Match cut'));
+    T('the legacy single thumbnail renders ahead of the list', qa('.script-scene-row[data-scene-id="a"] .script-thumb-preview img').length === 1 && qa('.script-scene-row[data-scene-id="b"] .script-thumb-preview img').length === 2);
+    T('the upload control allows several files', q('.script-scene-row[data-scene-id="b"] input[type=file]')?.multiple === true);
+    // Typing in a block writes blocks + the mirror into state and the dirty set
+    const bt = q('.sc-block-text[data-scene-id="a"][data-bi="0"]');
+    bt.value = 'edited'; bt.dispatchEvent(new Event('input', { bubbles: true }));
+    T('typing in a legacy block creates blocks and mirrors scene_description', __arkives.state._currentScenes[0].blocks?.[0]?.text === 'edited' && __arkives.state._currentScenes[0].scene_description === 'edited' && __arkives.state._sceneDirty.a?.blocks?.[0]?.text === 'edited' && __arkives.state._sceneDirty.a?.scene_description === 'edited');
+    clearTimeout(__arkives.state._scriptAutoSaveTimer); __arkives.state._sceneDirty = {};
+    T('mirror prefixes tags and transitions', __arkives._blocksMirror([{ kind: 'shot', shot: 'Wide', light: 'Night', text: 'a' }, { kind: 'transition', type: 'Whip pan', text: 'b' }, { kind: 'shot', text: 'c' }]) === '[Wide / Night]\na\n\n[Transition: Whip pan]\nb\n\nc');
+    // Picker: opens on body, lists presets + the owner's custom + values in use, sets a value
+    q('.sc-blocks[data-scene-id="b"] .sc-tag-light.sc-tag-ghost').click();
+    const pick = document.querySelector('#scTagPickHost .sc-pick');
+    const opts = [...document.querySelectorAll('#scTagPickHost .sc-pick-grid .sc-tag')].map((b) => b.textContent);
+    T('picker opens body-mounted with presets, the owner custom and nothing else', !!pick && opts.includes('Daylight') && opts.includes('Candle') && !opts.includes('Medium'));
+    const saved = [];
+    __arkives.db.sbSaveSceneFields = async (id, fields) => { saved.push({ id, fields: JSON.parse(JSON.stringify(fields)) }); };
+    [...document.querySelectorAll('#scTagPickHost .sc-pick-grid .sc-tag')].find((b) => b.textContent === 'Candle').click();
+    await new Promise((r) => setTimeout(r, 30));
+    T('picking a value sets it, closes the picker and re-renders the pill', __arkives.state._currentScenes[1].blocks[0].light === 'Candle' && !document.querySelector('#scTagPickHost .sc-pick') && q('.sc-blocks[data-scene-id="b"] .sc-tag-light:not(.sc-tag-ghost)')?.textContent.includes('Candle'));
+    __arkives._scSetTag('b', 0, 'light', 'Candle');
+    await new Promise((r) => setTimeout(r, 30));
+    T('picking the current value again clears it', !__arkives.state._currentScenes[1].blocks[0].light);
+    // Add a transition, move it, delete it
+    q('.sc-blocks[data-scene-id="a"] .sc-block-add .sc-tag-transition').click();
+    await new Promise((r) => setTimeout(r, 30));
+    T('+ transition appends a transition block and focuses its text', __arkives.state._currentScenes[0].blocks.length === 2 && __arkives.state._currentScenes[0].blocks[1].kind === 'transition' && document.activeElement === q('.sc-block-text[data-scene-id="a"][data-bi="1"]'));
+    q('.sc-blocks[data-scene-id="a"] .sc-block[data-bi="1"] .sc-block-tool[title="Move up"]').click();
+    await new Promise((r) => setTimeout(r, 30));
+    T('move up swaps block order', __arkives.state._currentScenes[0].blocks[0].kind === 'transition' && __arkives.state._currentScenes[0].blocks[1].text === 'edited');
+    q('.sc-blocks[data-scene-id="a"] .sc-block[data-bi="0"] .sc-block-x').click();
+    await new Promise((r) => setTimeout(r, 30));
+    T('removing an empty block needs no confirm and leaves the rest', __arkives.state._currentScenes[0].blocks.length === 1 && __arkives.state._currentScenes[0].blocks[0].text === 'edited');
+    await __arkives._flushScriptSaves();
+    T('block edits save blocks + scene_description together', saved.some((x) => x.id === 'a' && Array.isArray(x.fields.blocks) && typeof x.fields.scene_description === 'string'));
+    // Thumbnail removal writes the list and clears the legacy column
+    saved.length = 0;
+    await __arkives._removeThumb('b', 0);
+    T('removing a thumbnail saves the remaining list and clears thumbnail_data', saved[0]?.id === 'b' && saved[0].fields.thumbnails.length === 1 && saved[0].fields.thumbnail_data === '');
+    // Read-only render: pills but no ghosts, tools or inputs
+    __arkives._renderEditorUI(c, __arkives.state._currentScriptRow, __arkives.state._currentScenes, true);
+    T('read-only render shows set pills only, no ghosts or inputs', qa('.sc-tag:not(.sc-tag-ghost)').length >= 2 && qa('.sc-tag-ghost').length === 0 && qa('.sc-block-tools').length === 0 && qa('textarea').length === 0);
+    __arkives.state.CREATOR.sceneTagPresets = {};
+    c.style.display = cDisplay; shell.style.display = shellDisplay;
+    clearTimeout(__arkives.state._scriptAutoSaveTimer); __arkives.state._sceneDirty = {};
+  }
+
   // Auth panels
   __arkives._authShow('forgotForm');
   T('forgot-password panel shows alone', document.getElementById('forgotForm').style.display === '' && document.getElementById('loginForm').style.display === 'none');

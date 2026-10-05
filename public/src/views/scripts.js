@@ -7,6 +7,80 @@ import { SKETCHY_ICONS } from '../lib/icons.js';
 import { _shareLinkRowsHtml } from '../lib/share.js';
 import { _showSaveError } from '../lib/toast.js';
 
+/* ---- SCENE BLOCKS (025) ----
+   The SCENE cell is an ordered list of blocks: a shot (size, angle,
+   light, text) or a transition (type, text). A scene saved before 025
+   has blocks = null and renders its scene_description as one untagged
+   shot block; the first edit writes blocks. scene_description is kept
+   as a plain-text mirror so anything reading it still works. */
+const SCENE_TAG_LABEL = { shot: 'shot', angle: 'angle', light: 'light', transition: 'transition' };
+const SCENE_TAG_PRESETS = {
+  shot: ['Extreme wide', 'Wide', 'Medium', 'Medium close-up', 'Close-up', 'Extreme close-up', 'Insert', 'Two-shot'],
+  angle: ['Eye level', 'Low', 'High', 'Top-down', 'Dutch', 'Over the shoulder', 'POV', 'Profile'],
+  light: ['Daylight', 'Golden hour', 'Overcast', 'Night', 'Practical', 'Key + fill', 'Backlit', 'Silhouette', 'Neon'],
+  transition: ['Cut', 'Match cut', 'Smash cut', 'Whip pan', 'J-cut', 'L-cut', 'Dissolve', 'Fade to black', 'Fade from black', 'Hidden cut', 'Speed ramp', 'Zoom']
+};
+const SCENE_BLOCKS_MAX = 50, SCENE_THUMBS_MAX = 8, SCENE_TAG_MAX = 60;
+
+function _blockTagKey(kind) { return kind === 'transition' ? 'type' : kind; }
+
+// Normalised blocks for a scene (never mutates a legacy scene)
+function _sceneBlocks(scene) {
+  if (Array.isArray(scene.blocks) && scene.blocks.length) {
+    return scene.blocks.map(function(b) {
+      var kind = b && b.kind === 'transition' ? 'transition' : 'shot';
+      var out = { kind: kind, text: (b && typeof b.text === 'string') ? b.text : '' };
+      ['shot', 'angle', 'light', 'type'].forEach(function(k) { if (b && typeof b[k] === 'string' && b[k]) out[k] = b[k].slice(0, SCENE_TAG_MAX); });
+      return out;
+    });
+  }
+  return [{ kind: 'shot', text: scene.scene_description || '' }];
+}
+
+function _blockTagsText(b) {
+  var keys = b.kind === 'transition' ? ['type'] : ['shot', 'angle', 'light'];
+  return keys.map(function(k) { return b[k]; }).filter(Boolean).join(' / ');
+}
+
+// Plain-text mirror written to scene_description alongside blocks
+function _blocksMirror(blocks) {
+  return blocks.map(function(b) {
+    var tags = _blockTagsText(b);
+    var head = b.kind === 'transition' ? ('[Transition' + (tags ? ': ' + tags : '') + ']') : (tags ? '[' + tags + ']' : '');
+    return (head ? head + '\n' : '') + (b.text || '');
+  }).join('\n\n').trim();
+}
+
+// Replace a scene's blocks: state first, dirty-tracked, autosaved
+function _sceneSetBlocks(scene, blocks) {
+  scene.blocks = blocks;
+  scene.scene_description = _blocksMirror(blocks);
+  if (!state._sceneDirty[scene.id]) state._sceneDirty[scene.id] = {};
+  state._sceneDirty[scene.id].blocks = blocks;
+  state._sceneDirty[scene.id].scene_description = scene.scene_description;
+  _scheduleAutoSave();
+}
+
+// Thumbnails for a scene: the 025 list, else the legacy single column
+function _sceneThumbs(scene) {
+  if (Array.isArray(scene.thumbnails)) return scene.thumbnails.map(_safeThumb).filter(Boolean);
+  var one = _safeThumb(scene.thumbnail_data);
+  return one ? [one] : [];
+}
+
+// Pill options for a kind: presets, the owner's customs, and anything
+// already used in this script (so a collaborator's custom shows too)
+function _tagOptions(kind) {
+  var out = SCENE_TAG_PRESETS[kind].slice();
+  var custom = state.CREATOR && state.CREATOR.sceneTagPresets && state.CREATOR.sceneTagPresets[kind];
+  if (Array.isArray(custom)) custom.forEach(function(v) { if (typeof v === 'string' && v && out.indexOf(v) < 0) out.push(v); });
+  var key = _blockTagKey(kind);
+  (state._currentScenes || []).forEach(function(sc) {
+    _sceneBlocks(sc).forEach(function(b) { if (b[key] && out.indexOf(b[key]) < 0) out.push(b[key]); });
+  });
+  return out;
+}
+
 
 // Repaint the editor from in-memory state (no refetch). Pending edits are
 // flushed first so a repaint can never resurrect stale text.
@@ -228,35 +302,11 @@ function _renderSceneRow(scene, idx, readOnly) {
   }
   html += '</div>';
 
-  /* Scene description */
-  html += '<div class="script-col-scene">';
-  if (readOnly) {
-    html += '<div class="script-cell-readonly">' + (_escHtml(scene.scene_description) || '<span style="color:var(--text-secondary);font-style:italic">No description</span>') + '</div>';
-  } else {
-    html += '<textarea class="script-cell-textarea" data-field="scene_description" data-scene-id="' + scene.id + '" placeholder="Describe the scene..." rows="4">' + _escHtml(scene.scene_description) + '</textarea>';
-  }
-  html += '</div>';
+  /* Scene blocks */
+  html += '<div class="script-col-scene">' + _renderSceneBlocks(scene, readOnly) + '</div>';
 
-  /* Thumbnail */
-  html += '<div class="script-col-thumb">';
-  var thumb = _safeThumb(scene.thumbnail_data);
-  if (thumb) {
-    html += '<div class="script-thumb-preview">';
-    html += '<img src="' + _esc(thumb) + '" alt="Scene thumbnail" />';
-    if (!readOnly) {
-      html += '<button class="script-thumb-remove" data-action="_removeThumb" data-args="' + _args(scene.id) + '" title="Remove thumbnail">&times;</button>';
-    }
-    html += '</div>';
-  } else if (!readOnly) {
-    html += '<label class="script-thumb-upload" for="thumbInput_' + scene.id + '">';
-    html += '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
-    html += '<span>Upload image</span>';
-    html += '<input type="file" id="thumbInput_' + scene.id + '" accept="image/*" style="display:none" data-change="_handleThumbUpload" data-change-args="' + _args('$el', scene.id) + '" />';
-    html += '</label>';
-  } else {
-    html += '<div style="color:var(--text-secondary);font-size:12px;text-align:center;padding:16px">No thumbnail</div>';
-  }
-  html += '</div>';
+  /* Thumbnails */
+  html += '<div class="script-col-thumb">' + _renderSceneThumbs(scene, readOnly) + '</div>';
 
   /* Actions */
   if (!readOnly) {
@@ -272,6 +322,204 @@ function _renderSceneRow(scene, idx, readOnly) {
   return html;
 }
 
+function _tagPillHtml(scene, bi, kind, value, readOnly) {
+  var cls = 'sc-tag sc-tag-' + kind;
+  if (!value) {
+    if (readOnly) return '';
+    return '<button type="button" class="' + cls + ' sc-tag-ghost" data-action="_scPickTag" data-args="' + _args(scene.id, bi, kind, '$el') + '">' + SCENE_TAG_LABEL[kind] + '</button>';
+  }
+  var inner = '<span class="sc-tag-k">' + SCENE_TAG_LABEL[kind] + '</span>' + _escHtml(value);
+  if (readOnly) return '<span class="' + cls + '">' + inner + '</span>';
+  return '<button type="button" class="' + cls + '" data-action="_scPickTag" data-args="' + _args(scene.id, bi, kind, '$el') + '">' + inner +
+    '<span class="sc-tag-x" data-action="_scClearTag" data-args="' + _args(scene.id, bi, kind) + '" data-stop title="Clear">&times;</span></button>';
+}
+
+function _renderSceneBlocks(scene, readOnly) {
+  var blocks = _sceneBlocks(scene);
+  var html = '<div class="sc-blocks" data-scene-id="' + scene.id + '">';
+  blocks.forEach(function(b, bi) {
+    html += '<div class="sc-block sc-block-' + b.kind + '" data-bi="' + bi + '">';
+    html += '<div class="sc-tags">';
+    if (b.kind === 'transition') {
+      html += _tagPillHtml(scene, bi, 'transition', b.type, readOnly) || '<span class="sc-tag sc-tag-transition"><span class="sc-tag-k">transition</span></span>';
+    } else {
+      html += _tagPillHtml(scene, bi, 'shot', b.shot, readOnly) + _tagPillHtml(scene, bi, 'angle', b.angle, readOnly) + _tagPillHtml(scene, bi, 'light', b.light, readOnly);
+    }
+    if (!readOnly && (blocks.length > 1 || b.kind === 'transition')) {
+      html += '<span class="sc-block-tools">';
+      html += '<button type="button" class="sc-block-tool" data-action="_scMoveBlock" data-args="' + _args(scene.id, bi, -1) + '" title="Move up"' + (bi === 0 ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowUp + '</button>';
+      html += '<button type="button" class="sc-block-tool" data-action="_scMoveBlock" data-args="' + _args(scene.id, bi, 1) + '" title="Move down"' + (bi === blocks.length - 1 ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowDown + '</button>';
+      html += '<button type="button" class="sc-block-tool sc-block-x" data-action="_scDeleteBlock" data-args="' + _args(scene.id, bi) + '" title="Remove block">&times;</button>';
+      html += '</span>';
+    }
+    html += '</div>';
+    var ph = b.kind === 'transition' ? 'Describe the transition...' : 'Describe the scene...';
+    if (readOnly) {
+      html += '<div class="script-cell-readonly">' + (_escHtml(b.text) || (bi === 0 && blocks.length === 1 ? '<span style="color:var(--text-secondary);font-style:italic">No description</span>' : '')) + '</div>';
+    } else {
+      html += '<textarea class="script-cell-textarea sc-block-text" data-field="block" data-scene-id="' + scene.id + '" data-bi="' + bi + '" placeholder="' + ph + '" rows="2">' + _escHtml(b.text) + '</textarea>';
+    }
+    html += '</div>';
+  });
+  if (!readOnly && blocks.length < SCENE_BLOCKS_MAX) {
+    html += '<div class="sc-block-add">';
+    html += '<button type="button" class="sc-tag sc-tag-ghost sc-tag-shot" data-action="_scAddBlock" data-args="' + _args(scene.id, 'shot') + '">shot</button>';
+    html += '<button type="button" class="sc-tag sc-tag-ghost sc-tag-transition" data-action="_scAddBlock" data-args="' + _args(scene.id, 'transition') + '">transition</button>';
+    html += '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function _renderSceneThumbs(scene, readOnly) {
+  var thumbs = _sceneThumbs(scene);
+  var html = '<div class="sc-thumbs">';
+  thumbs.forEach(function(t, ti) {
+    html += '<div class="script-thumb-preview">';
+    html += '<img src="' + _esc(t) + '" alt="Scene thumbnail ' + (ti + 1) + '" />';
+    if (!readOnly) {
+      html += '<button class="script-thumb-remove" data-action="_removeThumb" data-args="' + _args(scene.id, ti) + '" title="Remove thumbnail">&times;</button>';
+    }
+    html += '</div>';
+  });
+  if (!readOnly && thumbs.length < SCENE_THUMBS_MAX) {
+    html += '<label class="script-thumb-upload' + (thumbs.length ? ' sc-thumb-more' : '') + '" for="thumbInput_' + scene.id + '">';
+    html += '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+    html += '<span>' + (thumbs.length ? 'Add image' : 'Upload image') + '</span>';
+    html += '<input type="file" id="thumbInput_' + scene.id + '" accept="image/*" multiple style="display:none" data-change="_handleThumbUpload" data-change-args="' + _args('$el', scene.id) + '" />';
+    html += '</label>';
+  } else if (!thumbs.length) {
+    html += '<div style="color:var(--text-secondary);font-size:12px;text-align:center;padding:16px">No thumbnail</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+/* ---- BLOCK ACTIONS ---- */
+function _sceneById(sceneId) { return state._currentScenes.find(function(s) { return s.id === sceneId; }); }
+
+function _scAddBlock(sceneId, kind) {
+  var scene = _sceneById(sceneId); if (!scene) return;
+  var blocks = _sceneBlocks(scene);
+  if (blocks.length >= SCENE_BLOCKS_MAX) return;
+  blocks.push({ kind: kind === 'transition' ? 'transition' : 'shot', text: '' });
+  _sceneSetBlocks(scene, blocks);
+  _scriptRerender().then(function() {
+    var ta = document.querySelector('.sc-block-text[data-scene-id="' + sceneId + '"][data-bi="' + (blocks.length - 1) + '"]');
+    if (ta) ta.focus();
+  });
+}
+
+function _scDeleteBlock(sceneId, bi) {
+  var scene = _sceneById(sceneId); if (!scene) return;
+  var blocks = _sceneBlocks(scene);
+  if (blocks[bi] && blocks[bi].text && !confirm('Remove this block and its text?')) return;
+  blocks.splice(bi, 1);
+  if (!blocks.length) blocks.push({ kind: 'shot', text: '' });
+  _sceneSetBlocks(scene, blocks);
+  _scriptRerender();
+}
+
+function _scMoveBlock(sceneId, bi, dir) {
+  var scene = _sceneById(sceneId); if (!scene) return;
+  var blocks = _sceneBlocks(scene);
+  var j = bi + dir;
+  if (bi < 0 || j < 0 || j >= blocks.length) return;
+  var moved = blocks.splice(bi, 1)[0];
+  blocks.splice(j, 0, moved);
+  _sceneSetBlocks(scene, blocks);
+  _scriptRerender();
+}
+
+function _scSetTag(sceneId, bi, kind, value) {
+  var scene = _sceneById(sceneId); if (!scene) return;
+  var blocks = _sceneBlocks(scene);
+  var b = blocks[bi]; if (!b) return;
+  var key = _blockTagKey(kind);
+  value = (value || '').trim().slice(0, SCENE_TAG_MAX);
+  if (!value || b[key] === value) delete b[key]; else b[key] = value;
+  _sceneSetBlocks(scene, blocks);
+  _scCloseTagPicker();
+  _scriptRerender();
+}
+
+function _scClearTag(sceneId, bi, kind) { _scSetTag(sceneId, bi, kind, ''); }
+
+// A custom value: applied to the block, and remembered on the owner's
+// profile so it shows in the picker next time. Shared editors cannot
+// write the profile; their custom stays on the scene (and still shows
+// in this script's picker via _tagOptions).
+async function _scSetTagCustom(sceneId, bi, kind, value) {
+  value = (value || '').trim().slice(0, SCENE_TAG_MAX);
+  if (!value) return;
+  if (!state._sharedScriptToken && state.CREATOR && state.CREATOR._sbId && SCENE_TAG_PRESETS[kind].indexOf(value) < 0) {
+    var presets = Object.assign({}, state.CREATOR.sceneTagPresets || {});
+    var list = Array.isArray(presets[kind]) ? presets[kind].slice() : [];
+    if (list.indexOf(value) < 0) {
+      list.push(value);
+      presets[kind] = list.slice(-100);
+      state.CREATOR.sceneTagPresets = presets;
+      db.sbUpdateProfile({ scene_tag_presets: presets });
+    }
+  }
+  _scSetTag(sceneId, bi, kind, value);
+}
+
+function _scCustomKeydown(ev, sceneId, bi, kind, el) {
+  if (ev.key === 'Enter') { ev.preventDefault(); _scSetTagCustom(sceneId, bi, kind, el.value); }
+  else if (ev.key === 'Escape') { ev.preventDefault(); _scCloseTagPicker(); }
+}
+
+/* ---- TAG PICKER ---- Body-mounted (stacking context), one at a time.
+   Desktop: a popover under the pill. Phone: a bottom sheet (CSS). */
+function _scPickTag(sceneId, bi, kind, el) {
+  var scene = _sceneById(sceneId); if (!scene) return;
+  var b = _sceneBlocks(scene)[bi]; if (!b) return;
+  var current = b[_blockTagKey(kind)] || '';
+  var host = document.getElementById('scTagPickHost');
+  if (!host) { host = document.createElement('div'); host.id = 'scTagPickHost'; document.body.appendChild(host); }
+  var html = '<div class="sc-pick-overlay" data-action="_scPickBackdrop" data-args="' + _args('$event', '$el') + '">';
+  html += '<div class="sc-pick sc-pick-' + kind + '" role="dialog" aria-modal="true" aria-label="' + SCENE_TAG_LABEL[kind] + '">';
+  html += '<div class="sc-pick-h"><span>' + (kind === 'transition' ? 'Transition' : (kind === 'shot' ? 'Shot size' : (kind === 'angle' ? 'Camera angle' : 'Lighting'))) + '</span><span>' + (current ? 'click again to clear' : 'one per block') + '</span></div>';
+  html += '<div class="sc-pick-grid">';
+  _tagOptions(kind).forEach(function(v) {
+    html += '<button type="button" class="sc-tag sc-tag-' + kind + (v === current ? ' on' : '') + '" data-action="_scSetTag" data-args="' + _args(sceneId, bi, kind, v) + '">' + _escHtml(v) + '</button>';
+  });
+  html += '</div>';
+  html += '<div class="sc-pick-custom"><span>custom</span><input type="text" maxlength="' + SCENE_TAG_MAX + '" placeholder="type and press Enter" data-keydown="_scCustomKeydown" data-keydown-args="' + _args('$event', sceneId, bi, kind, '$el') + '">';
+  html += '<button type="button" class="btn btn-sm" data-action="_scCustomAdd" data-args="' + _args(sceneId, bi, kind, '$el') + '">Add</button></div>';
+  html += '<button type="button" class="sc-pick-cancel" data-action="_scCloseTagPicker">Cancel</button>';
+  html += '</div></div>';
+  host.innerHTML = html;
+  // Anchor under the pill on wide screens; the sheet CSS ignores this
+  var pop = host.querySelector('.sc-pick');
+  if (el && el.getBoundingClientRect && window.innerWidth > 640) {
+    var r = el.getBoundingClientRect();
+    var left = Math.max(8, Math.min(r.left, window.innerWidth - 332));
+    pop.style.left = left + 'px';
+    var below = r.bottom + 6;
+    pop.style.top = below + 'px';
+    requestAnimationFrame(function() {
+      var h = pop.offsetHeight;
+      if (below + h > window.innerHeight - 8) pop.style.top = Math.max(8, r.top - 6 - h) + 'px';
+    });
+  }
+  var input = host.querySelector('.sc-pick-custom input');
+  if (input && window.innerWidth > 640) input.focus();
+}
+
+function _scCustomAdd(sceneId, bi, kind, el) {
+  var input = el.parentElement.querySelector('input');
+  _scSetTagCustom(sceneId, bi, kind, input ? input.value : '');
+}
+
+function _scCloseTagPicker() {
+  var host = document.getElementById('scTagPickHost');
+  if (host) host.innerHTML = '';
+}
+
+function _scPickBackdrop(ev, el) { if (ev.target === el) _scCloseTagPicker(); }
+
 /* ---- SCENE EVENTS ---- */
 function _bindSceneEvents() {
   document.querySelectorAll('.script-cell-textarea').forEach(function(ta) {
@@ -280,6 +528,16 @@ function _bindSceneEvents() {
       var sceneId = ta.getAttribute('data-scene-id');
       var field = ta.getAttribute('data-field');
       var scene = state._currentScenes.find(function(s) { return s.id === sceneId; });
+      if (field === 'block') {
+        // One block's text changed: rewrite the scene's block list + mirror
+        if (!scene) return;
+        var blocks = _sceneBlocks(scene);
+        var b = blocks[parseInt(ta.getAttribute('data-bi'), 10)];
+        if (!b) return;
+        b.text = ta.value;
+        _sceneSetBlocks(scene, blocks);
+        return;
+      }
       if (scene) scene[field] = ta.value;
       if (!state._sceneDirty[sceneId]) state._sceneDirty[sceneId] = {};
       state._sceneDirty[sceneId][field] = ta.value;
@@ -378,43 +636,59 @@ async function _deleteSceneRow(sceneId) {
   _scriptRerender();
 }
 
-/* ---- THUMBNAIL UPLOAD ---- */
-function _handleThumbUpload(input, sceneId) {
-  var file = input.files && input.files[0];
-  if (!file) return;
-  /* Limit to 2MB */
-  if (file.size > 2 * 1024 * 1024) {
-    _showSaveError('Image too large. Max 2MB.');
-    return;
-  }
-  var reader = new FileReader();
-  reader.onload = async function(e) {
-    var dataUrl = e.target.result;
-    /* Resize to max 600px wide for storage efficiency */
-    var img = new Image();
-    img.onload = async function() {
-      var maxW = 600;
-      var w = img.width, h = img.height;
-      if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
-      var canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      var ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      var compressed = canvas.toDataURL('image/jpeg', 0.8);
-      await db.sbSaveSceneFields(sceneId, { thumbnail_data: compressed });
-      /* Update local cache */
-      state._currentScenes.forEach(function(s) { if (s.id === sceneId) s.thumbnail_data = compressed; });
-      _scriptRerender();
+/* ---- THUMBNAILS ---- A scene holds up to SCENE_THUMBS_MAX images
+   (025). Saving writes the list and clears the legacy single column so
+   an image never renders twice. */
+function _readThumbFile(file) {
+  return new Promise(function(resolve) {
+    if (!file || file.size > 2 * 1024 * 1024) { _showSaveError('Image too large. Max 2MB.'); return resolve(''); }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      /* Resize to max 600px wide for storage efficiency */
+      var img = new Image();
+      img.onload = function() {
+        var maxW = 600;
+        var w = img.width, h = img.height;
+        if (w > maxW) { h = Math.round(h * maxW / w); w = maxW; }
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = function() { _showSaveError('Could not read that image'); resolve(''); };
+      img.src = e.target.result;
     };
-    img.src = dataUrl;
-  };
-  reader.readAsDataURL(file);
+    reader.readAsDataURL(file);
+  });
 }
 
-async function _removeThumb(sceneId) {
-  await db.sbSaveSceneFields(sceneId, { thumbnail_data: '' });
-  state._currentScenes.forEach(function(s) { if (s.id === sceneId) s.thumbnail_data = ''; });
-  _scriptRerender();
+async function _saveThumbs(sceneId, thumbs) {
+  try { await db.sbSaveSceneFields(sceneId, { thumbnails: thumbs, thumbnail_data: '' }); }
+  catch (e) { _showSaveError('Could not save thumbnails'); return false; }
+  state._currentScenes.forEach(function(s) { if (s.id === sceneId) { s.thumbnails = thumbs; s.thumbnail_data = ''; } });
+  return true;
+}
+
+async function _handleThumbUpload(input, sceneId) {
+  var scene = _sceneById(sceneId); if (!scene) return;
+  var files = Array.prototype.slice.call(input.files || []);
+  if (!files.length) return;
+  var thumbs = _sceneThumbs(scene);
+  var room = SCENE_THUMBS_MAX - thumbs.length;
+  if (files.length > room) _showSaveError('Up to ' + SCENE_THUMBS_MAX + ' images per scene');
+  for (var i = 0; i < Math.min(files.length, room); i++) {
+    var t = await _readThumbFile(files[i]);
+    if (t) thumbs.push(t);
+  }
+  input.value = '';
+  if (await _saveThumbs(sceneId, thumbs)) _scriptRerender();
+}
+
+async function _removeThumb(sceneId, ti) {
+  var scene = _sceneById(sceneId); if (!scene) return;
+  var thumbs = _sceneThumbs(scene);
+  thumbs.splice(typeof ti === 'number' ? ti : 0, 1);
+  if (await _saveThumbs(sceneId, thumbs)) _scriptRerender();
 }
 
 /* ---- DRAG & DROP REORDER ---- */
@@ -502,11 +776,13 @@ function _paintSharedEditor() {
 
 /* ---- SIDE EFFECTS ---- Registered from main.js in a fixed order, not at import time. */
 export function __init() {
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') _scCloseTagPicker(); });
   // Leaving the page or backgrounding the tab (phones do this constantly)
   document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushScriptSaves(); });
   window.addEventListener('pagehide', function() { _flushScriptSaves(); });
 }
 
-act({ _addScene, _createNewScript, _deleteSceneRow, _deleteScript, _handleThumbUpload, _moveScene, _removeThumb });
+act({ _addScene, _createNewScript, _deleteSceneRow, _deleteScript, _handleThumbUpload, _moveScene, _removeThumb,
+  _scAddBlock, _scClearTag, _scCloseTagPicker, _scCustomAdd, _scCustomKeydown, _scDeleteBlock, _scMoveBlock, _scPickBackdrop, _scPickTag, _scSetTag });
 
-export { _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };
+export { SCENE_TAG_PRESETS, _blocksMirror, _sceneBlocks, _sceneThumbs, _scCloseTagPicker, _scPickTag, _scSetTag, _tagOptions, _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };

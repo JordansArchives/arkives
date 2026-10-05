@@ -69,6 +69,8 @@ async function sbFetchProfile() {
     state.CREATOR.invoicePrefix = p.invoice_prefix || 'INV';
     // Document template (migration 015) — undefined pre-migration, defaults to classic
     state.CREATOR.invoiceTemplate = p.invoice_template || 'classic';
+    // Custom scene pill values (migration 025) — undefined pre-migration
+    state.CREATOR.sceneTagPresets = (p.scene_tag_presets && typeof p.scene_tag_presets === 'object') ? p.scene_tag_presets : {};
     state.CREATOR._sbId = p.id;
     const [platRes, rcsRes, rcRes] = await Promise.all([
       _own('platforms'),
@@ -545,7 +547,8 @@ function _mapInvoiceRow(r) {
 }
 
 /* Scene field saves route through here so shared-edit sessions work.
-   fields may hold script_text / scene_description / thumbnail_data. */
+   fields may hold script_text / scene_description / thumbnail_data /
+   blocks / thumbnails (025: whole arrays, sent when they change). */
 async function sbSaveSceneFields(sceneId, fields, sharedToken) {
   if (!state._sb) return;
   if (sharedToken === undefined) sharedToken = state._sharedScriptToken;
@@ -555,7 +558,9 @@ async function sbSaveSceneFields(sceneId, fields, sharedToken) {
         p_token: sharedToken, p_scene_id: sceneId,
         p_script_text: ('script_text' in fields) ? fields.script_text : null,
         p_scene_description: ('scene_description' in fields) ? fields.scene_description : null,
-        p_thumbnail_data: ('thumbnail_data' in fields) ? fields.thumbnail_data : null
+        p_thumbnail_data: ('thumbnail_data' in fields) ? fields.thumbnail_data : null,
+        p_blocks: ('blocks' in fields) ? fields.blocks : null,
+        p_thumbnails: ('thumbnails' in fields) ? fields.thumbnails : null
       });
       if (res.error) throw res.error;
     } else {
