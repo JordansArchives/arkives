@@ -1159,6 +1159,20 @@ function formatContractBody(text) {
   return text.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>').replace(/^/, '<p>').replace(/$/, '</p>');
 }
 
+// "<strong>" markup -> [{ text, bold }] runs for the PDF layout
+function _pdfRuns(line) {
+  var runs = [];
+  var re = /<strong>([\s\S]*?)<\/strong>/g;
+  var last = 0, m;
+  while ((m = re.exec(line))) {
+    if (m.index > last) runs.push({ text: line.slice(last, m.index), bold: false });
+    if (m[1]) runs.push({ text: m[1], bold: true });
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) runs.push({ text: line.slice(last), bold: false });
+  return runs.map(function(r) { return { text: r.text.replace(/<[^>]+>/g, ''), bold: r.bold }; }).filter(function(r) { return r.text.length; });
+}
+
 /* ---- CONTRACT: Copy to clipboard ---- */
 function copyContractPreview() {
   const el = document.getElementById("contractPreviewContent");
@@ -1200,10 +1214,18 @@ function downloadContractPDF() {
   function setColor(c) { doc.setTextColor(c[0], c[1], c[2]); }
   function setDraw(c) { doc.setDrawColor(c[0], c[1], c[2]); }
 
+  // The body style in force. A page break redraws the footer (its own
+  // font + colour) and must put this back, or the text that follows the
+  // break inherits the footer's 8pt grey.
+  var cur = { style: 'normal', size: 10, color: TEXT_C };
+  function applyCur() { doc.setFont('helvetica', cur.style); doc.setFontSize(cur.size); setColor(cur.color); }
+  function setBody(style, size, color) { cur = { style: style, size: size, color: color }; applyCur(); }
+
   function checkPage(y, needed) {
     if (y + needed > H - M) {
       doc.addPage();
       drawFooter();
+      applyCur();
       return M + 10;
     }
     return y;
@@ -1222,53 +1244,55 @@ function downloadContractPDF() {
     doc.line(M, H - 42, W - M, H - 42);
   }
 
+  // Paragraph text with inline <strong> runs, laid out word by word so
+  // bold stays in the sentence (the preview's look). Single newlines
+  // break the line; blank lines separate paragraphs.
   function writeBoldWrapped(text, x, y, maxW, lineH) {
-    // Handle text with **bold** markers (converted from <strong>)
     text = text.replace(/<\/?p>/g, '\n').replace(/<br>/g, '\n');
-
-    // For simplicity in PDF, render with bold inline detection
     var paragraphs = text.split(/\n\n+/);
+    var spaceW = function(bold) { doc.setFont('helvetica', bold ? 'bold' : cur.style); return doc.getTextWidth(' '); };
     paragraphs.forEach(function(para) {
       if (!para.trim()) { y += lineH * 0.5; return; }
-      // Check for bold segments
-      var parts = para.split(/<strong>/);
-      parts.forEach(function(part) {
-        var boldSplit = part.split(/<\/strong>/);
-        if (boldSplit.length > 1) {
-          // First part is bold
-          doc.setFont('helvetica', 'bold');
-          var boldLines = doc.splitTextToSize(boldSplit[0], maxW);
-          for (var i = 0; i < boldLines.length; i++) {
-            y = checkPage(y, lineH);
-            doc.text(boldLines[i], x, y);
-            y += lineH;
-          }
-          // Rest is normal
-          if (boldSplit[1].trim()) {
-            doc.setFont('helvetica', 'normal');
-            var normLines = doc.splitTextToSize(boldSplit[1], maxW);
-            for (var j = 0; j < normLines.length; j++) {
-              y = checkPage(y, lineH);
-              doc.text(normLines[j], x, y);
-              y += lineH;
+      para.split('\n').forEach(function(line) {
+        var runs = _pdfRuns(line);
+        var cx = x;
+        var lineEmpty = true;
+        y = checkPage(y, lineH);
+        runs.forEach(function(run) {
+          doc.setFont('helvetica', run.bold ? 'bold' : cur.style);
+          var tokens = run.text.split(/(\s+)/).filter(function(t) { return t.length; });
+          tokens.forEach(function(tok) {
+            if (/^\s+$/.test(tok)) {
+              if (!lineEmpty) cx += spaceW(run.bold);
+              return;
             }
-          }
-        } else {
-          // No bold in this segment
-          doc.setFont('helvetica', 'normal');
-          if (part.trim()) {
-            var pLines = doc.splitTextToSize(part, maxW);
-            for (var k = 0; k < pLines.length; k++) {
-              y = checkPage(y, lineH);
-              doc.text(pLines[k], x, y);
-              y += lineH;
+            doc.setFont('helvetica', run.bold ? 'bold' : cur.style);
+            var w = doc.getTextWidth(tok);
+            if (!lineEmpty && cx + w > x + maxW) {
+              y += lineH; y = checkPage(y, lineH); cx = x; lineEmpty = true;
+              doc.setFont('helvetica', run.bold ? 'bold' : cur.style);
             }
-          }
-        }
+            // A single token wider than the line is split by character
+            if (w > maxW) {
+              var pieces = doc.splitTextToSize(tok, maxW);
+              pieces.forEach(function(piece, i) {
+                if (i) { y += lineH; y = checkPage(y, lineH); cx = x; doc.setFont('helvetica', run.bold ? 'bold' : cur.style); }
+                doc.text(piece, cx, y);
+                cx += doc.getTextWidth(piece);
+              });
+              lineEmpty = false;
+              return;
+            }
+            doc.text(tok, cx, y);
+            cx += w;
+            lineEmpty = false;
+          });
+        });
+        y += lineH;
       });
       y += lineH * 0.4;
     });
-    doc.setFont('helvetica', 'normal');
+    applyCur();
     return y;
   }
 
@@ -1280,7 +1304,7 @@ function downloadContractPDF() {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   setColor(TEXT_C);
-  var titleLines = doc.splitTextToSize('CONTENT CREATOR PARTNERSHIP AGREEMENT', CW);
+  var titleLines = doc.splitTextToSize(sections[0].title, CW);
   titleLines.forEach(function(line) {
     doc.text(line, W / 2, y, { align: 'center' });
     y += 24;
@@ -1293,9 +1317,7 @@ function downloadContractPDF() {
   y += 24;
 
   // Preamble body
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  setColor(TEXT_C);
+  setBody('normal', 10, TEXT_C);
   var preamble = sections[0];
   y = writeBoldWrapped(preamble.body, M, y, CW, 14);
   y += 10;
@@ -1305,13 +1327,11 @@ function downloadContractPDF() {
     var sec = sections[s];
     if (sec.isSigBlock) {
       // Signature block
-      y = checkPage(y, 180);
+      y = checkPage(y, 260);
       y += 10;
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
-      setColor(TEXT_C);
-      doc.text('IN WITNESS WHEREOF, the parties have executed this Agreement as of the Effective Date.', M, y);
-      y += 30;
+      setBody('bold', 10, TEXT_C);
+      doc.splitTextToSize('IN WITNESS WHEREOF, the parties have executed this Agreement as of the Effective Date.', CW).forEach(function(line) { doc.text(line, M, y); y += 14; });
+      y += 16;
 
       // Creator sig
       doc.setFont('helvetica', 'bold');
@@ -1325,7 +1345,7 @@ function downloadContractPDF() {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       setColor(MUTED_C);
-      doc.text('By: ' + d.creatorName + ', Managing Member', M, y);
+      doc.text('By: ' + d.creatorName + ', ' + state.CONTRACT_DEFAULTS.creatorTitle, M, y);
       y += 20;
       doc.line(M, y, M + CW * 0.25, y);
       y += 14;
@@ -1356,22 +1376,20 @@ function downloadContractPDF() {
 
     y = checkPage(y, 50);
 
-    // Section heading
+    // Section heading: the number in the accent, like the preview
     setDraw(RULE_C);
     doc.setLineWidth(0.5);
     doc.line(M, y, M + CW, y);
     y += 16;
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    setColor(TEXT_C);
-    doc.text(sec.num + '. ' + sec.title, M, y);
+    setBody('bold', 11, ACCENT);
+    doc.text(sec.num + '.', M, y);
+    setBody('bold', 11, TEXT_C);
+    doc.text(sec.title, M + doc.getTextWidth(sec.num + '.') + 6, y);
     y += 18;
 
     // Section body
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    setColor(TEXT_C);
+    setBody('normal', 10, TEXT_C);
     y = writeBoldWrapped(sec.body, M, y, CW, 13.5);
     y += 8;
   }
@@ -1383,4 +1401,4 @@ function downloadContractPDF() {
 
 act({ contractCancelNewClient, contractPickClient, contractSaveNewClient, toggleAgreementType, contractDeliverableChanged, copyContractPreview, downloadContractPDF, generateContract, prefillContractFromDeal, saveContractDefaults, toggleContractDefaults, togglePerfFields });
 
-export { _splitAddress, contractCancelNewClient, contractPickClient, contractSaveNewClient, buildServicesSections, buildSharedSections, toggleAgreementType, buildContractSections, contractDeliverableChanged, copyContractPreview, downloadContractPDF, formatContractBody, gatherContractData, generateContract, loadContractDefaults, numberToWord, prefillContractFromDeal, renderContracts, saveContractDefaults, toggleContractDefaults, togglePerfFields };
+export { _pdfRuns, _splitAddress, contractCancelNewClient, contractPickClient, contractSaveNewClient, buildServicesSections, buildSharedSections, toggleAgreementType, buildContractSections, contractDeliverableChanged, copyContractPreview, downloadContractPDF, formatContractBody, gatherContractData, generateContract, loadContractDefaults, numberToWord, prefillContractFromDeal, renderContracts, saveContractDefaults, toggleContractDefaults, togglePerfFields };

@@ -236,6 +236,18 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('services preview renders the services title and numbered sections', /PRODUCTION SERVICES AGREEMENT/.test(cv.querySelector('#contractPreviewContent').textContent) && cv.querySelectorAll('#contractPreviewContent .contract-section').length === 17);
   }
 
+  // Contracts: PDF text runs keep inline bold in the sentence
+  {
+    const r = __arkives._pdfRuns;
+    T('_pdfRuns splits strong tags into inline runs and strips stray tags', JSON.stringify(r('entered into as of <strong>October 6, 2026</strong> ("Effective Date")')) === JSON.stringify([{ text: 'entered into as of ', bold: false }, { text: 'October 6, 2026', bold: true }, { text: ' ("Effective Date")', bold: false }]) && JSON.stringify(r('<strong>Day Rate:</strong> $2,000')) === JSON.stringify([{ text: 'Day Rate:', bold: true }, { text: ' $2,000', bold: false }]) && JSON.stringify(r('plain <em>x</em>')) === JSON.stringify([{ text: 'plain x', bold: false }]) && r('').length === 0);
+    // The PDF source: the title comes from the sections, the footer never bleeds into the body, the signer title is the setting
+    const src = await (await fetch('/src/views/contracts.js')).text();
+    const pdf = src.slice(src.indexOf('function downloadContractPDF'), src.indexOf('act({ contract'));
+    T('PDF title is the agreement title, not a hardcoded partnership name', /splitTextToSize\(sections\[0\]\.title/.test(pdf) && !/CONTENT CREATOR PARTNERSHIP AGREEMENT'/.test(pdf));
+    T('a page break redraws the footer and then restores the body style', /drawFooter\(\);\s*applyCur\(\);/.test(pdf));
+    T('PDF signer title comes from Contract Settings', /creatorName \+ ', ' \+ state\.CONTRACT_DEFAULTS\.creatorTitle/.test(pdf) && !/Managing Member'/.test(pdf));
+  }
+
   // Contracts: the client picker (same list as invoices)
   {
     const sa = __arkives._splitAddress;
