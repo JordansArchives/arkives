@@ -201,6 +201,41 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     clearTimeout(__arkives.state._scriptAutoSaveTimer); __arkives.state._sceneDirty = {};
   }
 
+  // Contracts: the agreement type swaps the form and the template
+  {
+    __arkives.renderContracts();
+    const cv = document.getElementById('view-contracts');
+    const vis = (id) => cv.querySelector('#' + id) && getComputedStyle(cv.querySelector('#' + id)).display !== 'none';
+    T('partnership is the default: services fields hidden, partnership fields shown', !vis('dealServices') && vis('dealPartnership') && vis('rightsPartnership'));
+    const partnership = __arkives.buildContractSections(__arkives.gatherContractData());
+    T('partnership template still runs 1-18 plus signatures', partnership.filter((x) => x.num).map((x) => x.num).join(',') === '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18' && partnership[partnership.length - 1].isSigBlock && partnership[0].title === 'CONTENT CREATOR PARTNERSHIP AGREEMENT');
+    cv.querySelector('#cAgreementType').value = 'services';
+    cv.querySelector('#cAgreementType').dispatchEvent(new Event('change', { bubbles: true }));
+    T('choosing services swaps the deal and rights fields', vis('dealServices') && !vis('dealPartnership') && !vis('rightsPartnership') && getComputedStyle(cv.querySelector('#cKillStd').closest('.form-group')).display === 'none');
+    const set = (id, v) => { cv.querySelector('#' + id).value = v; };
+    set('cBrandName', 'Acme Inc.'); set('cBrandShort', 'Acme'); set('cCampaign', 'Q4 paid media'); set('cDate', '2026-10-06');
+    set('cSvcWork', 'hero video assets, each with a separate hook'); set('cSvcCount', '3'); set('cSvcSpec', '9:16, up to 60s');
+    set('cSvcDayRate', '2000'); set('cSvcDaysLow', '6'); set('cSvcDaysHigh', '7'); set('cSvcNte', '14000'); set('cSvcDeposit', '50');
+    set('cSvcRevRate', '750'); set('cSvcRevUnit', 'day'); set('cSvcKill', '25'); set('cRevisions', '2');
+    const d = __arkives.gatherContractData();
+    T('services data gathers the day-rate fields', d.agreementType === 'services' && d.svc.dayRate === 2000 && d.svc.daysLow === 6 && d.svc.daysHigh === 7 && d.svc.nte === 14000 && d.svc.count === 3 && d.svc.revUnit === 'day');
+    const secs = __arkives.buildContractSections(d);
+    const body = (title) => (secs.find((x) => x.title === title) || {}).body || '';
+    T('services template: title, 1-17 plus signatures, no FTC / exclusivity / licensing sections', secs[0].title === 'PRODUCTION SERVICES AGREEMENT' && secs.filter((x) => x.num).map((x) => x.num).join(',') === '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17' && !secs.some((x) => /FTC|EXCLUSIVITY|LICENSING/.test(x.title)) && secs[secs.length - 1].isSigBlock);
+    T('scope names the assets, spec and estimate', /3 hero video assets, each with a separate hook/.test(body('SCOPE OF SERVICES')) && /9:16, up to 60s/.test(body('SCOPE OF SERVICES')) && /6 to 7 working days/.test(body('SCOPE OF SERVICES')));
+    T('compensation: day rate, $12,000 to $14,000 estimate, $14,000 cap, $6,000 deposit on the low end', /\$2,000 USD per working day/.test(body('COMPENSATION')) && /\$12,000 to \$14,000 USD/.test(body('COMPENSATION')) && /Not-to-Exceed:<\/strong>[^$]*\$14,000 USD/.test(body('COMPENSATION')) && /50% of the estimated fee \(\$6,000 USD, calculated on the low end/.test(body('COMPENSATION')));
+    T('revisions: two included, $750 per day beyond, unlimited rounds on those terms', /up to <strong>2 \(two\)<\/strong> rounds/.test(body('REVISIONS & APPROVAL')) && /\$750 USD per working day of editing time/.test(body('REVISIONS & APPROVAL')) && /no limit on the number of additional rounds/.test(body('REVISIONS & APPROVAL')));
+    T('ownership: client owns on full payment, creator keeps tools and portfolio rights', /assigns to Client all right, title, and interest/.test(body('OWNERSHIP & USAGE')) && /including paid media, in any territory, without limit of time/.test(body('OWNERSHIP & USAGE')) && /Creator Tools/.test(body('OWNERSHIP & USAGE')) && /portfolio/.test(body('OWNERSHIP & USAGE')));
+    T('cancellation: days worked plus 25% of the remaining estimate against the $14,000 high end', /Day Rate for all days worked/.test(body('CANCELLATION')) && /<strong>25%<\/strong> of the remaining estimate/.test(body('CANCELLATION')) && /\$14,000 USD/.test(body('CANCELLATION')));
+    T('shared indemnity warranty switches to the client materials', /Client Materials/.test(body('INDEMNIFICATION')) && /the Deliverables/.test(body('INDEPENDENT CONTRACTOR')));
+    set('cSvcNte', ''); set('cSvcDaysHigh', '6'); cv.querySelector('#cSvcPortfolio').checked = false;
+    const secs2 = __arkives.buildContractSections(__arkives.gatherContractData());
+    const body2 = (title) => (secs2.find((x) => x.title === title) || {}).body || '';
+    T('blank cap = notify-before-exceeding clause; equal days = single figure; portfolio off = no display', !/Not-to-Exceed/.test(body2('COMPENSATION')) && /notify Client in writing before doing so/.test(body2('COMPENSATION')) && /6 working days/.test(body2('COMPENSATION')) && /\$12,000 USD<\/strong>\./.test(body2('COMPENSATION')) && /shall not display the Deliverables publicly/.test(body2('OWNERSHIP & USAGE')));
+    __arkives.generateContract();
+    T('services preview renders the services title and numbered sections', /PRODUCTION SERVICES AGREEMENT/.test(cv.querySelector('#contractPreviewContent').textContent) && cv.querySelectorAll('#contractPreviewContent .contract-section').length === 17);
+  }
+
   // Auth panels
   __arkives._authShow('forgotForm');
   T('forgot-password panel shows alone', document.getElementById('forgotForm').style.display === '' && document.getElementById('loginForm').style.display === 'none');

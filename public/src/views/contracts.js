@@ -29,7 +29,7 @@ async function saveContractDefaults() {
     approvalConsequence: 'cdApprovalConsequence'
   };
   var numFields = {
-    revisionExtraCost: 'cdRevCost', paidMediaFloor: 'cdPaidFloor',
+    revisionExtraCost: 'cdRevCost', paidMediaFloor: 'cdPaidFloor', dayRate: 'cdDayRate',
     crossPostFee: 'cdCrossPost', nonDisparagement: 'cdNonDisp',
     mediationDays: 'cdMedDays', forceMajeureDays: 'cdFMDays'
   };
@@ -149,6 +149,13 @@ function renderContracts() {
           </div>
           <div class="form-row">
             <div class="form-group">
+              <label>Day Rate ($) — production services</label>
+              <input type="number" id="cdDayRate" value="${state.CONTRACT_DEFAULTS.dayRate}">
+            </div>
+            <div class="form-group"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
               <label>Cross-Post Fee (%)</label>
               <input type="number" id="cdCrossPost" value="${state.CONTRACT_DEFAULTS.crossPostFee}">
             </div>
@@ -250,13 +257,103 @@ function renderContracts() {
         <hr class="contract-divider">
         <h3 class="contract-form-heading">Deal</h3>
         <div class="form-group">
-          <label>Campaign Name</label>
+          <label>Agreement Type</label>
+          <select id="cAgreementType" data-change="toggleAgreementType">
+            <option value="partnership">Partnership — sponsored content on my channels</option>
+            <option value="services">Production services — editing / day-rate work on the client's footage</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Campaign / Project Name</label>
           <input type="text" id="cCampaign" placeholder="e.g., AI Sustainability for Creatives">
         </div>
         <div class="form-group">
-          <label>Campaign Description / Context</label>
+          <label>Description / Context</label>
           <textarea id="cContext" rows="3" placeholder="Describe the campaign goals, context, and any special terms…"></textarea>
         </div>
+
+        <div id="dealServices" style="display:none">
+          <div class="form-row">
+            <div class="form-group">
+              <label>What you're producing</label>
+              <input type="text" id="cSvcWork" placeholder="e.g., hero video assets, each with a separate hook">
+            </div>
+            <div class="form-group" style="max-width:160px;">
+              <label>Number of Assets</label>
+              <input type="number" id="cSvcCount" value="3" min="1">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Deliverable Spec</label>
+            <input type="text" id="cSvcSpec" placeholder="e.g., 9:16 and 1:1, up to 60s each, ProRes 422 + H.264, captions burned in">
+          </div>
+          <div class="form-group">
+            <label>Client Provides</label>
+            <input type="text" id="cSvcMaterials" value="all raw footage, brand assets, logos, fonts, licensed music, and the creative brief" placeholder="footage, brand assets, music…">
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Day Rate ($)</label>
+              <input type="number" id="cSvcDayRate" value="${state.CONTRACT_DEFAULTS.dayRate}" min="0">
+            </div>
+            <div class="form-group">
+              <label>Estimated Days (low – high)</label>
+              <div class="contract-range">
+                <input type="number" id="cSvcDaysLow" value="6" min="1" step="0.5">
+                <span>to</span>
+                <input type="number" id="cSvcDaysHigh" value="7" min="1" step="0.5">
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Not-to-Exceed ($) <span class="contract-hint">optional</span></label>
+              <input type="number" id="cSvcNte" placeholder="blank = billed on actual days" min="0">
+            </div>
+            <div class="form-group">
+              <label>Deposit (%)</label>
+              <input type="number" id="cSvcDeposit" value="50" min="0" max="100">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Balance Due</label>
+              <select id="cSvcBalance">
+                <option value="delivery">On delivery of final assets</option>
+                <option value="NET15">NET 15 from delivery</option>
+                <option value="NET30">NET 30 from delivery</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Target Delivery Date <span class="contract-hint">optional</span></label>
+              <input type="date" id="cSvcDelivery">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Extra Revision Rate ($)</label>
+              <input type="number" id="cSvcRevRate" value="750" min="0">
+            </div>
+            <div class="form-group">
+              <label>Billed Per</label>
+              <select id="cSvcRevUnit">
+                <option value="day">Day of editing</option>
+                <option value="round">Round</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Kill Fee (% of remaining estimate)</label>
+              <input type="number" id="cSvcKill" value="25" min="0" max="100">
+            </div>
+            <div class="form-group">
+              <label class="contract-checkbox" style="margin-top:26px"><input type="checkbox" id="cSvcPortfolio" checked> Portfolio rights (I can show the work)</label>
+            </div>
+          </div>
+        </div>
+
+        <div id="dealPartnership">
         <div class="form-row">
           <div class="form-group">
             <label>Deliverable Type</label>
@@ -317,9 +414,11 @@ function renderContracts() {
             </div>
           </div>
         </div>
+        </div>
 
         <hr class="contract-divider">
         <h3 class="contract-form-heading">Rights & Terms</h3>
+        <div id="rightsPartnership">
         <div class="form-row">
           <div class="form-group">
             <label>Content License Duration</label>
@@ -354,6 +453,7 @@ function renderContracts() {
             <input type="text" id="cTerm" placeholder="e.g., 3 months from first content publish">
           </div>
         </div>
+        </div>
         <div class="form-row">
           <div class="form-group">
             <label>Governing Law State</label>
@@ -369,12 +469,12 @@ function renderContracts() {
             <label>Approval Timeline (hours)</label>
             <input type="number" id="cApprovalHrs" value="48" min="24" step="24">
           </div>
-          <div class="form-group">
+          <div class="form-group" data-partnership-only>
             <label>Kill Fee — Standard (%)</label>
             <input type="number" id="cKillStd" value="50" min="0" max="100">
           </div>
         </div>
-        <div class="form-group" style="max-width:200px;">
+        <div class="form-group" style="max-width:200px;" data-partnership-only>
           <label>Kill Fee — Breach (%)</label>
           <input type="number" id="cKillBreach" value="100" min="0" max="100">
         </div>
@@ -447,6 +547,18 @@ function contractDeliverableChanged() {
   }
 }
 
+/* ---- CONTRACT: Agreement type swaps the deal + rights fields ---- */
+function toggleAgreementType() {
+  var services = (document.getElementById('cAgreementType')?.value || 'partnership') === 'services';
+  var show = function(id, on) { var el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+  show('dealServices', services);
+  show('dealPartnership', !services);
+  show('rightsPartnership', !services);
+  document.querySelectorAll('[data-partnership-only]').forEach(function(el) { el.style.display = services ? 'none' : ''; });
+  var subtitle = document.querySelector('#view-contracts .view-subtitle');
+  if (subtitle) subtitle.textContent = services ? 'Generate a production services agreement for day-rate editing work' : 'Generate professional partnership agreements from your template';
+}
+
 /* ---- CONTRACT: Toggle performance fields ---- */
 function togglePerfFields() {
   document.getElementById("perfFields").style.display =
@@ -473,6 +585,7 @@ function gatherContractData() {
     state.CONTRACT_DEFAULTS.paymentMethod = (document.getElementById('cdPaymentMethod')?.value || '').trim() || state.CONTRACT_DEFAULTS.paymentMethod;
     state.CONTRACT_DEFAULTS.approvalConsequence = (document.getElementById('cdApprovalConsequence')?.value || '').trim() || state.CONTRACT_DEFAULTS.approvalConsequence;
     state.CONTRACT_DEFAULTS.forceMajeureDays = Number(document.getElementById('cdFMDays')?.value) || state.CONTRACT_DEFAULTS.forceMajeureDays;
+    state.CONTRACT_DEFAULTS.dayRate = Number(document.getElementById('cdDayRate')?.value) || state.CONTRACT_DEFAULTS.dayRate;
   }
 
   const creatorName = (typeof state.CREATOR !== 'undefined' && state.CREATOR.name) ? state.CREATOR.name : 'Creator';
@@ -505,7 +618,35 @@ function gatherContractData() {
   const licenseVal = v('cLicense', '30');
   const exclVal = v('cExcl', 'none');
 
+  // Production services (day-rate) fields
+  const balanceMap = {
+    'delivery': 'due upon delivery of the final Deliverables',
+    'NET15': 'due NET 15 days from delivery of the final Deliverables',
+    'NET30': 'due NET 30 days from delivery of the final Deliverables'
+  };
+  const daysLow = Math.max(0, Number(v('cSvcDaysLow', '6')) || 6);
+  const daysHigh = Math.max(daysLow, Number(v('cSvcDaysHigh', String(daysLow))) || daysLow);
+  const svc = {
+    work: v('cSvcWork', 'video assets'),
+    count: Math.max(1, parseInt(v('cSvcCount', '1'), 10) || 1),
+    spec: v('cSvcSpec', ''),
+    materials: v('cSvcMaterials', 'all raw footage, brand assets, and the creative brief'),
+    dayRate: Number(v('cSvcDayRate', String(state.CONTRACT_DEFAULTS.dayRate))) || state.CONTRACT_DEFAULTS.dayRate,
+    daysLow, daysHigh,
+    nte: Number(v('cSvcNte', '0')) || 0,
+    deposit: Math.min(100, Math.max(0, Number(v('cSvcDeposit', '50')))),
+    balanceKey: v('cSvcBalance', 'delivery'),
+    balance: balanceMap[v('cSvcBalance', 'delivery')] || balanceMap.delivery,
+    delivery: v('cSvcDelivery', ''),
+    revRate: Number(v('cSvcRevRate', '750')) || 0,
+    revUnit: v('cSvcRevUnit', 'day') === 'round' ? 'round' : 'day',
+    kill: Math.min(100, Math.max(0, Number(v('cSvcKill', '25')))),
+    portfolio: document.getElementById('cSvcPortfolio') ? !!document.getElementById('cSvcPortfolio').checked : true
+  };
+
   return {
+    agreementType: v('cAgreementType', 'partnership') === 'services' ? 'services' : 'partnership',
+    svc,
     brand: v('cBrandName', '[BRAND LEGAL NAME]'),
     brandShort: v('cBrandShort', '[BRAND]'),
     contact: v('cContact', '[CONTACT NAME]'),
@@ -546,8 +687,13 @@ function gatherContractData() {
   };
 }
 
-/* ---- CONTRACT: Build all 20 sections as array ---- */
+/* ---- CONTRACT: Build all sections as array ----
+   Two templates share the back half (confidentiality through
+   signatures): the Partnership Agreement (sponsored content on the
+   creator's channels) and the Production Services Agreement (day-rate
+   editing on the client's own footage). */
 function buildContractSections(d) {
+  if (d.agreementType === 'services') return buildServicesSections(d);
   const fmt = n => '$' + Number(n).toLocaleString();
   const totalComp = d.amount * d.numDeliverables;
   const platformList = d.platforms.join(', ');
@@ -654,55 +800,68 @@ function buildContractSections(d) {
     `Client shall not request, encourage, or require Creator to omit, obscure, or minimize any FTC-required disclosure.`
   });
 
-  // 10. CONFIDENTIALITY
-  sections.push({ num: 10, title: 'CONFIDENTIALITY', body:
+  sections.push.apply(sections, buildSharedSections(d, 10, 'the Content'));
+  sections.push({ num: null, title: 'SIGNATURES', body: 'SIGNATURES_BLOCK', isSigBlock: true, sigData: d });
+  return sections;
+}
+
+// Boilerplate shared by both templates, numbered from `start`.
+// `subject` names the work product in the indemnity warranty.
+function buildSharedSections(d, start, subject) {
+  const sections = [];
+  let n = start;
+
+  // CONFIDENTIALITY
+  sections.push({ num: n++, title: 'CONFIDENTIALITY', body:
     `Each party agrees to keep confidential all non-public information shared by the other party in connection with this Agreement, including but not limited to campaign strategy, pricing, creative briefs, performance data, and business terms.\n\n` +
     `This obligation does not apply to information that: (a) is or becomes publicly available through no fault of the receiving party; (b) was known to the receiving party prior to disclosure; (c) is independently developed by the receiving party; or (d) is required to be disclosed by law or legal process.`
   });
 
-  // 11. LIMITATION OF LIABILITY
-  sections.push({ num: 11, title: 'LIMITATION OF LIABILITY', body:
+  // LIMITATION OF LIABILITY
+  sections.push({ num: n++, title: 'LIMITATION OF LIABILITY', body:
     `Neither party shall be liable to the other for any indirect, incidental, special, consequential, or punitive damages arising out of or related to this Agreement, regardless of the cause of action or theory of liability.\n\n` +
     `Each party's total aggregate liability under this Agreement shall not exceed the total compensation payable hereunder.`
   });
 
-  // 12. INDEMNIFICATION
-  sections.push({ num: 12, title: 'INDEMNIFICATION', body:
+  // INDEMNIFICATION
+  sections.push({ num: n++, title: 'INDEMNIFICATION', body:
     `Each party shall indemnify, defend, and hold harmless the other party from and against any third-party claims, damages, losses, and expenses (including reasonable attorneys' fees) arising from: (a) the indemnifying party's breach of this Agreement; (b) the indemnifying party's negligence or willful misconduct; or (c) any violation of applicable law by the indemnifying party.\n\n` +
-    `Creator represents that all Content is original work and does not infringe upon any third-party intellectual property rights. Client represents that any materials or products provided to Creator for the campaign are lawfully distributed and comply with all applicable regulations.`
+    (d.agreementType === 'services'
+      ? `Creator represents that Creator's original contributions to ${subject} (editing, motion graphics, and other creative work) do not infringe upon any third-party intellectual property rights. Client represents and warrants that it owns or has secured all rights, licenses, releases, and permissions necessary for every element of the Client Materials, including footage, music, talent likenesses, trademarks, and any third-party content, and that ${subject} may lawfully be used as contemplated herein.`
+      : `Creator represents that all Content is original work and does not infringe upon any third-party intellectual property rights. Client represents that any materials or products provided to Creator for the campaign are lawfully distributed and comply with all applicable regulations.`)
   });
 
-  // 13. INDEPENDENT CONTRACTOR
-  sections.push({ num: 13, title: 'INDEPENDENT CONTRACTOR', body:
-    `Creator is an independent contractor and not an employee, agent, or partner of Client. Creator shall use their own equipment, set their own schedule, and maintain full creative discretion in producing the Content, subject to the brief and revision process.\n\n` +
+  // INDEPENDENT CONTRACTOR
+  sections.push({ num: n++, title: 'INDEPENDENT CONTRACTOR', body:
+    `Creator is an independent contractor and not an employee, agent, or partner of Client. Creator shall use their own equipment, set their own schedule, and maintain full creative discretion in producing ${subject}, subject to the brief and revision process.\n\n` +
     `Creator is solely responsible for all applicable federal, state, and local taxes, including self-employment tax. Client shall not withhold any taxes from payments to Creator. If payments exceed applicable IRS thresholds, Client shall issue a Form 1099.`
   });
 
-  // 14. NON-DISPARAGEMENT
-  sections.push({ num: 14, title: 'NON-DISPARAGEMENT', body:
+  // NON-DISPARAGEMENT
+  sections.push({ num: n++, title: 'NON-DISPARAGEMENT', body:
     `During the Term and for a period of ${state.CONTRACT_DEFAULTS.nonDisparagement} (${numberToWord(state.CONTRACT_DEFAULTS.nonDisparagement)}) months following termination or expiration of this Agreement, neither party shall make any public statements or communications that disparage, defame, or cast in a negative light the other party, its products, services, officers, directors, or employees.\n\n` +
     `This obligation sunsets automatically ${state.CONTRACT_DEFAULTS.nonDisparagement} (${numberToWord(state.CONTRACT_DEFAULTS.nonDisparagement)}) months after the termination or expiration of this Agreement.`
   });
 
-  // 15. DISPUTE RESOLUTION
-  sections.push({ num: 15, title: 'DISPUTE RESOLUTION', body:
+  // DISPUTE RESOLUTION
+  sections.push({ num: n++, title: 'DISPUTE RESOLUTION', body:
     `Any dispute arising out of or relating to this Agreement shall first be submitted to good-faith mediation in ${d.govLaw}. If mediation fails to resolve the dispute within ${state.CONTRACT_DEFAULTS.mediationDays} (${numberToWord(state.CONTRACT_DEFAULTS.mediationDays)}) days, either party may pursue binding arbitration in ${d.govLaw} under the rules of the American Arbitration Association.\n\n` +
     `Each party shall bear its own costs of mediation and arbitration. The prevailing party in any arbitration shall be entitled to recover reasonable attorneys' fees from the non-prevailing party.`
   });
 
-  // 16. FORCE MAJEURE
-  sections.push({ num: 16, title: 'FORCE MAJEURE', body:
+  // FORCE MAJEURE
+  sections.push({ num: n++, title: 'FORCE MAJEURE', body:
     `Neither party shall be liable for any failure or delay in performance under this Agreement due to causes beyond its reasonable control, including but not limited to natural disasters, pandemics, government actions, internet outages, platform policy changes, acts of war or terrorism, or other force majeure events.\n\n` +
     `The affected party shall provide prompt written notice and make reasonable efforts to mitigate the impact. If a force majeure event continues for more than ${state.CONTRACT_DEFAULTS.forceMajeureDays} (${numberToWord(state.CONTRACT_DEFAULTS.forceMajeureDays)}) days, either party may terminate this Agreement without penalty.`
   });
 
-  // 17. GOVERNING LAW
-  sections.push({ num: 17, title: 'GOVERNING LAW', body:
+  // GOVERNING LAW
+  sections.push({ num: n++, title: 'GOVERNING LAW', body:
     `This Agreement shall be governed by and construed in accordance with the laws of the State of ${d.govLaw}, without regard to its conflict of laws provisions.`
   });
 
-  // 18. GENERAL PROVISIONS
-  sections.push({ num: 18, title: 'GENERAL PROVISIONS', body:
+  // GENERAL PROVISIONS
+  sections.push({ num: n++, title: 'GENERAL PROVISIONS', body:
     `<strong>Entire Agreement:</strong> This Agreement, together with any exhibits attached hereto, constitutes the entire agreement between the parties and supersedes all prior negotiations, representations, or agreements relating to the subject matter herein.\n\n` +
     `<strong>Assignment:</strong> Neither party may assign or transfer this Agreement without the prior written consent of the other party, except that Creator may assign this Agreement to a successor entity.\n\n` +
     `<strong>Amendments:</strong> This Agreement may be amended only by a written instrument signed by both parties.\n\n` +
@@ -711,9 +870,119 @@ function buildContractSections(d) {
     `<strong>Counterparts:</strong> This Agreement may be executed in counterparts, each of which shall be deemed an original, and all of which together shall constitute one and the same instrument. Electronic signatures shall be deemed valid and binding.`
   });
 
-  // 19. SIGNATURE BLOCK
-  sections.push({ num: null, title: 'SIGNATURES', body: 'SIGNATURES_BLOCK', isSigBlock: true, sigData: d });
+  return sections;
+}
 
+/* ---- PRODUCTION SERVICES AGREEMENT ----
+   Day-rate editing / post-production on footage the client supplies.
+   The client ends up owning the finished assets; the creator keeps
+   project files and (optionally) portfolio rights. No FTC, licensing
+   windows, exclusivity or performance bonus: none of that applies. */
+function buildServicesSections(d) {
+  const fmt = n => '$' + Number(n).toLocaleString();
+  const s = d.svc;
+  const brandAddr = [d.brandStreet, d.brandCity, d.brandState, d.brandZip].filter(Boolean).join(', ');
+  const dateFormatted = d.date !== '[DATE]' ? new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '[DATE]';
+  const deliveryFormatted = s.delivery ? new Date(s.delivery + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+  const feeLow = s.dayRate * s.daysLow, feeHigh = s.dayRate * s.daysHigh;
+  const sameDays = s.daysLow === s.daysHigh;
+  const daysText = sameDays ? `${s.daysLow} working day${s.daysLow === 1 ? '' : 's'}` : `${s.daysLow} to ${s.daysHigh} working days`;
+  const feeText = sameDays ? fmt(feeLow) : `${fmt(feeLow)} to ${fmt(feeHigh)}`;
+  const depositAmt = Math.round(feeLow * s.deposit / 100);
+  const assets = `${s.count} ${s.work}`;
+  const sections = [];
+
+  // PREAMBLE
+  sections.push({
+    num: null, title: 'PRODUCTION SERVICES AGREEMENT', body:
+    `This Production Services Agreement ("Agreement") is entered into as of <strong>${dateFormatted}</strong> ("Effective Date"), by and between:\n\n` +
+    `<strong>${d.creatorEntity}</strong> ("Creator"), a ${state.CONTRACT_DEFAULTS.creatorState} limited liability company operated by ${d.creatorName}, doing business as ${state.CONTRACT_DEFAULTS.creatorDBA}` +
+    (d.creatorEmail ? `, email: ${d.creatorEmail}` : '') + `;\n\n` +
+    `and\n\n` +
+    `<strong>${d.brand}</strong> ("Client"), represented by ${d.contact}, ${d.contactTitle}` +
+    (d.contactEmail ? `, email: ${d.contactEmail}` : '') +
+    (brandAddr && brandAddr !== '[ADDRESS], [CITY], [STATE], [ZIP]' ? `, address: ${brandAddr}` : '') + `.\n\n` +
+    `Whereas, Creator provides video editing, motion design, and post-production services;\n\n` +
+    `Whereas, ${d.brandShort} desires to engage Creator to produce finished video assets from materials supplied by ${d.brandShort}, for ${d.brandShort}'s own use;` +
+    (d.context ? `\n\nWhereas, ${d.context};` : '') +
+    `\n\nNow, therefore, in consideration of the mutual promises and obligations set forth herein, and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the parties agree as follows:`
+  });
+
+  // 1. SCOPE OF SERVICES
+  sections.push({ num: 1, title: 'SCOPE OF SERVICES', body:
+    `Creator shall edit and deliver the following (the "Deliverables") under the project <strong>"${d.campaign}"</strong>:\n\n` +
+    `<strong>Deliverables:</strong> ${assets}\n` +
+    (s.spec ? `<strong>Specifications:</strong> ${s.spec}\n` : '') +
+    `<strong>Source:</strong> edited from the Client Materials described in Section 2; no original footage capture is included\n` +
+    `<strong>Estimated effort:</strong> ${daysText}\n\n` +
+    `The Deliverables are produced for ${d.brandShort}'s own channels and media. Creator is not engaged to publish, post, or distribute the Deliverables, to manage any media spend, or to appear in or endorse the Deliverables, and no such obligation shall be implied.\n\n` +
+    `Work outside this scope, including additional assets, additional cuts or aspect ratios not listed above, re-edits caused by new or replacement footage, or changes to the creative direction after approval of a cut, is a change in scope. Creator will quote changes in scope in writing (a "Change Order") at the Day Rate before proceeding, and no change-in-scope work is due until the Change Order is accepted.`
+  });
+
+  // 2. CLIENT MATERIALS
+  sections.push({ num: 2, title: 'CLIENT MATERIALS', body:
+    `Client shall supply ${s.materials} (the "Client Materials") in a usable, organized form before work begins. The Estimated Effort and any delivery date assume complete Client Materials on the Effective Date; each day of delay in supplying complete Client Materials extends the schedule by at least one day.\n\n` +
+    `Client represents and warrants that it owns or has secured all rights, licenses, consents, and releases needed for every element of the Client Materials, including footage, music, voice, talent likeness, trademarks, and third-party content, and that Creator's use of the Client Materials to produce the Deliverables will not infringe any third-party right. Creator is not responsible for clearing, licensing, or verifying the Client Materials.\n\n` +
+    `Creator will keep the Client Materials confidential and use them only to perform this Agreement. Client is responsible for retaining its own copies; Creator may delete working files and Client Materials sixty (60) days after final delivery.`
+  });
+
+  // 3. SCHEDULE
+  sections.push({ num: 3, title: 'SCHEDULE', body:
+    `Work begins once Creator has received the Deposit (Section 4) and complete Client Materials.` +
+    (deliveryFormatted ? ` Creator will target delivery of the final Deliverables by <strong>${deliveryFormatted}</strong>, subject to timely feedback and complete Client Materials.` : ` Creator will deliver a first cut of each Deliverable in the order agreed with Client, and the final Deliverables on completion of the included revision rounds.`) +
+    `\n\nDates are targets, not guarantees. Delays caused by late Client Materials, late feedback, or changes in scope move the schedule accordingly and are not a breach by Creator.`
+  });
+
+  // 4. COMPENSATION
+  let comp = `<strong>Day Rate:</strong> ${fmt(s.dayRate)} USD per working day of Creator's time. A working day is up to eight (8) hours; partial days are billed in half-day increments.\n\n` +
+    `<strong>Estimate:</strong> Creator estimates <strong>${daysText}</strong> to complete the Deliverables as scoped, for an estimated fee of <strong>${feeText} USD</strong>. The estimate is a good-faith projection, not a fixed price; Client is billed for the days actually worked.`;
+  if (s.nte > 0) {
+    comp += `\n\n<strong>Not-to-Exceed:</strong> Without Client's prior written approval, total fees under this Agreement (excluding paid revision rounds under Section 5 and accepted Change Orders) shall not exceed <strong>${fmt(s.nte)} USD</strong>. If Creator expects to reach this cap before the Deliverables are complete, Creator will notify Client in writing with the days remaining and will pause at the cap until Client approves additional days.`;
+  } else {
+    comp += `\n\nIf Creator expects to exceed the high end of the estimate, Creator will notify Client in writing before doing so, with the reason and the additional days expected.`;
+  }
+  comp += `\n\n<strong>Deposit:</strong> ${s.deposit}% of the estimated fee (${fmt(depositAmt)} USD${sameDays ? '' : ', calculated on the low end of the estimate'}) is due on signing and before work begins. The Deposit is credited against the final invoice and is non-refundable except as provided in Section 8.\n\n` +
+    `<strong>Balance:</strong> Creator will invoice the balance (days worked at the Day Rate, plus any paid revision rounds and accepted Change Orders, less the Deposit) ${s.balance}. Creator will include a summary of days worked with each invoice.\n\n` +
+    `Creator shall submit invoices via ${state.CONTRACT_DEFAULTS.invoiceMethod}. Payment shall be made by ${state.CONTRACT_DEFAULTS.paymentMethod}. Client shall be responsible for any applicable processing fees. Invoices unpaid thirty (30) days after the due date accrue interest at 1.5% per month or the maximum rate permitted by law, whichever is lower.`;
+  sections.push({ num: 4, title: 'COMPENSATION', body: comp });
+
+  // 5. REVISIONS & APPROVAL
+  const revUnitText = s.revUnit === 'round' ? 'per additional round' : 'per working day of editing time, billed in half-day increments';
+  sections.push({ num: 5, title: 'REVISIONS & APPROVAL', body:
+    `The estimate includes up to <strong>${d.revisions} (${numberToWord(d.revisions)})</strong> round${d.revisions > 1 ? 's' : ''} of revisions per Deliverable. A "round" is one consolidated set of written notes on a cut, delivered together.\n\n` +
+    `Additional revision rounds requested by Client beyond those included are billed at <strong>${fmt(s.revRate)} USD ${revUnitText}</strong>, in addition to the fees above${s.nte > 0 ? ' and outside the Not-to-Exceed cap' : ''}. There is no limit on the number of additional rounds Client may request on these terms.\n\n` +
+    `Client shall provide consolidated feedback or approval within <strong>${d.approvalHrs} hours</strong> of receiving a cut for review. Failure to respond within this period shall constitute approval of that cut as delivered.\n\n` +
+    `Revision requests must be specific, actionable, and consistent with the brief and the approved cut. Requests that materially change the creative direction, swap in new footage, or add deliverables are changes in scope under Section 1, not revisions.`
+  });
+
+  // 6. DELIVERY & ACCEPTANCE
+  sections.push({ num: 6, title: 'DELIVERY & ACCEPTANCE', body:
+    `Creator will deliver the final Deliverables by digital file transfer${s.spec ? ` in the specifications stated in Section 1` : ''}. A Deliverable is accepted when Client approves it in writing or when the approval period in Section 5 lapses without a response.\n\n` +
+    `Final, full-resolution files are released upon receipt of all amounts then due. Until then, Creator may deliver review copies with a watermark or at reduced resolution.`
+  });
+
+  // 7. OWNERSHIP & USAGE
+  let own = `Upon Creator's receipt of all fees due under this Agreement, Creator assigns to Client all right, title, and interest in the final, approved Deliverables, and Client may use, reproduce, modify, distribute, and display the Deliverables in any media, including paid media, in any territory, without limit of time, and without further payment to Creator. Until full payment, Client's use of the Deliverables is a limited, revocable license for internal review only.\n\n` +
+    `Creator retains ownership of its project files, templates, presets, animations, typefaces, tools, techniques, and any pre-existing or generally reusable material used in producing the Deliverables ("Creator Tools"). Client receives no rights in the Creator Tools beyond their inclusion in the final Deliverables. Project files are not a Deliverable; Creator may provide them on request at the Day Rate for the time involved.`;
+  if (s.portfolio) {
+    own += `\n\nCreator may display the final Deliverables, and excerpts of them, in Creator's portfolio, showreel, website, and social channels as examples of Creator's work, and may identify Client as a client, once the Deliverables have been publicly released by Client or six (6) months after delivery, whichever comes first. Creator will honor any written request from Client to hold a specific Deliverable back from such display.`;
+  } else {
+    own += `\n\nCreator shall not display the Deliverables publicly or identify Client as a client without Client's prior written consent.`;
+  }
+  sections.push({ num: 7, title: 'OWNERSHIP & USAGE', body: own });
+
+  // 8. CANCELLATION
+  const remainingHigh = Math.max(0, feeHigh);
+  sections.push({ num: 8, title: 'CANCELLATION', body:
+    `Client may cancel this Agreement at any time by written notice. On cancellation, Client shall pay, within fifteen (15) days of the notice:\n\n` +
+    `(a) the Day Rate for all days worked through the date of notice, plus any paid revision rounds and accepted Change Orders completed; and\n` +
+    `(b) a cancellation fee of <strong>${s.kill}%</strong> of the remaining estimate, meaning ${s.kill}% of the difference between the high end of the estimated fee (${fmt(remainingHigh)} USD) and the fees under (a).\n\n` +
+    `The Deposit is applied to these amounts; any excess Deposit is refunded. Once the amounts above are paid, Creator will deliver the work completed to date in its then-current state, and Client's rights under Section 7 attach to that work.\n\n` +
+    `Creator may terminate this Agreement by written notice if Client fails to pay any amount within fifteen (15) days after it is due, or fails to supply complete Client Materials or feedback for more than thirty (30) days after a written request. In that case the amounts in (a) and (b) above are likewise due.`
+  });
+
+  sections.push.apply(sections, buildSharedSections(d, 9, 'the Deliverables'));
+  sections.push({ num: null, title: 'SIGNATURES', body: 'SIGNATURES_BLOCK', isSigBlock: true, sigData: d });
   return sections;
 }
 
@@ -833,7 +1102,7 @@ function downloadContractPDF() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     setColor(MUTED_C);
-    doc.text(d.creatorEntity + ' — ' + d.brand + ' Partnership Agreement', M, H - 30);
+    doc.text(d.creatorEntity + ' — ' + d.brand + (d.agreementType === 'services' ? ' Production Services Agreement' : ' Partnership Agreement'), M, H - 30);
     doc.text('Page ' + pageNum, W - M, H - 30, { align: 'right' });
     setDraw(RULE_C);
     doc.setLineWidth(0.5);
@@ -994,11 +1263,11 @@ function downloadContractPDF() {
     y += 8;
   }
 
-  var filename = (d.brandShort !== '[BRAND]' ? d.brandShort.replace(/[^a-zA-Z0-9]/g, '_') : 'Brand') + '_Contract_' + d.date + '.pdf';
+  var filename = (d.brandShort !== '[BRAND]' ? d.brandShort.replace(/[^a-zA-Z0-9]/g, '_') : 'Brand') + (d.agreementType === 'services' ? '_Services_' : '_Contract_') + d.date + '.pdf';
   doc.save(filename);
   showToast('PDF downloaded');
 }
 
-act({ contractDeliverableChanged, copyContractPreview, downloadContractPDF, generateContract, prefillContractFromDeal, saveContractDefaults, toggleContractDefaults, togglePerfFields });
+act({ toggleAgreementType, contractDeliverableChanged, copyContractPreview, downloadContractPDF, generateContract, prefillContractFromDeal, saveContractDefaults, toggleContractDefaults, togglePerfFields });
 
-export { buildContractSections, contractDeliverableChanged, copyContractPreview, downloadContractPDF, formatContractBody, gatherContractData, generateContract, loadContractDefaults, numberToWord, prefillContractFromDeal, renderContracts, saveContractDefaults, toggleContractDefaults, togglePerfFields };
+export { buildServicesSections, buildSharedSections, toggleAgreementType, buildContractSections, contractDeliverableChanged, copyContractPreview, downloadContractPDF, formatContractBody, gatherContractData, generateContract, loadContractDefaults, numberToWord, prefillContractFromDeal, renderContracts, saveContractDefaults, toggleContractDefaults, togglePerfFields };

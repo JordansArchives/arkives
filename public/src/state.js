@@ -175,5 +175,6 @@ state.CONTRACT_DEFAULTS = {
   invoiceMethod: 'email',
   paymentMethod: 'wire transfer or ACH',
   approvalConsequence: 'approval of the Content as delivered',
-  forceMajeureDays: 30
+  forceMajeureDays: 30,
+  dayRate: 2000 // production services (editing / post) day rate
 };

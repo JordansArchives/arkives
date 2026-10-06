@@ -1236,6 +1236,10 @@ a.mk-platform-link:hover {
   margin: 8px 0 16px;
   color: var(--text-primary);
 }
+.contract-range { display: flex; align-items: center; gap: 8px; }
+.contract-range input { min-width: 0; }
+.contract-range span { color: var(--text-muted); font-size: 12px; }
+.contract-hint { font-weight: 400; color: var(--text-muted); text-transform: none; letter-spacing: 0; margin-left: 4px; }
 .contract-divider {
   border: none;
   border-top: 2px solid var(--border);
