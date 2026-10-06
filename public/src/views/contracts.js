@@ -1,5 +1,6 @@
 // Arkives — Contracts: contract builder and defaults.
 import { state } from '../state.js';
+import { clients } from '../stores/invoices.js';
 import { act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
 import { showToast } from '../lib/toast.js';
@@ -95,6 +96,12 @@ function renderContracts() {
   const dealOpts = (typeof state.DEALS !== 'undefined' && state.DEALS.length)
     ? state.DEALS.map((d, i) => `<option value="${i}">${_esc(d.brand || 'Untitled')} — ${_esc(d.campaign || d.scope || 'No campaign')}</option>`).join('')
     : '';
+  // Client picker: the same clients the invoices use, plus an inline "new client"
+  const clientOpts = [
+    `<option value="">— Select a client —</option>`,
+    ...(state.CLIENTS || []).map(c => `<option value="${c._sbId}"${state._contractClientId === c._sbId ? ' selected' : ''}>${_esc(c.name)}${c.company ? ' · ' + _esc(c.company) : ''}</option>`),
+    `<option value="__new">+ New client…</option>`
+  ].join('');
 
   const platformCheckboxes = ['Instagram', 'TikTok', 'YouTube', 'X (Twitter)', 'LinkedIn'].map(p =>
     `<label class="contract-checkbox"><input type="checkbox" value="${p}" class="cPlatformCheck"${p === 'Instagram' ? ' checked' : ''}> ${p}</label>`
@@ -195,16 +202,34 @@ function renderContracts() {
           <button class="btn btn-secondary" data-action="saveContractDefaults" style="margin-top:8px;">Save Defaults</button>
         </div>
 
-        ${dealOpts ? `
-        <div class="form-group contract-form-section">
-          <label>Load from Existing Deal</label>
-          <select id="cLoadDeal" data-change="prefillContractFromDeal">
-            <option value="">— Select a deal to pre-fill —</option>
-            ${dealOpts}
-          </select>
+        <h3 class="contract-form-heading">Client</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Client</label>
+            <select id="cClientSel" data-change="contractPickClient" data-change-args="[&quot;$value&quot;]">${clientOpts}</select>
+          </div>
+          ${dealOpts ? `
+          <div class="form-group">
+            <label>Or load a deal</label>
+            <select id="cLoadDeal" data-change="prefillContractFromDeal">
+              <option value="">— Select a deal to pre-fill —</option>
+              ${dealOpts}
+            </select>
+          </div>` : '<div class="form-group"></div>'}
+        </div>
+        <div id="cNewClient" class="inv-client-form" style="display:none">
+          <div class="form-row">
+            <div class="form-group"><label>Contact Name</label><input type="text" id="cNcName" placeholder="Jane Smith"></div>
+            <div class="form-group"><label>Company</label><input type="text" id="cNcCompany" placeholder="Acme Media LLC"></div>
+          </div>
+          <div class="form-group"><label>Email</label><input type="email" id="cNcEmail" placeholder="jane@acme.com"></div>
+          <div class="form-group"><label>Billing Address</label><textarea id="cNcAddress" rows="3" placeholder="Street&#10;City, ST ZIP"></textarea></div>
+          <div class="gap-row">
+            <button class="btn btn-primary btn-sm" data-action="contractSaveNewClient">Save Client</button>
+            <button class="btn btn-sm" data-action="contractCancelNewClient">Cancel</button>
+          </div>
         </div>
         <hr class="contract-divider">
-        ` : ''}
 
         <h3 class="contract-form-heading">Parties</h3>
         <div class="form-row">
@@ -509,6 +534,94 @@ function renderContracts() {
 
 
   `;
+}
+
+/* ---- CONTRACT: Client picker (the invoices' client list) ---- */
+// "Street / City, ST ZIP" (lines or commas) -> the four address fields.
+// Anything that does not parse lands in Street untouched.
+function _splitAddress(text) {
+  const lines = String(text || '').split(/\n|,\s*(?=[^\n]*$)/).map(x => x.trim()).filter(Boolean);
+  if (!lines.length) return { street: '', city: '', state: '', zip: '' };
+  const last = lines[lines.length - 1];
+  const m = last.match(/^(.+?)[,\s]+([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/) || last.match(/^([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)$/);
+  if (!m) return { street: lines.join(', '), city: '', state: '', zip: '' };
+  const head = lines.slice(0, -1);
+  if (m.length === 4) return { street: head.join(', '), city: m[1], state: m[2].toUpperCase(), zip: m[3] };
+  // "ST ZIP" alone: the line before it is the city
+  return { street: head.slice(0, -1).join(', '), city: head[head.length - 1] || '', state: m[1].toUpperCase(), zip: m[2] };
+}
+
+function _contractFillFromClient(c) {
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  const org = c.company || c.name;
+  setVal('cBrandName', org);
+  setVal('cBrandShort', org);
+  setVal('cContact', c.name);
+  setVal('cContactEmail', c.email);
+  const a = _splitAddress(c.billingAddress);
+  setVal('cBrandStreet', a.street); setVal('cBrandCity', a.city); setVal('cBrandState', a.state); setVal('cBrandZip', a.zip);
+}
+
+function contractPickClient(val) {
+  const form = document.getElementById('cNewClient');
+  if (val === '__new') { if (form) form.style.display = ''; return; }
+  if (form) form.style.display = 'none';
+  state._contractClientId = val || null;
+  if (!val) return;
+  const c = clients.find(val);
+  if (c) _contractFillFromClient(c);
+}
+
+function contractCancelNewClient() {
+  const form = document.getElementById('cNewClient');
+  if (form) form.style.display = 'none';
+  const sel = document.getElementById('cClientSel');
+  if (sel) sel.value = state._contractClientId || '';
+}
+
+// Saving a client notifies the store, which repaints this view; the form
+// is snapshotted around the save so nothing typed is lost.
+async function contractSaveNewClient() {
+  const name = (document.getElementById('cNcName')?.value || '').trim();
+  if (!name) { showToast('Client needs a name'); return; }
+  const data = {
+    name,
+    company: (document.getElementById('cNcCompany')?.value || '').trim(),
+    email: (document.getElementById('cNcEmail')?.value || '').trim(),
+    invoicePrefix: '',
+    billingAddress: (document.getElementById('cNcAddress')?.value || '').trim()
+  };
+  const snap = _contractFormSnapshot();
+  const client = await clients.add(data);
+  if (!client) { showToast('Could not save client'); return; }
+  state._contractClientId = client._sbId;
+  if (!document.getElementById('cClientSel') || !document.getElementById('cClientSel').querySelector('option[value="' + client._sbId + '"]')) renderContracts();
+  _contractFormRestore(snap);
+  const sel = document.getElementById('cClientSel');
+  if (sel) sel.value = client._sbId;
+  _contractFillFromClient(client);
+  showToast('Client saved: ' + name);
+}
+
+function _contractFormSnapshot() {
+  const out = {};
+  document.querySelectorAll('#view-contracts .contract-form input, #view-contracts .contract-form select, #view-contracts .contract-form textarea').forEach(el => {
+    if (!el.id || /^cNc/.test(el.id)) return;
+    out[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  out.__platforms = Array.from(document.querySelectorAll('.cPlatformCheck')).map(cb => cb.checked);
+  return out;
+}
+function _contractFormRestore(snap) {
+  Object.keys(snap).forEach(id => {
+    if (id === '__platforms') return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!snap[id]; else el.value = snap[id];
+  });
+  document.querySelectorAll('.cPlatformCheck').forEach((cb, i) => { if (snap.__platforms && i < snap.__platforms.length) cb.checked = snap.__platforms[i]; });
+  toggleAgreementType();
+  togglePerfFields();
 }
 
 /* ---- CONTRACT: Pre-fill from Deal ---- */
@@ -1268,6 +1381,6 @@ function downloadContractPDF() {
   showToast('PDF downloaded');
 }
 
-act({ toggleAgreementType, contractDeliverableChanged, copyContractPreview, downloadContractPDF, generateContract, prefillContractFromDeal, saveContractDefaults, toggleContractDefaults, togglePerfFields });
+act({ contractCancelNewClient, contractPickClient, contractSaveNewClient, toggleAgreementType, contractDeliverableChanged, copyContractPreview, downloadContractPDF, generateContract, prefillContractFromDeal, saveContractDefaults, toggleContractDefaults, togglePerfFields });
 
-export { buildServicesSections, buildSharedSections, toggleAgreementType, buildContractSections, contractDeliverableChanged, copyContractPreview, downloadContractPDF, formatContractBody, gatherContractData, generateContract, loadContractDefaults, numberToWord, prefillContractFromDeal, renderContracts, saveContractDefaults, toggleContractDefaults, togglePerfFields };
+export { _splitAddress, contractCancelNewClient, contractPickClient, contractSaveNewClient, buildServicesSections, buildSharedSections, toggleAgreementType, buildContractSections, contractDeliverableChanged, copyContractPreview, downloadContractPDF, formatContractBody, gatherContractData, generateContract, loadContractDefaults, numberToWord, prefillContractFromDeal, renderContracts, saveContractDefaults, toggleContractDefaults, togglePerfFields };

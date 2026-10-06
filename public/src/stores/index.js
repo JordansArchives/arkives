@@ -36,7 +36,7 @@ export const VIEW_STORES = {
   settings: [audience, calendar, campaigns, deals, inbox, invoices, revenue],
   scripts: [],
   boards: [],
-  contracts: [deals],
+  contracts: [deals, clients],
   invoices: [invoices, clients],
   outreach: [outreach],
 };

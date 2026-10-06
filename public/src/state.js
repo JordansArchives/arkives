@@ -145,7 +145,8 @@ state._bdPendingSaves = {}; // item id -> {updates, timer}
 state._bdViewSaveTimer = null;
 state._bdListenersBound = false;
 state._bdSuppressClick = false; // eat the click that follows a drag gesture
-state._bdOnNoteQueued = false; // one on-sticky text pass per render or gesture
+state._bdOnNoteQueued = false;
+state._contractClientId = null; // client picked in the contract builder (survives a store repaint) // one on-sticky text pass per render or gesture
 state._bdDownTarget = null; // pointerdown target (clicks retarget to the viewport under pointer capture)
 state._bdLastTap = null; // last still touch tap on an item: {id, t, x, y} (double-tap = edit)
 state._bdLoadToken = 0; // guards against stale async renders

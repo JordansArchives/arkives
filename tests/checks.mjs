@@ -236,6 +236,35 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('services preview renders the services title and numbered sections', /PRODUCTION SERVICES AGREEMENT/.test(cv.querySelector('#contractPreviewContent').textContent) && cv.querySelectorAll('#contractPreviewContent .contract-section').length === 17);
   }
 
+  // Contracts: the client picker (same list as invoices)
+  {
+    const sa = __arkives._splitAddress;
+    T('address parsing: lines, commas, state+zip alone, unparseable', JSON.stringify(sa('123 Market St, Suite 400\nSan Francisco, CA 94105')) === JSON.stringify({ street: '123 Market St, Suite 400', city: 'San Francisco', state: 'CA', zip: '94105' }) && JSON.stringify(sa('9 Elm Rd, Denver, CO 80202')) === JSON.stringify({ street: '9 Elm Rd', city: 'Denver', state: 'CO', zip: '80202' }) && JSON.stringify(sa('9 Elm Rd\nDenver\nCO 80202')) === JSON.stringify({ street: '9 Elm Rd', city: 'Denver', state: 'CO', zip: '80202' }) && sa('somewhere in the cloud').street === 'somewhere in the cloud' && sa('').street === '');
+    __arkives.state.CLIENTS = [{ _sbId: 'c1', name: 'Sarah Johnson', company: 'Acme Inc.', email: 'sarah@acme.com', billingAddress: '123 Market St\nSan Francisco, CA 94105', invoicePrefix: '' }];
+    __arkives.state._contractClientId = null;
+    __arkives.renderContracts();
+    const cv = document.getElementById('view-contracts');
+    const sel = cv.querySelector('#cClientSel');
+    T('client picker lists the clients and a new-client option, no deal loader without deals', sel && [...sel.options].map((o) => o.value).join(',') === ',c1,__new' && /Sarah Johnson · Acme Inc\./.test(sel.options[1].textContent) && !cv.querySelector('#cLoadDeal'));
+    sel.value = 'c1'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    const val = (id) => cv.querySelector('#' + id).value;
+    T('picking a client fills the parties', val('cBrandName') === 'Acme Inc.' && val('cBrandShort') === 'Acme Inc.' && val('cContact') === 'Sarah Johnson' && val('cContactEmail') === 'sarah@acme.com' && val('cBrandStreet') === '123 Market St' && val('cBrandCity') === 'San Francisco' && val('cBrandState') === 'CA' && val('cBrandZip') === '94105' && __arkives.state._contractClientId === 'c1');
+    sel.value = '__new'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+    T('+ New client opens the inline form', getComputedStyle(cv.querySelector('#cNewClient')).display !== 'none');
+    cv.querySelector('#cCampaign').value = 'keep me';
+    cv.querySelector('#cAgreementType').value = 'services'; cv.querySelector('#cAgreementType').dispatchEvent(new Event('change', { bubbles: true }));
+    cv.querySelector('#cSvcDayRate').value = '2500';
+    cv.querySelector('#cNcName').value = 'Bo Lee'; cv.querySelector('#cNcCompany').value = 'Lee Films'; cv.querySelector('#cNcEmail').value = 'bo@lee.films'; cv.querySelector('#cNcAddress').value = '1 Pier Ave\nSanta Monica, CA 90401';
+    const added = [];
+    __arkives.db.sbAddClient = async (data) => { added.push(data); return { id: 'c2' }; };
+    await __arkives.contractSaveNewClient();
+    T('saving a new client goes through the store and lands in the list', added[0]?.name === 'Bo Lee' && __arkives.state.CLIENTS.some((c) => c._sbId === 'c2' && c.company === 'Lee Films'));
+    const sel2 = cv.querySelector('#cClientSel');
+    T('the new client is selected and fills the parties', sel2.value === 'c2' && val('cBrandName') === 'Lee Films' && val('cContact') === 'Bo Lee' && val('cBrandCity') === 'Santa Monica' && getComputedStyle(cv.querySelector('#cNewClient')).display === 'none');
+    T('typed fields survive the store repaint', val('cCampaign') === 'keep me' && val('cAgreementType') === 'services' && val('cSvcDayRate') === '2500' && getComputedStyle(cv.querySelector('#dealServices')).display !== 'none');
+    __arkives.state.CLIENTS = []; __arkives.state._contractClientId = null;
+  }
+
   // Auth panels
   __arkives._authShow('forgotForm');
   T('forgot-password panel shows alone', document.getElementById('forgotForm').style.display === '' && document.getElementById('loginForm').style.display === 'none');
