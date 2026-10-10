@@ -73,7 +73,7 @@ await page.goto(`http://localhost:${PORT}/#dashboard`, { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 
 // Which store-owned state keys each view module reads (for the VIEW_STORES guard)
-const STORE_KEY_RE = /state\.(CREATOR|RATE_CARD|DEALS|CAMPAIGN_RESULTS|CALENDAR_EVENTS|MONTHLY_REVENUE|AUDIENCE_DATA|INBOX_ITEMS|TASKS|_tasksTableMissing|IDEAS|_ideasTableMissing|CLIENTS|_invoicingMigrationMissing|INVOICE_DATA|OUTREACH_LISTS|OUTREACH_TARGETS|_outreachMigrationMissing)\b/g;
+const STORE_KEY_RE = /state\.(CREATOR|RATE_CARD|DEALS|CAMPAIGN_RESULTS|CALENDAR_EVENTS|MONTHLY_REVENUE|AUDIENCE_DATA|INBOX_ITEMS|TASKS|_tasksTableMissing|IDEAS|_ideasTableMissing|CLIENTS|_invoicingMigrationMissing|INVOICE_DATA|OUTREACH_LISTS|OUTREACH_TARGETS|_outreachMigrationMissing|QUOTES|QUOTE_SERVICES|_quotesMigrationMissing)\b/g;
 const VIEW_KEYS = {};
 for (const f of SRC.filter((x) => x.startsWith('src/views/'))) {
   const view = f.replace('src/views/', '').replace('.js', '');
@@ -275,6 +275,80 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('the new client is selected and fills the parties', sel2.value === 'c2' && val('cBrandName') === 'Lee Films' && val('cContact') === 'Bo Lee' && val('cBrandCity') === 'Santa Monica' && getComputedStyle(cv.querySelector('#cNewClient')).display === 'none');
     T('typed fields survive the store repaint', val('cCampaign') === 'keep me' && val('cAgreementType') === 'services' && val('cSvcDayRate') === '2500' && getComputedStyle(cv.querySelector('#dealServices')).display !== 'none');
     __arkives.state.CLIENTS = []; __arkives.state._contractClientId = null;
+  }
+
+  // ---- Quotes ----
+  {
+    const A = __arkives, st = A.state;
+    const mk = (over) => Object.assign({ _sbId: 'q1', clientId: 'c1', invoiceId: null, quoteNumber: 'Q-0007', title: 'Hero <b>film</b>', clientName: 'Jane', clientCompany: 'Acme Inc.', clientEmail: 'j@acme.com', clientAddress: '123 Market St\nSan Francisco, CA 94105', fromName: 'Me LLC', fromEmail: 'me@x.com', fromAddress: '', scope: 'One film', timeline: '', exclusions: '', lineItems: [{ desc: 'Hero film', detail: '', unit: 'flat', qty: 9, rate: 40000 }, { desc: 'Editing', detail: '', unit: 'day', qty: 3, rate: 1500 }], total: 44500, depositPct: 50, balanceTerms: 'NET15', revisionRounds: 3, usageRights: '', notes: '', issueDate: '2026-10-01', validUntil: '2099-01-01', status: 'accepted', shareToken: 'tok', viewedAt: '', respondedAt: '2026-10-03T00:00:00Z', acceptedName: 'Jane Doe', declineReason: '', responseSeen: true }, over || {});
+    const q = mk();
+    T('quote math: flat ignores qty, day multiplies, deposit is the percent of the total', A.qLineAmount(q.lineItems[0]) === 40000 && A.qLineAmount(q.lineItems[1]) === 4500 && A.qTotal(q) === 44500 && A.qDeposit(q) === 22250);
+    T('quote status: expired and viewed are derived from a sent quote', A.qDisplayStatus(mk({ status: 'sent', validUntil: '2020-01-01' })) === 'expired' && A.qDisplayStatus(mk({ status: 'sent', viewedAt: '2026-10-02' })) === 'viewed' && A.qDisplayStatus(mk({ status: 'sent' })) === 'sent' && A.qDisplayStatus(q) === 'accepted');
+    st.QUOTES = [mk({ quoteNumber: 'Q-0009' }), mk({ quoteNumber: 'custom' })];
+    T('next quote number follows the highest Q- number', A.nextQuoteNumber() === 'Q-0010');
+    const pl = A._qPayload(mk({ lineItems: [{ desc: '', detail: '', unit: 'flat', qty: 1, rate: 0 }, { desc: 'Cut', detail: ' d ', unit: 'each', qty: '4', rate: '250' }, { desc: 'Day', unit: 'bogus', qty: 2, rate: 10 }] }));
+    T('quote payload drops blank lines, coerces numbers, normalizes units, totals', pl.line_items.length === 2 && pl.line_items[0].qty === 4 && pl.line_items[0].rate === 250 && pl.line_items[0].detail === 'd' && pl.line_items[1].unit === 'flat' && pl.line_items[1].qty === 1 && pl.total === 1010 && pl.balance_terms === 'NET15');
+    const docEl = document.createElement('div');
+    docEl.innerHTML = A.renderQuoteDoc(mk({ title: '<img src=x onerror="window.__x=1">', scope: 'a\n\nb <i>c</i>' }), '');
+    T('quote document escapes client-supplied text', !docEl.querySelector('img') && !docEl.querySelector('i') && docEl.querySelectorAll('.contract-section-body p').length >= 2 && /Q-0007/.test(docEl.textContent) && /\$44,500\.00/.test(docEl.textContent));
+
+    // Accepted quote -> draft deposit invoice, linked back to the quote
+    st.QUOTES = [mk()]; st.INVOICE_DATA = []; st._invoicingMigrationMissing = false;
+    st.CLIENTS = [{ _sbId: 'c1', name: 'Jane', company: 'Acme Inc.', email: 'j@acme.com', billingAddress: '', invoicePrefix: 'ACME' }];
+    const invAdds = [], qUpdates = [];
+    A.db.sbAddInvoice = async (p) => { invAdds.push(p); return Object.assign({ id: 'inv9' }, p); };
+    A.db.sbUpdateQuote = async (id, u) => { qUpdates.push(u); return true; };
+    await A.qDepositInvoice('q1');
+    const ip = invAdds[0] || {};
+    T('deposit invoice: 50% draft for the client, linked to the quote', ip.amount === 22250 && ip.status === 'draft' && ip.invoice_number === 'ACME-0001' && ip.client_id === 'c1' && /50% deposit/.test(ip.line_items[0].desc) && /Q-0007/.test(ip.line_items[0].desc) && /Balance of \$22,250\.00 due NET 15/.test(ip.notes) && qUpdates[0]?.invoice_id === 'inv9' && st.QUOTES[0].invoiceId === 'inv9' && location.hash === '#invoices/inv9', JSON.stringify(ip));
+    invAdds.length = 0;
+    await A.qDepositInvoice('q1');
+    T('a second click opens the linked invoice instead of making another', invAdds.length === 0 && location.hash === '#invoices/inv9');
+    st.QUOTES = [mk({ _sbId: 'q2', depositPct: 0 })]; st.INVOICE_DATA = [];
+    await A.qDepositInvoice('q2');
+    T('no deposit: the invoice carries the quote lines at the full total', invAdds[0]?.amount === 44500 && invAdds[0].line_items.length === 2 && invAdds[0].line_items[1].type === 'day' && invAdds[0].line_items[1].qty === 3);
+
+    // Accepted quote -> Production Services Agreement, prefilled once
+    st.QUOTES = [mk({ title: 'Spring hero film' })];
+    A.qToContract('q1');
+    A.renderContracts();
+    const cv = document.getElementById('view-contracts');
+    const cval = (id) => cv.querySelector('#' + id).value;
+    T('quote -> contract: services agreement filled from the quote', cval('cAgreementType') === 'services' && cval('cBrandName') === 'Acme Inc.' && cval('cContact') === 'Jane' && cval('cBrandCity') === 'San Francisco' && cval('cCampaign') === 'Spring hero film' && cval('cSvcDayRate') === '1500' && cval('cSvcDaysLow') === '3' && cval('cSvcNte') === '44500' && cval('cSvcBalance') === 'NET15' && cval('cRevisions') === '3' && cval('cSvcCount') === '', JSON.stringify({ t: cval('cAgreementType'), r: cval('cSvcDayRate'), d: cval('cSvcDaysLow') }));
+    const prev = cv.querySelector('#contractPreviewContent');
+    T('the generated agreement lists the quoted work without a stray count', /PRODUCTION SERVICES AGREEMENT/.test(prev.textContent) && /Deliverables: Hero film; Editing \(3 days\)/.test(prev.textContent) && /"Spring hero film"/.test(prev.textContent));
+    T('the prefill is consumed once', st._contractPrefill === null);
+    st.CLIENTS = []; st._contractClientId = null; st.QUOTES = []; st.INVOICE_DATA = [];
+    location.hash = 'tasks';
+
+    // The client page: logged out, token-gated RPCs, accept needs a name
+    const realSb = st._sb;
+    const calls = [];
+    let shared = mk({ status: 'sent', viewedAt: '' });
+    st._sb = Object.create(realSb, { rpc: { value: async (name, args) => {
+      calls.push({ name, args });
+      if (name === 'get_shared_quote') return { data: args.p_token === 'tok' ? { quote_number: shared.quoteNumber, title: shared.title, client_name: 'Jane', client_company: 'Acme Inc.', from_name: 'Me LLC', line_items: shared.lineItems, deposit_pct: 50, balance_terms: 'NET15', revision_rounds: 3, issue_date: '2026-10-01', valid_until: '2099-01-01', status: shared.status, accepted_name: shared.acceptedName, responded_at: shared.status === 'accepted' ? '2026-10-09T00:00:00Z' : null, expired: false } : null, error: null };
+      if (name === 'respond_to_quote') { shared = mk({ status: 'accepted', acceptedName: args.p_name }); return { data: { ok: true, status: 'accepted' }, error: null }; }
+      return { data: null, error: null };
+    } } });
+    await A.navigate('q/tok');
+    await new Promise((r) => setTimeout(r, 30));
+    const pv = document.getElementById('view-quote-public');
+    T('quote link renders the document with no app chrome', pv.classList.contains('active') && /Project Quote/.test(pv.textContent) && /\$44,500\.00/.test(pv.textContent) && document.body.classList.contains('share-quote') && getComputedStyle(document.getElementById('sidebar')).display === 'none' && !pv.querySelector('b') && /Q-0007/.test(document.title));
+    A.qPublicAccept();
+    await new Promise((r) => setTimeout(r, 10));
+    T('accepting without a name asks for one and calls nothing', /Type your full name/.test(pv.textContent) && !calls.some((c) => c.name === 'respond_to_quote'));
+    pv.querySelector('#qPubName').value = 'Jane Doe';
+    A.qPublicAccept();
+    await new Promise((r) => setTimeout(r, 40));
+    const resp = calls.find((c) => c.name === 'respond_to_quote');
+    T('accepting sends the typed name and shows the accepted state', resp && resp.args.p_token === 'tok' && resp.args.p_accept === true && resp.args.p_name === 'Jane Doe' && /Accepted by Jane Doe/.test(pv.textContent) && !pv.querySelector('#qPubName'));
+    await A.navigate('q/nope');
+    await new Promise((r) => setTimeout(r, 30));
+    T('an inactive link says so', /not active/.test(pv.textContent));
+    st._sb = realSb;
+    location.hash = 'tasks'; await A.navigate('tasks');
+    T('leaving a quote link restores the app', !document.body.classList.contains('share-quote') && !document.body.classList.contains('share-open'));
   }
 
   // Auth panels

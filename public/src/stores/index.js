@@ -9,6 +9,7 @@ import { profile } from './profile.js';
 import { tasks } from './tasks.js';
 import { ideas } from './ideas.js';
 import { clients, invoices } from './invoices.js';
+import { quotes } from './quotes.js';
 
 const simple = (name, keys, fetch) => defineStore(name, { keys, deps: [profile], fetch });
 export const deals = simple('deals', ['DEALS'], () => db.sbFetchDeals());
@@ -18,9 +19,9 @@ export const revenue = simple('revenue', ['MONTHLY_REVENUE'], () => db.sbFetchMo
 export const audience = simple('audience', ['AUDIENCE_DATA'], () => db.sbFetchAudienceData());
 export const inbox = simple('inbox', ['INBOX_ITEMS'], () => db.sbFetchInboxItems());
 export const outreach = simple('outreach', ['OUTREACH_LISTS', 'OUTREACH_TARGETS', '_outreachMigrationMissing'], () => db.sbFetchOutreach());
-export { profile, tasks, ideas, clients, invoices };
+export { profile, tasks, ideas, clients, invoices, quotes };
 
-export const ALL_STORES = [profile, deals, campaigns, calendar, revenue, audience, inbox, tasks, ideas, clients, invoices, outreach];
+export const ALL_STORES = [profile, deals, campaigns, calendar, revenue, audience, inbox, tasks, ideas, clients, invoices, quotes, outreach];
 
 // profile is implied for every view (boot loads it before the first paint).
 // Boards and Scripts fetch their own rows when they open.
@@ -38,9 +39,10 @@ export const VIEW_STORES = {
   boards: [],
   contracts: [deals, clients],
   invoices: [invoices, clients],
+  quotes: [quotes, clients, invoices],
   outreach: [outreach],
 };
-const EDITOR_PREFIXES = ['script/', 'shared/', 'board/', 'bshared/'];
+const EDITOR_PREFIXES = ['script/', 'shared/', 'board/', 'bshared/', 'q/'];
 
 export function storesFor(view) {
   if (EDITOR_PREFIXES.some((p) => view.startsWith(p))) return [];

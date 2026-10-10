@@ -78,19 +78,22 @@ Object.assign(invoices, {
     return true;
   },
   // payload is the DB-shaped row the editor built; editingId null = insert.
+  // Resolves to the saved invoice (truthy), or false.
   async save(payload, editingId) {
+    let inv;
     if (editingId) {
       const ok = await db.sbUpdateInvoice(editingId, payload);
       if (!ok) return false;
       const idx = state.INVOICE_DATA.findIndex((i) => i._sbId === editingId);
-      if (idx !== -1) state.INVOICE_DATA[idx] = { ...state.INVOICE_DATA[idx], ..._mapInvoiceRow({ id: editingId, ...payload }) };
+      if (idx !== -1) inv = state.INVOICE_DATA[idx] = { ...state.INVOICE_DATA[idx], ..._mapInvoiceRow({ id: editingId, ...payload }) };
     } else {
       const row = await db.sbAddInvoice(payload);
       if (!row) return false;
-      state.INVOICE_DATA.unshift(_mapInvoiceRow(row));
+      inv = _mapInvoiceRow(row);
+      state.INVOICE_DATA.unshift(inv);
     }
     invoices.notify();
-    return true;
+    return inv || true;
   },
   async remove(id) {
     const ok = await db.sbDeleteInvoice(id);

@@ -534,6 +534,46 @@ function renderContracts() {
 
 
   `;
+  _applyContractPrefill();
+}
+
+/* ---- CONTRACT: Prefill from an accepted quote (Quotes -> Contract) ----
+   The quote hands over state._contractPrefill and navigates here; it is
+   consumed once, so a later repaint never overwrites edits. */
+function _applyContractPrefill() {
+  const p = state._contractPrefill;
+  if (!p) return;
+  state._contractPrefill = null;
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el && val !== undefined && val !== null && val !== '') el.value = val; };
+  const c = p.clientId ? clients.find(p.clientId) : null;
+  if (c) {
+    state._contractClientId = c._sbId;
+    setVal('cClientSel', c._sbId);
+    _contractFillFromClient(c);
+  }
+  // The quote's snapshot is what the client agreed to
+  setVal('cBrandName', p.brand); setVal('cBrandShort', p.brand);
+  setVal('cContact', p.contact); setVal('cContactEmail', p.email);
+  if (p.address) {
+    const a = _splitAddress(p.address);
+    setVal('cBrandStreet', a.street); setVal('cBrandCity', a.city); setVal('cBrandState', a.state); setVal('cBrandZip', a.zip);
+  }
+  setVal('cAgreementType', 'services');
+  toggleAgreementType();
+  setVal('cCampaign', p.campaign);
+  setVal('cSvcWork', p.work);
+  const count = document.getElementById('cSvcCount');
+  if (count) count.value = '';
+  if (p.dayRate > 0) setVal('cSvcDayRate', p.dayRate);
+  if (p.days > 0) { setVal('cSvcDaysLow', p.days); setVal('cSvcDaysHigh', p.days); }
+  if (p.nte > 0) setVal('cSvcNte', p.nte);
+  setVal('cSvcDeposit', p.deposit);
+  setVal('cSvcBalance', p.balance);
+  if (p.revisions > 0) setVal('cRevisions', p.revisions);
+  generateContract();
+  showToast(p.dayRate > 0
+    ? 'Services agreement filled from quote ' + p.number + '. Review it before sending.'
+    : 'Filled from quote ' + p.number + '. It has no day-rate lines, so set the day rate and days to match.');
 }
 
 /* ---- CONTRACT: Client picker (the invoices' client list) ---- */
@@ -741,7 +781,7 @@ function gatherContractData() {
   const daysHigh = Math.max(daysLow, Number(v('cSvcDaysHigh', String(daysLow))) || daysLow);
   const svc = {
     work: v('cSvcWork', 'video assets'),
-    count: Math.max(1, parseInt(v('cSvcCount', '1'), 10) || 1),
+    count: Math.max(0, parseInt(v('cSvcCount', ''), 10) || 0), // blank = the work line already says how many
     spec: v('cSvcSpec', ''),
     materials: v('cSvcMaterials', 'all raw footage, brand assets, and the creative brief'),
     dayRate: Number(v('cSvcDayRate', String(state.CONTRACT_DEFAULTS.dayRate))) || state.CONTRACT_DEFAULTS.dayRate,
@@ -1002,7 +1042,7 @@ function buildServicesSections(d) {
   const daysText = sameDays ? `${s.daysLow} working day${s.daysLow === 1 ? '' : 's'}` : `${s.daysLow} to ${s.daysHigh} working days`;
   const feeText = sameDays ? fmt(feeLow) : `${fmt(feeLow)} to ${fmt(feeHigh)}`;
   const depositAmt = Math.round(feeLow * s.deposit / 100);
-  const assets = `${s.count} ${s.work}`;
+  const assets = s.count ? `${s.count} ${s.work}` : s.work;
   const sections = [];
 
   // PREAMBLE
@@ -1401,4 +1441,4 @@ function downloadContractPDF() {
 
 act({ contractCancelNewClient, contractPickClient, contractSaveNewClient, toggleAgreementType, contractDeliverableChanged, copyContractPreview, downloadContractPDF, generateContract, prefillContractFromDeal, saveContractDefaults, toggleContractDefaults, togglePerfFields });
 
-export { _pdfRuns, _splitAddress, contractCancelNewClient, contractPickClient, contractSaveNewClient, buildServicesSections, buildSharedSections, toggleAgreementType, buildContractSections, contractDeliverableChanged, copyContractPreview, downloadContractPDF, formatContractBody, gatherContractData, generateContract, loadContractDefaults, numberToWord, prefillContractFromDeal, renderContracts, saveContractDefaults, toggleContractDefaults, togglePerfFields };
+export { _applyContractPrefill, _pdfRuns, _splitAddress, contractCancelNewClient, contractPickClient, contractSaveNewClient, buildServicesSections, buildSharedSections, toggleAgreementType, buildContractSections, contractDeliverableChanged, copyContractPreview, downloadContractPDF, formatContractBody, gatherContractData, generateContract, loadContractDefaults, numberToWord, prefillContractFromDeal, renderContracts, saveContractDefaults, toggleContractDefaults, togglePerfFields };

@@ -26,16 +26,20 @@ import * as inbox from './views/inbox.js';
 import * as invoices from './views/invoices.js';
 import * as mediakit from './views/mediakit.js';
 import * as outreach from './views/outreach.js';
+import * as quotes from './views/quotes.js';
 import * as revenue from './views/revenue.js';
 import * as scripts from './views/scripts.js';
 import * as settings from './views/settings.js';
 import * as tasks from './views/tasks.js';
 
+// Shared-link routes render without a session
+function _isPublicRoute(h) { return /^(shared|bshared|q)\//.test(h); }
+
 async function boot() {
   try {
     // Public shared-link routes — skip auth entirely
     var hash = getHash();
-    if (hash.startsWith('shared/') || hash.startsWith('bshared/')) {
+    if (_isPublicRoute(hash)) {
       showApp();
       navigate(hash);
     } else {
@@ -53,6 +57,7 @@ async function boot() {
         if (!loaded) _showSaveError('Still loading your data. The view will refresh when it arrives.');
         updateSidebarUser();
         navigate(hash);
+        quotes.refreshQuoteBadge();
       } else {
         // No session — show login screen
         showAuthScreen();
@@ -62,7 +67,7 @@ async function boot() {
     console.error('Init error:', e);
     // If we were on a shared route, still try to render it
     var h = getHash();
-    if (h.startsWith('shared/') || h.startsWith('bshared/')) {
+    if (_isPublicRoute(h)) {
       showApp();
       try { navigate(h); } catch (_) {}
     } else {
@@ -92,11 +97,12 @@ boards.__init();
 scripts.__init();
 tasks.__init();
 ideas.__init();
+quotes.__init();
 
 // window.__arkives: every export of every module, plus state and db. The
 // tests drive the app through it; it is also handy in the console.
 const __arkives = { state, db, stores };
-for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, revenue, scripts, settings, tasks]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
+for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, quotes, revenue, scripts, settings, tasks]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
 window.__arkives = __arkives;
 
 boot();

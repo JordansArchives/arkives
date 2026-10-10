@@ -15,7 +15,7 @@ const PORT = 8741;
 const OUTDIR = fileURLToPath(new URL('./.shots/', import.meta.url));
 fs.mkdirSync(OUTDIR, { recursive: true });
 
-const VIEWS = ['dashboard', 'inbox', 'revenue', 'mediakit', 'analytics', 'outreach', 'boards', 'scripts', 'ideas', 'contracts', 'invoices', 'calendar', 'tasks', 'settings'];
+const VIEWS = ['dashboard', 'inbox', 'revenue', 'mediakit', 'analytics', 'outreach', 'boards', 'scripts', 'ideas', 'quotes', 'contracts', 'invoices', 'calendar', 'tasks', 'settings'];
 // Supabase calls fail under anon RLS in tests; that noise is expected.
 const NOISE = /supabase|Failed to fetch|net::ERR|fetch|NetworkError|Load failed|401|403|PGRST|JWT|favicon|ERR_INTERNET|ERR_NAME|fontshare/i;
 
@@ -40,11 +40,16 @@ const POPULATED = () => {
   __arkives.state.MONTHLY_REVENUE = [{ _sbId: 'm', month: 'Aug 2026', earned: 5000 }];
   __arkives.state.CAMPAIGN_RESULTS = [{ _sbId: 'cr', brand: '<i>Acme</i>', views: 100000, ctr: 1.2, conversion: null, revenue: 12000 }];
   __arkives.state.OUTREACH_TARGETS = []; __arkives.state.OUTREACH_LISTS = [];
+  __arkives.state.QUOTE_SERVICES = [{ _sbId: 's1', name: 'Editing day', description: 'Post', unit: 'day', rate: null, sortOrder: 1 }, { _sbId: 's2', name: 'Hero <b>film</b>', description: '', unit: 'flat', rate: 40000, sortOrder: 2 }];
+  __arkives.state.QUOTES = [
+    { _sbId: 'q1', clientId: 'c1', invoiceId: null, quoteNumber: 'Q-0001', title: 'Spring <img src=x onerror="window.__xss=1">', clientName: 'Jane', clientCompany: 'Acme Media', clientEmail: 'j@acme.com', clientAddress: '2 St', fromName: 'Test LLC', fromEmail: 't@example.com', fromAddress: '1 Main St', scope: 'One hero film\n\nEight cuts', timeline: 'May', exclusions: 'Talent', lineItems: [{ desc: 'Hero film', detail: 'Shoot + post', unit: 'flat', qty: 1, rate: 40000 }, { desc: 'Editing', detail: '', unit: 'day', qty: 3, rate: 1500 }], total: 44500, depositPct: 50, balanceTerms: 'delivery', revisionRounds: 2, usageRights: '6 months paid', notes: '', issueDate: '2026-10-01', validUntil: '2099-01-01', status: 'accepted', shareToken: 'tok1', viewedAt: '2026-10-02', respondedAt: '2026-10-03T00:00:00Z', acceptedName: 'Jane Doe', declineReason: '', responseSeen: false },
+    { _sbId: 'q2', clientId: null, invoiceId: null, quoteNumber: 'Q-0002', title: 'UGC set', clientName: 'Bo', clientCompany: '', clientEmail: '', clientAddress: '', fromName: 'Test LLC', fromEmail: '', fromAddress: '', scope: '', timeline: '', exclusions: '', lineItems: [{ desc: 'UGC cut', detail: '', unit: 'each', qty: 4, rate: 0 }], total: 0, depositPct: 0, balanceTerms: 'NET30', revisionRounds: 0, usageRights: '', notes: 'n', issueDate: '2026-10-01', validUntil: '2026-01-01', status: 'sent', shareToken: 'tok2', viewedAt: '', respondedAt: '', acceptedName: '', declineReason: '', responseSeen: true }];
 };
 const EMPTY = () => {
   __arkives.state.CREATOR._sbId = '00000000-0000-0000-0000-000000000001';
   __arkives.state.DEALS = []; __arkives.state.TASKS = []; __arkives.state.IDEAS = []; __arkives.state.INVOICE_DATA = []; __arkives.state.CLIENTS = []; __arkives.state.CALENDAR_EVENTS = []; __arkives.state.INBOX_ITEMS = []; __arkives.state.MONTHLY_REVENUE = []; __arkives.state.CAMPAIGN_RESULTS = [];
   __arkives.state.OUTREACH_TARGETS = []; __arkives.state.OUTREACH_LISTS = [];
+  __arkives.state.QUOTES = []; __arkives.state.QUOTE_SERVICES = [];
 };
 
 
@@ -167,6 +172,50 @@ for (const state of ['populated', 'empty']) {
       if (back.sidebar === 'none') flagged.push('sidebar still hidden after leaving a shared board');
       if (/Campaign/.test(back.title)) flagged.push('tab title not restored after leaving a shared board');
       if (vp.name === 'desktop' && back.mainW > back.vw - 200) flagged.push(`app layout not restored after a shared board (main ${back.mainW}px)`);
+    }
+    if (state === 'populated') {
+      // Quote editor (a new draft with a menu service added) and the
+      // client's quote page (#q/TOKEN) at this width
+      currentView = 'quote-editor';
+      await page.evaluate(() => {
+        location.hash = 'quotes/new'; __arkives.navigate('quotes/new');
+        const q = __arkives.state._q;
+        Object.assign(q, { clientId: 'c1', clientName: 'Jane', clientCompany: 'Acme Media', clientEmail: 'j@acme.com', title: 'Spring hero film', scope: 'One 60s hero film plus eight vertical cuts.\n\nColor-graded and captioned.', timeline: '2-day shoot in May', exclusions: 'Talent, travel, licensed music' });
+        __arkives.renderQuoteEditor();
+        __arkives.ACTIONS.qAddService('s2'); __arkives.ACTIONS.qAddService('s1');
+      });
+      await page.waitForTimeout(200);
+      const qe = await page.evaluate(() => {
+        const v = document.getElementById('view-quotes');
+        return { lines: v.querySelectorAll('.inv-li').length, unpriced: v.querySelectorAll('.quote-li-unpriced').length, injected: !!v.querySelector('#qDocPreview b'),
+                 scrollX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
+      });
+      if (qe.lines !== 2) flagged.push(`quote editor: adding two menu services gave ${qe.lines} lines`);
+      if (qe.unpriced !== 1) flagged.push('quote editor: an unpriced menu service is not flagged');
+      if (qe.injected) flagged.push('quote editor: service name rendered as HTML');
+      if (qe.scrollX) flagged.push('quote editor: horizontal page overflow');
+      await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-quote-editor.png`), animations: 'disabled', fullPage: true });
+
+      currentView = 'quote-public';
+      await page.evaluate(() => {
+        const st = __arkives.state;
+        window.__realSb = st._sb;
+        const row = { quote_number: 'Q-0001', title: 'Spring hero film', client_name: 'Jane', client_company: 'Acme Media', client_email: 'j@acme.com', client_address: '2 St\nDenver, CO 80202', from_name: 'Test LLC', from_email: 't@example.com', from_address: '1 Main St\nDenver, CO', scope: 'One 60s hero film plus eight vertical cuts.\n\nColor-graded and captioned.', timeline: '2-day shoot in May', exclusions: 'Talent, travel, licensed music', line_items: [{ desc: 'Hero film', detail: 'Pre-production, 2-day shoot, post', unit: 'flat', qty: 1, rate: 40000 }, { desc: 'Editing day', detail: '', unit: 'day', qty: 3, rate: 1500 }, { desc: 'UGC cut, 30s', detail: 'Native vertical', unit: 'each', qty: 8, rate: 0 }], deposit_pct: 50, balance_terms: 'delivery', revision_rounds: 2, usage_rights: 'Client owns the final deliverables on full payment.', notes: '', issue_date: '2026-10-01', valid_until: '2099-01-01', status: 'sent', expired: false };
+        st._sb = Object.create(window.__realSb || null, { rpc: { value: async () => ({ data: row, error: null }) } });
+        location.hash = 'q/tok'; __arkives.navigate('q/tok');
+      });
+      await page.waitForTimeout(300);
+      const qp = await page.evaluate(() => {
+        const shown = (sel) => { const e = document.querySelector(sel); return !!e && getComputedStyle(e).display !== 'none'; };
+        return { doc: !!document.querySelector('#view-quote-public .quote-doc'), accept: !!document.getElementById('qPubName'),
+                 chrome: ['#sidebar', '.mobile-header', '#tabbar'].filter(shown),
+                 scrollX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
+      });
+      if (!qp.doc || !qp.accept) flagged.push('quote page: document or accept form missing');
+      if (qp.chrome.length) flagged.push(`quote page shows app chrome: ${qp.chrome.join(', ')}`);
+      if (qp.scrollX) flagged.push('quote page: horizontal page overflow');
+      await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-quote-public.png`), animations: 'disabled', fullPage: true });
+      await page.evaluate(() => { __arkives.state._sb = window.__realSb; location.hash = 'dashboard'; __arkives.navigate('dashboard'); });
     }
     if (state === 'populated' && vp.name === 'phone') {
       // Script editor at phone width: rows stack as cards, header hidden

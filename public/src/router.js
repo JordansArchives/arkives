@@ -12,6 +12,7 @@ import { renderInbox } from './views/inbox.js';
 import { renderInvoices, unmountInvoices } from './views/invoices.js';
 import { renderMediaKit } from './views/mediakit.js';
 import { renderOutreach } from './views/outreach.js';
+import { renderPublicQuote, renderQuotes, unmountQuotes } from './views/quotes.js';
 import { renderRevenue } from './views/revenue.js';
 import { _flushScriptSaves, renderScriptEditor, renderScripts, renderSharedScript } from './views/scripts.js';
 import { renderSettings } from './views/settings.js';
@@ -42,6 +43,7 @@ const VIEWS = {
   boards: { render: renderBoards },
   contracts: { render: renderContracts },
   invoices: { render: renderInvoices, unmount: unmountInvoices }, // render(sub) applies the route; render() keeps the editor
+  quotes: { render: renderQuotes, unmount: unmountQuotes }, // same sub-route contract as invoices
   tasks: { render: renderTasks, unmount: unmountTasks },
   ideas: { render: renderIdeas, unmount: unmountIdeas },
 };
@@ -52,20 +54,23 @@ const EDITORS = {
   'shared/': { unmount: _flushScriptSaves },
   'board/': { unmount: unmountBoardEditor },
   'bshared/': { unmount: unmountBoardEditor },
+  'q/': { unmount: function() {} },
 };
 function unmountBoardEditor() { _bdCommitActiveText(); _bdFlushPendingSaves(); _bdLiveLeave(); }
 const SKELETON = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:200px;border-radius:12px"></div></div>';
 
-/* Public shared links (#shared/TOKEN, #bshared/TOKEN) have no sidebar. The
-   shell is a two-column grid, so hiding the sidebar alone drops the page
-   into the sidebar's 240px track: `share-open` collapses the grid to one
-   column, `share-board` makes a shared board fill the window. Every route
+/* Public shared links (#shared/TOKEN, #bshared/TOKEN, #q/TOKEN) have no
+   sidebar. The shell is a two-column grid, so hiding the sidebar alone drops
+   the page into the sidebar's 240px track: `share-open` collapses the grid to
+   one column, `share-board` makes a shared board fill the window, and
+   `share-quote` drops the phone chrome from a client's quote. Every route
    passes through here, so leaving a shared link always restores the app. */
 const _baseTitle = document.title;
 function _setShareChrome(view) {
-  const share = /^(bshared|shared)\//.test(view);
+  const share = /^(bshared|shared|q)\//.test(view);
   document.body.classList.toggle('share-open', share);
   document.body.classList.toggle('share-board', view.startsWith('bshared/'));
+  document.body.classList.toggle('share-quote', view.startsWith('q/'));
   if (!share) {
     const sb = document.getElementById('sidebar');
     if (sb) sb.style.display = '';
@@ -98,7 +103,19 @@ async function navigate(view) {
   const token = ++_navToken;
   _setShareChrome(view);
   /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN, bshared/TOKEN */
-  if (/^(bshared|board|script|shared)\//.test(view)) _leave(view);
+  if (/^(bshared|board|script|shared|q)\//.test(view)) _leave(view);
+  if (view.startsWith('q/')) {
+    // Public quote link: works logged out, no app chrome
+    document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
+    var qEl = document.getElementById('view-quote-public');
+    if (qEl) { qEl.style.display = 'block'; qEl.classList.add('active'); }
+    document.getElementById('sidebar').style.display = 'none';
+    var qMc = document.querySelector('.main') || document.getElementById('mainContent');
+    if (qMc) qMc.style.marginLeft = '0';
+    renderPublicQuote(view.split('?')[0].split('/')[1] || '');
+    _enter(view, EDITORS['q/'], '', null);
+    return;
+  }
   if (view.startsWith('bshared/')) {
     // Public shared-board link — works logged out, sidebar hidden
     document.body.classList.add('editor-open');

@@ -311,6 +311,36 @@ async function sbFetchInvoices() {
   } catch (err) { return _loadFailed('invoices', err); }
 }
 
+// Quotes + the service menu — tables added in migration 026
+async function sbFetchQuotes() {
+  try {
+    const qRes = await _own('quotes').order('created_at', { ascending: false });
+    if (qRes.error) {
+      state._quotesMigrationMissing = _missingTable(qRes.error);
+      if (!state._quotesMigrationMissing) console.error('quotes fetch error:', qRes.error);
+      state.QUOTES = []; state.QUOTE_SERVICES = [];
+      return true;
+    }
+    state._quotesMigrationMissing = false;
+    state.QUOTES = (qRes.data || []).map(_mapQuoteRow);
+    const sRes = await _own('quote_services').order('sort_order').order('created_at');
+    if (sRes.error) { console.error('quote_services fetch error:', sRes.error); state.QUOTE_SERVICES = []; }
+    else state.QUOTE_SERVICES = (sRes.data || []).map(_mapQuoteServiceRow);
+    return true;
+  } catch (err) { return _loadFailed('quotes', err); }
+}
+
+// Client responses the owner has not opened yet (the sidebar badge).
+// Runs before the quotes store loads; a missing table counts as none.
+async function sbFetchQuoteBadge() {
+  if (!state._sb || !state.CREATOR._sbId) return 0;
+  try {
+    const res = await state._sb.from('quotes').select('id', { count: 'exact', head: true })
+      .eq('user_id', state.CREATOR._sbId).eq('response_seen', false);
+    return res.error ? 0 : (res.count || 0);
+  } catch (e) { return 0; }
+}
+
 /* ---- SUPABASE CRUD: TASKS ---- */
 async function sbFetchIdeas() {
   try {
@@ -415,6 +445,78 @@ async function sbDeleteInvoice(sbId) {
   if (error) { _showSaveError('Failed to delete invoice'); console.error(error); return false; }
   _showSaveSuccess();
   return true;
+}
+
+/* ---- SUPABASE CRUD: QUOTES ---- */
+// user_id is stamped by the DB default (current_profile_id), like invoices
+async function sbAddQuote(payload) {
+  if (!state._sb || !state.CREATOR._sbId) return null;
+  const { data: row, error } = await state._sb.from('quotes').insert(payload).select().single();
+  if (error) { _showSaveError('Failed to save quote'); console.error(error); return null; }
+  _showSaveSuccess();
+  return row;
+}
+
+async function sbUpdateQuote(sbId, updates, silent) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('quotes').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to update quote'); console.error(error); return false; }
+  if (!silent) _showSaveSuccess();
+  return true;
+}
+
+async function sbDeleteQuote(sbId) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('quotes').delete().eq('id', sbId);
+  if (error) { _showSaveError('Failed to delete quote'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbAddQuoteService(data) {
+  if (!state._sb || !state.CREATOR._sbId) return null;
+  const { data: row, error } = await state._sb.from('quote_services').insert(data).select().single();
+  if (error) { _showSaveError('Failed to add service'); console.error(error); return null; }
+  _showSaveSuccess();
+  return row;
+}
+
+async function sbUpdateQuoteService(sbId, updates) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('quote_services').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to update service'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+async function sbDeleteQuoteService(sbId) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('quote_services').delete().eq('id', sbId);
+  if (error) { _showSaveError('Failed to delete service'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+// Public quote page (#q/TOKEN): works logged out through the 026 RPCs.
+// Resolves to the mapped quote, null when the link is not live, or
+// { _error } when the request itself failed.
+async function sbFetchSharedQuote(token) {
+  if (!state._sb) return { _error: 'offline' };
+  try {
+    const res = await state._sb.rpc('get_shared_quote', { p_token: token });
+    if (res.error) { console.error('get_shared_quote:', res.error); return { _error: res.error.message || 'error' }; }
+    return res.data ? _mapQuoteRow(res.data) : null;
+  } catch (e) { console.error('get_shared_quote:', e); return { _error: 'network' }; }
+}
+
+// Resolves to the RPC's { ok, status } / { ok: false, error }.
+async function sbRespondToQuote(token, accept, name, reason) {
+  if (!state._sb) return { ok: false, error: 'offline' };
+  try {
+    const res = await state._sb.rpc('respond_to_quote', { p_token: token, p_accept: !!accept, p_name: name || '', p_reason: reason || '' });
+    if (res.error) { console.error('respond_to_quote:', res.error); return { ok: false, error: 'network' }; }
+    return res.data || { ok: false, error: 'network' };
+  } catch (e) { console.error('respond_to_quote:', e); return { ok: false, error: 'network' }; }
 }
 
 /* ---- SUPABASE CRUD: CLIENTS ---- */
@@ -543,6 +645,57 @@ function _mapInvoiceRow(r) {
     paymentTerms: r.payment_terms || 'none',
     notes: r.notes || '',
     includePaymentInfo: r.include_payment_info !== false
+  };
+}
+
+// Also maps the public RPC's payload (same column names, fewer of them)
+function _mapQuoteRow(r) {
+  return {
+    _sbId: r.id || null,
+    clientId: r.client_id || null,
+    invoiceId: r.invoice_id || null,
+    quoteNumber: r.quote_number || '',
+    title: r.title || '',
+    clientName: r.client_name || '',
+    clientCompany: r.client_company || '',
+    clientEmail: r.client_email || '',
+    clientAddress: r.client_address || '',
+    fromName: r.from_name || '',
+    fromEmail: r.from_email || '',
+    fromAddress: r.from_address || '',
+    scope: r.scope || '',
+    timeline: r.timeline || '',
+    exclusions: r.exclusions || '',
+    lineItems: Array.isArray(r.line_items) ? r.line_items : [],
+    total: Number(r.total) || 0,
+    depositPct: r.deposit_pct == null ? 50 : Number(r.deposit_pct),
+    balanceTerms: r.balance_terms || 'delivery',
+    revisionRounds: r.revision_rounds == null ? 2 : Number(r.revision_rounds),
+    usageRights: r.usage_rights || '',
+    notes: r.notes || '',
+    issueDate: r.issue_date || '',
+    validUntil: r.valid_until || '',
+    status: r.status || 'draft',
+    shareToken: r.share_token || '',
+    sentAt: r.sent_at || '',
+    viewedAt: r.viewed_at || '',
+    respondedAt: r.responded_at || '',
+    acceptedName: r.accepted_name || '',
+    declineReason: r.decline_reason || '',
+    responseSeen: r.response_seen !== false,
+    expired: r.expired === true,
+    createdAt: r.created_at || ''
+  };
+}
+
+function _mapQuoteServiceRow(r) {
+  return {
+    _sbId: r.id,
+    name: r.name || '',
+    description: r.description || '',
+    unit: r.unit || 'flat',
+    rate: r.rate == null ? null : Number(r.rate),
+    sortOrder: r.sort_order || 0
   };
 }
 
@@ -778,6 +931,8 @@ export const db = {
   sbAddInvoice,
   sbAddOutreachList,
   sbAddOutreachTarget,
+  sbAddQuote,
+  sbAddQuoteService,
   sbAddTask,
   sbCreateBoard,
   sbCreateScript,
@@ -788,6 +943,8 @@ export const db = {
   sbDeleteInvoice,
   sbDeleteOutreachList,
   sbDeleteOutreachTarget,
+  sbDeleteQuote,
+  sbDeleteQuoteService,
   sbDeleteScene,
   sbDeleteScript,
   sbDeleteTasks,
@@ -802,6 +959,9 @@ export const db = {
   sbFetchMonthlyRevenue,
   sbFetchOutreach,
   sbFetchProfile,
+  sbFetchQuoteBadge,
+  sbFetchQuotes,
+  sbFetchSharedQuote,
   sbFetchTasks,
   sbFetchBoardItems,
   sbFetchBoards,
@@ -809,6 +969,7 @@ export const db = {
   sbFetchScriptByToken,
   sbFetchScripts,
   sbReorderScenes,
+  sbRespondToQuote,
   sbSaveSceneFields,
   sbUpdateBoard,
   sbUpdateBoardItem,
@@ -818,6 +979,8 @@ export const db = {
   sbUpdateOutreachList,
   sbUpdateOutreachTarget,
   sbUpdateProfile,
+  sbUpdateQuote,
+  sbUpdateQuoteService,
   sbUpdateScript,
   sbUpdateTask,
 };
@@ -842,4 +1005,4 @@ export function __init() {
   }
 }
 
-export { SUPABASE_ANON_KEY, SUPABASE_URL, _mapIdeaRow, _mapInvoiceRow, _mapOutreachRow, sbAddBoardItem, sbAddClient, sbAddIdea, sbAddInvoice, sbAddOutreachList, sbAddOutreachTarget, sbAddTask, sbCreateBoard, sbCreateScript, sbDeleteBoard, sbDeleteBoardItem, sbDeleteClient, sbDeleteIdeas, sbDeleteInvoice, sbDeleteOutreachList, sbDeleteOutreachTarget, sbDeleteScene, sbDeleteScript, sbDeleteTasks, sbFetchBoardItems, sbFetchBoards, sbFetchIdeas, sbFetchScenes, sbFetchScriptByToken, sbFetchScripts, sbReorderScenes, sbSaveSceneFields, sbUpdateBoard, sbUpdateBoardItem, sbUpdateClient, sbUpdateIdea, sbUpdateInvoice, sbUpdateOutreachList, sbUpdateOutreachTarget, sbUpdateProfile, sbUpdateScript, sbUpdateTask };
+export { SUPABASE_ANON_KEY, SUPABASE_URL, _mapIdeaRow, _mapInvoiceRow, _mapOutreachRow, _mapQuoteRow, _mapQuoteServiceRow, sbAddBoardItem, sbAddClient, sbAddIdea, sbAddInvoice, sbAddOutreachList, sbAddOutreachTarget, sbAddTask, sbCreateBoard, sbCreateScript, sbDeleteBoard, sbDeleteBoardItem, sbDeleteClient, sbDeleteIdeas, sbDeleteInvoice, sbDeleteOutreachList, sbDeleteOutreachTarget, sbDeleteScene, sbDeleteScript, sbDeleteTasks, sbFetchBoardItems, sbFetchBoards, sbFetchIdeas, sbFetchScenes, sbFetchScriptByToken, sbFetchScripts, sbReorderScenes, sbSaveSceneFields, sbUpdateBoard, sbUpdateBoardItem, sbUpdateClient, sbUpdateIdea, sbUpdateInvoice, sbUpdateOutreachList, sbUpdateOutreachTarget, sbUpdateProfile, sbUpdateScript, sbUpdateTask };

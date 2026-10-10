@@ -52,7 +52,7 @@ arkives/
 │   │   ├── router.js       # hash routing with a view registry: loads a view's stores, mounts/unmounts (flushes), subscribes views to stores
 │   │   ├── stores/         # one store per domain: load() memoized per session, subscribe()/notify(), domain writes (tasks, invoices, clients)
 │   │   ├── lib/            # actions (event delegation), sb (Supabase client + `db`), toast, esc, format, icons, storage, share
-│   │   └── views/          # one module per view: auth, dashboard, revenue, mediakit, analytics, inbox, calendar, tasks, settings, scripts, invoices, outreach, boards, contracts
+│   │   └── views/          # one module per view: auth, dashboard, revenue, mediakit, analytics, inbox, calendar, tasks, settings, scripts, quotes, invoices, outreach, boards, contracts
 │   ├── style.css           # full design system, all component styles
 │   ├── _headers            # Cloudflare response headers: enforced CSP (no inline scripts), frame and referrer policies
 │   └── (assets)            # manifest.webmanifest, favicon.svg, logo-*.svg/png, paper-tile*.webp, trip-sans-*.woff2, invoice-red-*

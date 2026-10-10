@@ -112,6 +112,26 @@ state._invSearch = ''; // matches invoice number / bill-to
 state._invPayingId = null; // invoice _sbId with the payment modal open
 state._invRowMenuId = null; // invoice _sbId with the row-actions sheet open (phone)
 
+// ---- from quotes.js ----
+state.QUOTES = [];
+state.QUOTE_SERVICES = []; // the saved service menu
+state._quotesMigrationMissing = false;
+state._quoteBadge = 0; // unseen client responses, counted before the quotes store loads
+state._qEditorOpen = false;
+state._qEditingId = null; // _sbId of the quote being edited; null = new
+state._q = null; // working copy while the editor is open
+state._qNewClientOpen = false; // inline new-client form inside the editor
+state._qFilter = 'all'; // all | draft | sent | viewed | accepted | declined | expired
+state._qSearch = ''; // matches number / client / title
+state._qServiceEditingId = null; // service menu card: null = closed, '__new' = adding, else _sbId
+state._qLinkFor = null; // quote _sbId whose share link banner shows on the list
+state._qRowMenuId = null; // quote _sbId with the row-actions sheet open (phone)
+state._qPublic = null; // the public quote page's data (#q/TOKEN)
+state._qPublicToken = null;
+state._qPublicMode = 'idle'; // idle | declining | busy
+state._qPublicError = '';
+state._contractPrefill = null; // a quote handed to the contract builder (consumed on its next render)
+
 // ---- from outreach.js ----
 state._outSelectedList = 'all'; // 'all' | list _sbId
 state._outTypeFilter = 'all'; // all | brand | company | platform | opportunity

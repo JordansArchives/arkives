@@ -220,6 +220,10 @@ function resetAllState() {
   state._ideasArchivedOpen = false; state._editingIdeaId = null; state._ideaPadMounted = false; state._ideaFocusPending = null;
   state.CLIENTS = []; state._invoicingMigrationMissing = false;
   state.OUTREACH_TARGETS = []; state.OUTREACH_LISTS = []; state._outreachMigrationMissing = false;
+  state.QUOTES = []; state.QUOTE_SERVICES = []; state._quotesMigrationMissing = false; state._quoteBadge = 0;
+  state._qEditorOpen = false; state._qEditingId = null; state._q = null; state._qNewClientOpen = false; state._qLinkFor = null;
+  state._qFilter = 'all'; state._qSearch = ''; state._qServiceEditingId = null; state._qRowMenuId = null; state._contractPrefill = null;
+  var qBadge = document.getElementById('quoteNavBadge'); if (qBadge) qBadge.hidden = true;
   state._scriptsCache = []; state._currentScriptId = null; state._currentScriptRow = null; state._currentScenes = [];
   state._sharedScriptToken = null; state._sceneDirty = {}; state._titleDirty = null;
   if (typeof state.BOARDS !== 'undefined') { state.BOARDS = []; state._bdBoard = null; state._bdItems = []; state._bdSignedUrls = {}; }
