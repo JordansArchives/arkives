@@ -492,7 +492,7 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('dashboard: accepted quotes link to the quote (contract hand-off), escaped', !!dash.querySelector('a[href="#quotes/q1"]') && !dash.querySelector('.dash-tile b'));
     T('dashboard: New board/script buttons reuse the tools actions', !!dash.querySelector('[data-action="_createNewBoard"]') && !!dash.querySelector('[data-action="_createNewScript"]'));
     T('dashboard: Scan now sits in the header (first screen); audience points at Settings for a missing handle', !!dash.querySelector('.view-header #dashScan [data-action="runSocialScan"]') && !dash.querySelector('#dashAudience [data-action="runSocialScan"]') && !!dash.querySelector('#dashAudience a[href="#settings"]'));
-    T('dashboard: tool activity counts ideas on the list (not archived)', [...dash.querySelectorAll('.dash-stat')].some((x) => /ideas on the list/.test(x.textContent) && x.querySelector('.dash-stat-num').textContent === '1'));
+    T('dashboard: social section has a total and one card per platform; no tool stats', dash.querySelectorAll('#dashAudience .dash-soc-card').length === 6 && !!dash.querySelector('#dashAudience .dash-soc-hero') && !dash.querySelector('.dash-stat') && !dash.querySelector('#dashActivity'));
     st.INVOICE_DATA = [];
     A.renderDashboard();
     T('dashboard: no invoices = friendly empty chart state, no NaN', !document.getElementById('dashboardRevChart') && /New invoice/.test(dash.innerText) && !/NaN/.test(dash.innerText));

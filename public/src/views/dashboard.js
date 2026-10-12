@@ -2,6 +2,7 @@
 // money from Invoices, pipeline from Quotes, Tasks, Ideas, Calendar,
 // recent Boards and Scripts, followers from the last social scan.
 import { state } from '../state.js';
+import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
 import { formatDate } from '../lib/format.js';
 import { db } from '../lib/sb.js';
@@ -74,10 +75,7 @@ function renderDashboard() {
       </div>
     </div>
 
-    <div class="dash-lower">
-      <section class="dash-panel" id="dashAudience" aria-label="Audience">${_audienceHtml()}</section>
-      <section class="dash-panel dash-activity" id="dashActivity" aria-label="Tool activity">${_activityHtml(today, tasks)}</section>
-    </div>
+    <section class="dash-social" id="dashAudience" aria-label="Social">${_audienceHtml()}</section>
   `;
 
   if (hasInvoices) setTimeout(() => renderDashboardRevChart(today), 30);
@@ -103,7 +101,6 @@ async function _loadRecent() {
   state._dashRecent = { at: Date.now(), boards: boards || [], scripts: scripts || [] };
   const today = _localISODate();
   _repaintPart('dashTiles', () => _tilesHtml(today));
-  _repaintPart('dashActivity', () => _activityHtml(today, taskSummary(state.TASKS, today)));
 }
 
 /* ---- QUICK ACCESS ---- */
@@ -176,48 +173,76 @@ function _tilesHtml(today) {
     </div>`;
 }
 
-/* ---- AUDIENCE (last social scan) ---- */
+/* ---- SOCIAL (last social scan) ---- */
 
 const AUD_PLATFORMS = [
-  { key: 'instagram', cls: 'ig', icon: 'instagramSmall', label: 'Instagram' },
-  { key: 'tiktok', cls: 'tt', icon: 'tiktokSmall', label: 'TikTok' },
-  { key: 'youtube', cls: 'yt', icon: 'youtubeSmall', label: 'YouTube' },
-  { key: 'twitter', cls: 'tw', icon: 'twitterSmall', label: 'X' },
-  { key: 'linkedin', cls: 'li', icon: 'linkedinSmall', label: 'LinkedIn' },
-  { key: 'threads', cls: 'th', icon: 'threadsSmall', label: 'Threads' },
+  { key: 'instagram', cls: 'ig', icon: 'instagramSmall', label: 'Instagram', tone: 'pink' },
+  { key: 'tiktok', cls: 'tt', icon: 'tiktokSmall', label: 'TikTok', tone: 'teal' },
+  { key: 'youtube', cls: 'yt', icon: 'youtubeSmall', label: 'YouTube', tone: 'orange' },
+  { key: 'twitter', cls: 'tw', icon: 'twitterSmall', label: 'X', tone: 'ink' },
+  { key: 'linkedin', cls: 'li', icon: 'linkedinSmall', label: 'LinkedIn', tone: 'blue' },
+  { key: 'threads', cls: 'th', icon: 'threadsSmall', label: 'Threads', tone: 'yellow' },
 ];
+
+// One supporting number per platform, from the profile rows the scan writes
+function _platformDetail(key, p) {
+  const n = (v) => _compact(Number(v) || 0);
+  if (key === 'instagram') return p.engagement && p.engagement !== '0%' ? `${_esc(p.engagement)} engagement` : '';
+  if (key === 'tiktok') return p.likes && p.likes !== '0' ? `${_esc(p.likes)} likes` : '';
+  if (key === 'youtube') return p.videos ? `${n(p.videos)} videos` : '';
+  if (key === 'twitter') return p.posts ? `${n(p.posts)} posts` : '';
+  if (key === 'linkedin') return p.connections ? `${n(p.connections)} connections` : '';
+  const h = String(p.handle || '').replace(/^https?:\/\/[^/]+\/(in\/)?/i, '').replace(/^@/, '').replace(/\/.*$/, '');
+  return h ? '@' + _esc(h) : '';
+}
+
+function _trendHtml(trend) {
+  if (!trend) return '<span class="dash-soc-trend">No trend yet</span>';
+  const d = trend.delta;
+  return `<span class="dash-soc-trend ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : d < 0 ? '−' : ''}${_compact(Math.abs(d))} this month</span>`;
+}
 
 function _audienceHtml() {
   const hist = (state.analyticsData && state.analyticsData.history) || {};
-  const rows = AUD_PLATFORMS.map((d) => {
+  const cards = AUD_PLATFORMS.map((d) => {
     const p = state.CREATOR.platforms[d.key] || {};
+    const has = !!(p.handle || p.followersNum);
     const trend = followerTrend(hist[d.key], 30);
-    const trendHtml = trend ? `<span class="dash-aud-trend ${trend.delta >= 0 ? 'up' : 'down'}">${trend.delta >= 0 ? '+' : '−'}${_compact(Math.abs(trend.delta))} this month</span>` : '';
-    return `
-      <div class="dash-aud-row">
-        <span class="platform-icon ${d.cls}" style="width:28px;height:28px">${SKETCHY_ICONS[d.icon] || ''}</span>
-        <span class="dash-aud-name">${d.label}</span>
-        ${p.handle || p.followersNum ? `<span class="dash-aud-num">${_esc(p.followers || '0')}</span>${trendHtml}` : '<a href="#settings" class="dash-aud-add">Add handle</a>'}
-      </div>`;
+    const head = `<span class="dash-soc-name"><span class="platform-icon ${d.cls}">${SKETCHY_ICONS[d.icon] || ''}</span>${d.label}</span>`;
+    if (!has) {
+      // Threads is scanned from the Instagram handle, so it only needs a scan
+      const viaIg = d.key === 'threads' && (state.CREATOR.platforms.instagram || {}).handle;
+      return `<a href="#settings" class="dash-soc-card is-empty tone-${d.tone}">${head}
+        <span class="dash-soc-add">${viaIg ? 'Fills in on your next scan' : 'Add your handle'}</span></a>`;
+    }
+    const detail = _platformDetail(d.key, p);
+    return `<a href="#analytics" class="dash-soc-card tone-${d.tone}" data-action="_dashOpenPlatform" data-args="${_args(d.key)}">${head}
+        <span class="dash-soc-num">${_esc(p.followers || '0')}</span>
+        ${_trendHtml(trend)}
+        <span class="dash-soc-detail">${detail || '&nbsp;'}</span>
+      </a>`;
   }).join('');
   // Total across every platform; the month change sums the platforms whose history reaches back 30 days
   const total = AUD_PLATFORMS.reduce((n, d) => n + (Number((state.CREATOR.platforms[d.key] || {}).followersNum) || 0), 0);
   const trends = AUD_PLATFORMS.map((d) => followerTrend(hist[d.key], 30)).filter(Boolean);
   const totalDelta = trends.reduce((n, t) => n + t.delta, 0);
-  const totalTrend = trends.length ? `<span class="dash-aud-trend ${totalDelta >= 0 ? 'up' : 'down'}">${totalDelta >= 0 ? '+' : '−'}${_compact(Math.abs(totalDelta))} this month</span>` : '';
+  const totalSub = trends.length
+    ? `<span class="dash-soc-trend ${totalDelta > 0 ? 'up' : totalDelta < 0 ? 'down' : ''}">${totalDelta > 0 ? '+' : totalDelta < 0 ? '−' : ''}${_compact(Math.abs(totalDelta))} this month</span><span class="dash-sub"> · ${lastScanText()}</span>`
+    : `<span class="dash-sub">${lastScanText()}</span>`;
   return `
-    <div class="dash-panel-head">
-      <h3>Audience</h3>
-      <a href="#analytics" class="dash-panel-link">Open analytics</a>
+    <div class="dash-soc-head">
+      <a href="#analytics" class="dash-soc-total">
+        <span class="dash-label">Total followers</span>
+        <span class="dash-soc-hero">${total.toLocaleString('en-US')}</span>
+        <span class="dash-soc-sub">${totalSub}</span>
+      </a>
+      <a href="#analytics" class="dash-soc-link">Open analytics</a>
     </div>
-    <div class="dash-aud-total">
-      <span class="dash-aud-total-label">Total followers</span>
-      <span class="dash-aud-total-num">${total ? _compact(total) : '0'}</span>
-      ${totalTrend}
-    </div>
-    <div class="dash-aud">${rows}</div>
-    <div class="dash-aud-foot"><span class="dash-aud-last">${lastScanText()}</span></div>`;
+    <div class="dash-soc-grid">${cards}</div>`;
 }
+
+function _dashOpenPlatform(key) { state.analyticsPlatform = key; }
+act({ _dashOpenPlatform });
 
 function _scanHtml() {
   return `<div class="dash-scan-row"><span class="dash-scan-last">${lastScanText()}</span>${scanButtonHtml()}</div>${scanNoteHtml()}`;
@@ -227,28 +252,6 @@ function _compact(n) {
   if (n >= 1e6) return (n / 1e6).toFixed(1).replace('.0', '') + 'M';
   if (n >= 1e3) return (n / 1e3).toFixed(1).replace('.0', '') + 'K';
   return String(n);
-}
-
-/* ---- TOOL ACTIVITY ---- */
-
-function _activityHtml(today, tasks) {
-  const month = today.slice(0, 7);
-  const r = state._dashRecent || {};
-  const quotesSent = (state.QUOTES || []).filter((q) => (q.sentAt || '').slice(0, 7) === month).length;
-  const invoicesSent = (state.INVOICE_DATA || []).filter((i) => i.status !== 'draft' && (i.date || '').slice(0, 7) === month).length;
-  const ideasOpen = (state.IDEAS || []).filter((i) => !i.archived).length;
-  const editedThisWeek = (xs) => (xs || []).filter((x) => Date.now() - Date.parse(x.updated_at || 0) < 7 * 864e5).length;
-  const stat = (href, tone, value, label) => `<a href="#${href}" class="dash-stat tone-${tone}"><span class="dash-stat-num">${value}</span><span class="dash-stat-label">${label}</span></a>`;
-  return `
-    <div class="dash-panel-head"><h3>This week in your tools</h3></div>
-    <div class="dash-stats">
-      ${stat('boards', 'yellow', r.boards ? editedThisWeek(r.boards) : '–', 'boards edited this week')}
-      ${stat('scripts', 'blue', r.scripts ? editedThisWeek(r.scripts) : '–', 'scripts edited this week')}
-      ${stat('tasks', 'blue', tasks.doneThisWeek, 'tasks done, last 7 days')}
-      ${stat('quotes', 'teal', quotesSent, 'quotes sent this month')}
-      ${stat('invoices', 'orange', invoicesSent, 'invoices issued this month')}
-      ${stat('ideas', 'pink', ideasOpen, 'ideas on the list')}
-    </div>`;
 }
 
 /* ---- CHART ---- */
