@@ -36,6 +36,10 @@ const POPULATED = () => {
                   { _sbId: 'i2', invoiceNumber: 'ACME-0002', brand: 'Acme', billToName: 'Acme Media', billToAddress: '', date: '2026-09-01', dueDate: '', status: 'draft', lineItems: [{ type: 'hourly', desc: 'Edit', qty: 3, rate: 100, fee: 0 }], amount: 300, amountPaid: 0, tax: 0, notes: 'n', includePaymentInfo: false, paymentTerms: 'none', clientId: null, description: 'Edit' }];
   __arkives.state.CLIENTS = [{ _sbId: 'c1', name: 'Jane', company: 'Acme Media', email: 'j@acme.com', billingAddress: '2 St', invoicePrefix: 'ACME' }];
   __arkives.state.CALENDAR_EVENTS = [{ _sbId: 'e1', date: new Date().toISOString().slice(0,10), brand: 'Acme', type: 'Post', platform: 'instagram', status: 'scheduled' }];
+  __arkives.state.INVOICE_DATA.push({ _sbId: 'i9', invoiceNumber: 'ACME-0002', brand: 'Acme', billToName: 'Acme Media', date: new Date().toISOString().slice(0,10), status: 'paid', paidAt: new Date().toISOString(), lineItems: [{ type: 'flat', desc: 'Hero film edit', qty: 1, rate: 0, fee: 8500 }], amount: 8500, amountPaid: 8500, tax: 0 });
+  __arkives.state._dashRecent = { at: Date.now(), boards: [{ id: 'b1', title: 'Dropbox campaign moodboard with a very long title that should truncate', updated_at: new Date(Date.now() - 3600e3).toISOString() }, { id: 'b2', title: 'Spring lookbook', updated_at: new Date(Date.now() - 2 * 864e5).toISOString() }], scripts: [{ id: 's1', title: 'UGC 30s: coffee', updated_at: new Date().toISOString() }] };
+  __arkives.state.CREATOR.platforms.tiktok.handle = 'test'; __arkives.state.CREATOR.platforms.tiktok.followers = '32.1K'; __arkives.state.CREATOR.platforms.tiktok.followersNum = 32100;
+  __arkives.state.analyticsLastFetch = new Date().toISOString();
   __arkives.state.INBOX_ITEMS = [{ _sbId: 'm1', id: 1, brand: '<img src=x onerror="window.__xss=1">', contact: 'Eve', email: 'e@x.com', subject: '<b>Hi</b>', time: 'today', snippet: 's', status: 'needs_reply', priority: 'medium', suggestedAction: 'reply', context: 'body' }];
   __arkives.state.MONTHLY_REVENUE = [{ _sbId: 'm', month: 'Aug 2026', earned: 5000 }];
   __arkives.state.CAMPAIGN_RESULTS = [{ _sbId: 'cr', brand: '<i>Acme</i>', views: 100000, ctr: 1.2, conversion: null, revenue: 12000 }];
@@ -50,6 +54,7 @@ const EMPTY = () => {
   __arkives.state.DEALS = []; __arkives.state.TASKS = []; __arkives.state.IDEAS = []; __arkives.state.INVOICE_DATA = []; __arkives.state.CLIENTS = []; __arkives.state.CALENDAR_EVENTS = []; __arkives.state.INBOX_ITEMS = []; __arkives.state.MONTHLY_REVENUE = []; __arkives.state.CAMPAIGN_RESULTS = [];
   __arkives.state.OUTREACH_TARGETS = []; __arkives.state.OUTREACH_LISTS = [];
   __arkives.state.QUOTES = []; __arkives.state.QUOTE_SERVICES = [];
+  __arkives.state._dashRecent = { at: Date.now(), boards: [], scripts: [] }; __arkives.state.analyticsData = null; __arkives.state.analyticsLastFetch = null;
 };
 
 

@@ -29,6 +29,12 @@ export default [
     },
   },
   {
+    // Cloudflare Worker (fetch, Response, URL are Web globals there)
+    files: ["worker/**/*.js"],
+    languageOptions: { ecmaVersion: 2022, sourceType: "module", globals: { ...globals.serviceworker } },
+    rules: { "no-undef": "error", "no-unused-vars": ["error", { args: "none", caughtErrors: "none" }] },
+  },
+  {
     // theme.js is the one classic script: it runs from <head> before first paint.
     files: ["public/theme.js"],
     languageOptions: { ecmaVersion: 2022, sourceType: "script", globals: { ...globals.browser } },

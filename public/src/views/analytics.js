@@ -2,6 +2,7 @@
 import { state } from '../state.js';
 import { fmtDate, fmtDateShort, fmtNum } from '../lib/format.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
+import { lastScanText, loadSocialStats, onSocialUpdate, scanButtonHtml } from './social.js';
 
 
 function filterHistoryByPeriod(history, period) {
@@ -28,46 +29,7 @@ function calcGrowth(history, key) {
 async function fetchAnalyticsData(refresh = false) {
   state.analyticsLoading = true;
   if (refresh) renderAnalyticsLoading();
-  try {
-    // Load this user's payload from social_stats (migration 013).
-    // No row / missing table = clean empty state, never someone
-    // else's numbers — the payload used to ship as a public
-    // static file with the owner's stats baked in.
-    let cache = null;
-    if (state._sb && state.CREATOR._sbId) {
-      const res = await state._sb.from('social_stats').select('payload').eq('user_id', state.CREATOR._sbId).limit(1).maybeSingle();
-      if (res.error) {
-        const missing = (res.error.code === '42P01' || res.error.code === 'PGRST205');
-        if (!missing) console.error('social_stats fetch error:', res.error);
-      } else if (res.data && res.data.payload && res.data.payload.platforms) {
-        cache = res.data.payload;
-      }
-    }
-    if (cache) {
-      // Transform: snapshots grouped by date -> history grouped by platform
-      const history = { instagram: [], tiktok: [], youtube: [], twitter: [], linkedin: [] };
-      (cache.snapshots || []).forEach(snap => {
-        if (snap.platform && snap.date) {
-          // Old flat format: { platform: 'instagram', date, followers }
-          if (history[snap.platform]) history[snap.platform].push(snap);
-        } else if (snap.platforms && snap.date) {
-          // Unified format: { date, platforms: { instagram: {...}, ...} }
-          Object.entries(snap.platforms).forEach(([plat, pdata]) => {
-            if (history[plat]) {
-              const followers = pdata.followers || pdata.subscribers || pdata.connections || 0;
-              history[plat].push({ date: snap.date, followers });
-            }
-          });
-        }
-      });
-      // Sort each platform's history by date
-      Object.keys(history).forEach(p => history[p].sort((a,b) => (a.date||'').localeCompare(b.date||'')));
-      state.analyticsData = { ...cache, history };
-      state.analyticsLastFetch = cache.last_fetch;
-    }
-  } catch (e) {
-    console.error("Analytics fetch error:", e);
-  }
+  await loadSocialStats();
   state.analyticsLoading = false;
   renderAnalytics();
 }
@@ -94,7 +56,6 @@ function renderAnalytics() {
   const ytSubscribers = p.youtube ? p.youtube.subscribers : 0;
   const totalReach = igFollowers + ttFollowers + ytSubscribers;
   const igER = p.instagram ? p.instagram.engagement_rate : 0;
-  const sbGrade = p.instagram ? p.instagram.grade : "--";
 
   // Compute follower growth from history for the selected period (guard for no data)
   const igHistory = (state.analyticsData && state.analyticsData.history && state.analyticsData.history.instagram)
@@ -102,20 +63,13 @@ function renderAnalytics() {
     : [];
   const igGrowth = calcGrowth(igHistory, "followers");
 
-  const lastFetchDisplay = state.analyticsLastFetch ? new Date(state.analyticsLastFetch).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "Never";
-
   container.innerHTML = `
     <div class="view-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
       <div>
         <h1 class="view-title">Social Analytics</h1>
-        <p class="view-subtitle">Live data via Social Blade &middot; Last updated: ${lastFetchDisplay}</p>
+        <p class="view-subtitle">Instagram, TikTok and YouTube scanned on demand &middot; ${lastScanText()}</p>
       </div>
-      <button class="btn btn-primary" id="btnRefreshAnalytics" style="display:flex;align-items:center;gap:6px" ${state.analyticsLoading ? "disabled" : ""}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="${state.analyticsLoading ? 'animation:spin 1s linear infinite' : ''}">
-          <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-        </svg>
-        ${state.analyticsLoading ? "Refreshing..." : "Refresh Data"}
-      </button>
+      ${scanButtonHtml()}
     </div>
 
     <div class="kpi-grid">
@@ -127,12 +81,12 @@ function renderAnalytics() {
       <div class="kpi-card">
         <span class="kpi-label">IG Engagement</span>
         <span class="kpi-value">${igER}%</span>
-        <span class="kpi-delta ${igER > 3 ? 'up' : ''}">Social Blade avg</span>
+        <span class="kpi-delta ${igER > 3 ? 'up' : ''}">last 12 posts</span>
       </div>
       <div class="kpi-card">
-        <span class="kpi-label">Social Blade Grade</span>
-        <span class="kpi-value">${sbGrade}</span>
-        <span class="kpi-delta up">Instagram</span>
+        <span class="kpi-label">TikTok Avg Views</span>
+        <span class="kpi-value">${p.tiktok && p.tiktok.average_views != null ? fmtNum(p.tiktok.average_views) : "--"}</span>
+        <span class="kpi-delta">last 12 videos</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">IG Avg Likes</span>
@@ -167,12 +121,9 @@ function renderAnalytics() {
     </div>
 
     <div id="analyticsContent">
-      ${state.analyticsData ? renderAnalyticsPlatform(state.analyticsPlatform) : '<div class="card" style="padding:60px;text-align:center"><p style="color:var(--text-secondary);font-weight:600;margin-bottom:6px">No analytics connected yet</p><p style="color:var(--text-muted);font-size:13px">Your social stats will appear here once analytics data is added to your account.</p></div>'}
+      ${state.analyticsData ? renderAnalyticsPlatform(state.analyticsPlatform) : '<div class="card" style="padding:60px;text-align:center"><p style="color:var(--text-secondary);font-weight:600;margin-bottom:6px">No analytics connected yet</p><p style="color:var(--text-muted);font-size:13px">Add your handles in Settings → Platforms, then press Scan now.</p></div>'}
     </div>
   `;
-
-  // Refresh button
-  document.getElementById("btnRefreshAnalytics").addEventListener("click", () => fetchAnalyticsData(true));
 
   // Platform tabs
   container.querySelectorAll(".analytics-tab").forEach(tab => {
@@ -257,8 +208,8 @@ function renderAnalyticsPlatform(platform) {
           <div class="analytics-stat-label">Posts</div>
         </div>
         <div class="card analytics-stat-card">
-          <div class="analytics-stat-value">${p.grade}</div>
-          <div class="analytics-stat-label">SB Grade</div>
+          <div class="analytics-stat-value">${p.engagement_rate != null ? p.engagement_rate + '%' : '--'}</div>
+          <div class="analytics-stat-label">Engagement</div>
         </div>
       </div>
       <div class="chart-row">
@@ -272,7 +223,7 @@ function renderAnalyticsPlatform(platform) {
         <div class="card">
           <div class="card-header">
             <span class="card-title">Engagement Rate Trend</span>
-            <span class="card-subtitle">Daily engagement % from Social Blade</span>
+            <span class="card-subtitle">Engagement % per scan</span>
           </div>
           <div class="chart-container"><canvas id="chartEngagement"></canvas></div>
         </div>
@@ -281,7 +232,7 @@ function renderAnalyticsPlatform(platform) {
       <div class="card" style="padding:16px;text-align:center;border:1px dashed var(--border)">
         <p style="color:var(--text-muted);font-size:13px">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-          Social Blade provides ~15 days of free history. Each time you refresh, new data points are saved and your history grows over time.
+          Each scan saves a dated point, so this history grows every time you press Scan now.
         </p>
       </div>` : ''}
     `;
@@ -305,8 +256,8 @@ function renderAnalyticsPlatform(platform) {
           <div class="analytics-stat-label">Videos</div>
         </div>
         <div class="card analytics-stat-card">
-          <div class="analytics-stat-value">${p.grade}</div>
-          <div class="analytics-stat-label">SB Grade</div>
+          <div class="analytics-stat-value">${p.average_views != null ? fmtNum(p.average_views) : '--'}</div>
+          <div class="analytics-stat-label">Avg Views</div>
         </div>
       </div>
       <div class="card">
@@ -337,8 +288,8 @@ function renderAnalyticsPlatform(platform) {
           <div class="analytics-stat-label">Videos</div>
         </div>
         <div class="card analytics-stat-card">
-          <div class="analytics-stat-value">${p.grade}</div>
-          <div class="analytics-stat-label">SB Grade</div>
+          <div class="analytics-stat-value">${p.views != null ? fmtNum(p.views) : '--'}</div>
+          <div class="analytics-stat-label">Total Views</div>
         </div>
       </div>
       <div class="card">
@@ -596,3 +547,7 @@ function renderEngagementChart() {
 }
 
 export { calcGrowth, fetchAnalyticsData, filterHistoryByPeriod, renderAnalytics, renderAnalyticsContent, renderAnalyticsLoading, renderAnalyticsPlatform, renderEngagementChart, renderGrowthChart };
+
+export function __init() {
+  onSocialUpdate(() => { if ((location.hash || '#dashboard').slice(1) === 'analytics') renderAnalytics(); });
+}

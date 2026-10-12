@@ -26,8 +26,8 @@ export const ALL_STORES = [profile, deals, campaigns, calendar, revenue, audienc
 // profile is implied for every view (boot loads it before the first paint).
 // Boards and Scripts fetch their own rows when they open.
 export const VIEW_STORES = {
-  dashboard: [deals, calendar, revenue],
-  revenue: [deals, revenue],
+  dashboard: [calendar, invoices, quotes, tasks, ideas],
+  revenue: [invoices, quotes],
   mediakit: [audience, campaigns],
   analytics: [],
   inbox: [inbox],

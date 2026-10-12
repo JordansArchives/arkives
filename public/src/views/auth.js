@@ -221,6 +221,7 @@ function resetAllState() {
   state.CLIENTS = []; state._invoicingMigrationMissing = false;
   state.OUTREACH_TARGETS = []; state.OUTREACH_LISTS = []; state._outreachMigrationMissing = false;
   state.QUOTES = []; state.QUOTE_SERVICES = []; state._quotesMigrationMissing = false; state._quoteBadge = 0;
+  state._dashRecent = null; state._dashSocialTried = false; state._scanBusy = false; state.analyticsData = null; state.analyticsLastFetch = null;
   state._qEditorOpen = false; state._qEditingId = null; state._q = null; state._qNewClientOpen = false; state._qLinkFor = null;
   state._qFilter = 'all'; state._qSearch = ''; state._qServiceEditingId = null; state._qRowMenuId = null; state._contractPrefill = null;
   var qBadge = document.getElementById('quoteNavBadge'); if (qBadge) qBadge.hidden = true;

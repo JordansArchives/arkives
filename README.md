@@ -52,7 +52,7 @@ arkives/
 │   │   ├── router.js       # hash routing with a view registry: loads a view's stores, mounts/unmounts (flushes), subscribes views to stores
 │   │   ├── stores/         # one store per domain: load() memoized per session, subscribe()/notify(), domain writes (tasks, invoices, clients)
 │   │   ├── lib/            # actions (event delegation), sb (Supabase client + `db`), toast, esc, format, icons, storage, share
-│   │   └── views/          # one module per view: auth, dashboard, revenue, mediakit, analytics, inbox, calendar, tasks, settings, scripts, quotes, invoices, outreach, boards, contracts
+│   │   └── views/          # one module per view: auth, dashboard, revenue, mediakit, analytics, inbox, calendar, tasks, settings, scripts, quotes, invoices, outreach, boards, contracts, social (scan + history)
 │   ├── style.css           # full design system, all component styles
 │   ├── _headers            # Cloudflare response headers: enforced CSP (no inline scripts), frame and referrer policies
 │   └── (assets)            # manifest.webmanifest, favicon.svg, logo-*.svg/png, paper-tile*.webp, trip-sans-*.woff2, invoice-red-*
@@ -156,7 +156,7 @@ Every data type has Supabase-connected CRUD:
 
 | Route | Renderer | Description |
 |-------|----------|-------------|
-| `#dashboard` | `renderDashboard()` | KPIs, platform chart, calendar, deadlines, actions, updates |
+| `#dashboard` | `renderDashboard()` | Quick access (Boards, Scripts, Contracts, Calendar), money KPIs from Invoices, open quotes, tasks, revenue chart, audience with Scan now, tool activity |
 | `#pipeline` | `renderPipeline()` | Kanban board + list views for all deals |
 | `#inbox` | `renderInbox()` | Email inbox with suggested actions |
 | `#revenue` | `renderRevenue()` | Revenue KPIs, monthly chart, payment status, invoice tracker |
@@ -323,3 +323,12 @@ CI (`.github/workflows/ci.yml`) runs lint + test on every push and PR. Screensho
 **Migrations still run by hand** in the Supabase SQL editor. `migrations/020_share_hardening.sql`, `021_script_media.sql`, `022_ideas.sql` and `023_shared_board_media_fix.sql` must be applied (each is idempotent and safe before or after deploy; the Ideas view explains itself until 022 exists, and images on a shared board read "Image unavailable" to logged-out visitors until 023 exists). `introspect.sql` at the repo root is a read-only schema dump for checking drift.
 
 See `ARCHITECTURE-AUDIT.md` for the roadmap this tooling belongs to.
+
+## Social scan (worker/)
+
+`worker/index.js` runs only for `/api/*` (`run_worker_first` in `wrangler.jsonc`); everything else is served from `public/` as before. `POST /api/social-scan` checks the caller's Supabase session, runs Apify scrapers for the Instagram, TikTok and YouTube handles in Settings → Platforms, and writes the numbers back as that user (platforms rows for the media kit, a dated snapshot in `social_stats` for Analytics). One scan per 10 minutes per account.
+
+Cloudflare dashboard → Workers → arkives → Settings → Variables and Secrets:
+- `APIFY_TOKEN` (secret, required): Apify API token. A scan costs about $0.04.
+- `SCAN_ALLOWED_EMAILS` (optional): comma-separated logins allowed to scan.
+

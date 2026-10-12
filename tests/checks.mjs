@@ -61,6 +61,57 @@ const hdr = siteHeaders();
 S('_headers enforces the CSP (not report-only)', !!hdr['content-security-policy'] && !hdr['content-security-policy-report-only']);
 S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr['content-security-policy'] || '').split(';').find(x => x.trim().startsWith('script-src')) || ''; return d && !/unsafe-inline|unsafe-eval/.test(d); })());
 
+// ---- Social scan Worker (worker/scan.js), run in Node with a fake fetch ----
+{
+  const W = await import('../worker/scan.js');
+  S('scan: handle cleanup strips @, URLs and paths', W.cleanHandle('@me.x') === 'me.x' && W.cleanHandle('https://instagram.com/me.x/?hl=en') === 'me.x' && W.cleanHandle('') === '');
+  S('scan: no handle = nothing to scan', W.actorInput('instagram', { handle: '' }) === null && W.actorInput('tiktok', null) === null && W.actorInput('twitter', { handle: 'x' }) === null);
+  S('scan: YouTube uses the profile URL, else @handle', W.actorInput('youtube', { handle: 'me', profile_url: 'https://youtube.com/c/Me' }).startUrls[0].url === 'https://youtube.com/c/Me' && W.actorInput('youtube', { handle: '@me' }).startUrls[0].url === 'https://www.youtube.com/@me');
+  const ig = W.parseResult('instagram', [{ followersCount: 270000, followsCount: 500, postsCount: 130, latestPosts: [{ likesCount: 9000, commentsCount: 100, isPinned: true }, { likesCount: 2000, commentsCount: 100 }, { likesCount: 4000, commentsCount: 300 }] }]);
+  S('scan: Instagram parse skips pinned posts for engagement', ig.followers === 270000 && ig.posts === 130 && ig.averageLikes === 3000 && ig.averageComments === 200 && ig.engagementRate === 1.19, JSON.stringify(ig));
+  S('scan: Instagram private / empty / missing are errors', !!W.parseResult('instagram', [{ private: true }]).error && !!W.parseResult('instagram', []).error && !!W.parseResult('instagram', [{}]).error);
+  const tt = W.parseResult('tiktok', [{ playCount: 1000, authorMeta: { fans: 32000, heart: 3900000, video: 270, following: 100 } }, { playCount: 3000, authorMeta: { fans: 32000 } }]);
+  S('scan: TikTok parse reads authorMeta and average views', tt.followers === 32000 && tt.likes === 3900000 && tt.videos === 270 && tt.averageViews === 2000, JSON.stringify(tt));
+  const yt = W.parseResult('youtube', [{ aboutChannelInfo: { numberOfSubscribers: 612, channelTotalVideos: 11, channelTotalViews: 12000 } }]);
+  S('scan: YouTube parse reads aboutChannelInfo', yt.followers === 612 && yt.videos === 11 && yt.views === 12000);
+  S('scan: platforms row update formats the display count', JSON.stringify(W.platformRowUpdate('tiktok', tt)) === JSON.stringify({ followers: 32000, followers_display: '32K', likes: '3.9M', videos: 270 }));
+  const old = { platforms: { instagram: { handle: 'me', grade: 'B+', followers: 1 } }, snapshots: [{ platform: 'instagram', date: '2026-03-01', followers: 1 }, { date: '2026-10-11', platforms: { linkedin: { followers: 9 } } }], last_fetch: 'x' };
+  const merged = W.mergePayload(old, { instagram: ig, tiktok: { error: 'nope' }, youtube: yt }, '2026-10-11', '2026-10-11T12:00:00Z');
+  S('scan: merge keeps history, replaces the same-day snapshot, skips errors', merged.snapshots.length === 2 && merged.snapshots[1].platforms.linkedin.followers === 9 && merged.snapshots[1].platforms.instagram.followers === 270000 && merged.snapshots[1].platforms.youtube.subscribers === 612 && !merged.snapshots[1].platforms.tiktok && merged.platforms.instagram.grade === 'B+' && merged.platforms.instagram.average_likes === 3000 && merged.last_fetch === '2026-10-11T12:00:00Z' && old.snapshots.length === 2, JSON.stringify(merged.snapshots));
+  S('scan: merge with nothing successful leaves last_fetch alone', W.mergePayload(old, { instagram: { error: 'x' } }, '2026-10-12', 'NOW').last_fetch === 'x');
+
+  // handleScan end to end against fake Supabase + Apify
+  const calls = [];
+  const fakeFetch = (opts) => async (url, init = {}) => {
+    calls.push({ url: String(url), method: init.method || 'GET', body: init.body, auth: (init.headers || {}).Authorization });
+    const J = (b, status = 200) => new Response(JSON.stringify(b), { status });
+    if (url.includes('/auth/v1/user')) return opts.authOk ? J({ email: 'me@x.com' }) : J({}, 401);
+    if (url.includes('/rest/v1/platforms?select')) return J([{ id: 'pl1', platform: 'instagram', handle: '@me' }, { id: 'pl2', platform: 'tiktok', handle: 'me' }, { id: 'pl3', platform: 'youtube', handle: '' }]);
+    if (url.includes('/rest/v1/social_stats?select')) return J(opts.stats ? [opts.stats] : []);
+    if (url.includes('instagram-profile-scraper')) return J([{ followersCount: 271000, postsCount: 131, latestPosts: [] }]);
+    if (url.includes('tiktok-profile-scraper')) return opts.ttFail ? J({ error: 'x' }, 402) : J([{ authorMeta: { fans: 33000 } }]);
+    if (init.method === 'PATCH' || init.method === 'POST') return J([], 201);
+    return J({}, 404);
+  };
+  const req = (auth = 'Bearer jwt') => new Request('https://arkives.xyz/api/social-scan', { method: 'POST', headers: auth ? { Authorization: auth } : {}, body: JSON.stringify({ date: '2026-10-11' }) });
+  const r401 = await W.handleScan(req(''), { APIFY_TOKEN: 't' }, fakeFetch({ authOk: true }));
+  const r401b = await W.handleScan(req(), { APIFY_TOKEN: 't' }, fakeFetch({ authOk: false }));
+  const r503 = await W.handleScan(req(), {}, fakeFetch({ authOk: true }));
+  const r403 = await W.handleScan(req(), { APIFY_TOKEN: 't', SCAN_ALLOWED_EMAILS: 'boss@x.com' }, fakeFetch({ authOk: true }));
+  S('scan: no token / bad session / not allowed / not configured are refused', r401.status === 401 && r401b.status === 401 && r403.status === 403 && r503.status === 503 && (await r503.json()).error === 'not_configured');
+  const r429 = await W.handleScan(req(), { APIFY_TOKEN: 't' }, fakeFetch({ authOk: true, stats: { id: 's1', payload: { last_fetch: new Date(Date.now() - 60000).toISOString() } } }));
+  S('scan: a second scan inside 10 minutes is refused (credit guard)', r429.status === 429 && (await r429.json()).retryAfterSec > 0);
+  calls.length = 0;
+  const ok = await W.handleScan(req(), { APIFY_TOKEN: 't' }, fakeFetch({ authOk: true, ttFail: true, stats: { id: 's1', payload: { last_fetch: '2026-01-01T00:00:00Z', snapshots: [] } } }));
+  const okBody = await ok.json();
+  const patches = calls.filter((c) => c.method === 'PATCH');
+  S('scan: success scans only platforms with handles and reports per-platform errors', ok.status === 200 && okBody.ok && okBody.results.instagram.followers === 271000 && okBody.results.tiktok.error === 'Apify credit used up' && okBody.results.youtube.skipped === true && !calls.some((c) => c.url.includes('youtube-channel-scraper')), JSON.stringify(okBody));
+  S('scan: success writes the Instagram row and the social_stats snapshot, as the caller', patches.length === 2 && patches.some((c) => c.url.includes('platforms?id=eq.pl1') && JSON.parse(c.body).followers === 271000) && patches.some((c) => c.url.includes('social_stats?id=eq.s1') && JSON.parse(c.body).payload.snapshots[0].date === '2026-10-11') && !patches.some((c) => c.url.includes('pl2')));
+  S('scan: Supabase calls carry the caller JWT, only Apify gets the Apify token', calls.filter((c) => c.url.includes('supabase.co')).every((c) => c.auth === 'Bearer jwt') && calls.filter((c) => c.url.includes('api.apify.com')).every((c) => c.auth === 'Bearer t' && !c.url.includes('token=')));
+  const wsrc = fs.readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  S('wrangler: worker runs first only for /api/*', /"run_worker_first":\s*\["\/api\/\*"\]/.test(wsrc) && /"main":\s*"worker\/index\.js"/.test(wsrc) && /"binding":\s*"ASSETS"/.test(wsrc));
+}
+
 const PORT = 8742;
 const server = await startServer(PORT);
 const browser = await chromium.launch(launchOptions());
@@ -372,10 +423,78 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   __arkives.renderCalendar();
   T('calendar modal is body-mounted', document.getElementById('calendarModalHost')?.parentElement === document.body);
 
-  // Dashboard with valueless deals
-  __arkives.state.DEALS = [{ _sbId: 'd', brand: 'B', status: 'Active', value: 0, paid: 0, outstanding: 0, invoiced: 0 }];
-  __arkives.renderDashboard();
-  T('dashboard shows no NaN', !/NaN/.test(document.getElementById('view-dashboard').innerText));
+  // ---- Dashboard + Revenue: numbers come from the tools ----
+  {
+    const A = __arkives, st = A.state;
+    const today = A._localISODate(), month = today.slice(0, 7), year = today.slice(0, 4);
+    const lastYear = (Number(year) - 1) + '-06-15';
+    const line = (fee) => [{ type: 'flat', desc: 'Edit', qty: 1, rate: 0, fee }];
+    const INV = [
+      { _sbId: 'i1', invoiceNumber: 'A-1', billToName: 'Acme', status: 'paid', paidAt: new Date().toISOString(), date: month + '-01', lineItems: line(1000), tax: 0, amountPaid: 1000 },
+      { _sbId: 'i2', invoiceNumber: 'A-2', billToName: 'Beta', status: 'sent', date: today, dueDate: '2000-01-01', lineItems: line(500), tax: 0, amountPaid: 200 },
+      { _sbId: 'i3', invoiceNumber: 'A-3', billToName: '<img src=x onerror="window.__x=1">', status: 'paid', paidAt: lastYear + 'T12:00:00Z', date: lastYear, lineItems: line(9000), tax: 0, amountPaid: 9000 },
+      { _sbId: 'i4', invoiceNumber: 'A-4', billToName: 'Draft Co', status: 'draft', date: today, lineItems: line(7777), tax: 0, amountPaid: 0 },
+    ];
+    const m = A.moneySummary(INV, today);
+    T('money: paid this month/year counts paid invoices + partial payments by paid date', m.paidMonth === 1200 && m.paidYear === 1200, JSON.stringify(m));
+    T('money: outstanding = unpaid balance of sent invoices; overdue flagged; drafts ignored', m.outstanding === 300 && m.outstandingCount === 1 && m.overdue === 300 && m.overdueCount === 1 && m.draftCount === 1 && m.invoicedYear === 1500, JSON.stringify(m));
+    const months = A.revenueByMonth(INV, today, 12);
+    T('money: monthly series is 12 months ending this month, last year excluded', months.length === 12 && months[11].key === month && months[11].paid === 1200 && months.reduce((s, x) => s + x.paid, 0) === 1200 + (months.some((x) => x.key === lastYear.slice(0, 7)) ? 9000 : 0), JSON.stringify(months.slice(-2)));
+    T('money: paid_at missing falls back to the invoice date', A.paidDay({ status: 'paid', paidAt: '', date: '2026-02-03' }) === '2026-02-03');
+    const qs = A.quoteSummary([{ status: 'sent', validUntil: '2999-01-01', lineItems: [{ unit: 'flat', rate: 800, qty: 1 }] }, { status: 'accepted', lineItems: [] }, { status: 'declined', lineItems: [] }, { status: 'sent', validUntil: '2000-01-01', lineItems: [] }]);
+    T('quotes: open excludes expired, win rate = accepted / decided', qs.openCount === 1 && qs.openValue === 800 && qs.winRate === 50, JSON.stringify(qs));
+    const ts = A.taskSummary([{ completed: false, dueDate: today }, { completed: false, dueDate: '2000-01-01' }, { completed: true, completedAt: new Date().toISOString() }, { completed: true, completedAt: '2000-01-01T00:00:00Z' }], today);
+    T('tasks: open, due today, overdue, done in the last 7 days', ts.openCount === 2 && ts.dueToday === 1 && ts.overdue === 1 && ts.doneThisWeek === 1, JSON.stringify(ts));
+
+    const saved = { INVOICE_DATA: st.INVOICE_DATA, QUOTES: st.QUOTES, TASKS: st.TASKS, IDEAS: st.IDEAS, CALENDAR_EVENTS: st.CALENDAR_EVENTS, DEALS: st.DEALS };
+    st.INVOICE_DATA = INV; st.TASKS = []; st.IDEAS = [{ title: 'a', archived: false }, { title: 'b', archived: true }];
+    st.QUOTES = [{ _sbId: 'q1', status: 'accepted', title: '<b>Hero film</b>', clientName: 'Zed', respondedAt: '2026-10-01', lineItems: [] }];
+    st.CALENDAR_EVENTS = [{ date: '2999-01-02', brand: 'Shoot day', type: 'Shoot' }];
+    st.DEALS = [{ brand: 'B', status: 'Active', value: 999999, paid: 888888, outstanding: 777777 }];
+    st._dashRecent = { at: Date.now(), boards: [{ id: 'b1', title: '<img src=x onerror="window.__x=1">', updated_at: new Date().toISOString() }], scripts: [] };
+    A.renderDashboard();
+    const dash = document.getElementById('view-dashboard');
+    const txt = dash.innerText;
+    T('dashboard: money from invoices, never from deal fields', /\$1,200/.test(txt) && /\$300/.test(txt) && !/888,888|777,777|999,999/.test(txt), txt.slice(0, 400));
+    T('dashboard: shows no NaN or undefined', !/NaN|undefined/.test(txt));
+    T('dashboard: quick access tiles for Boards, Scripts, Contracts, Calendar', ['Boards', 'Scripts', 'Contracts', 'Calendar'].every((n) => [...dash.querySelectorAll('.dash-tile-title')].some((a) => a.textContent === n)));
+    T('dashboard: recent board links open the board; titles escaped', !!dash.querySelector('a.dash-tile-row[href="#board/b1"]') && !dash.querySelector('.dash-tile img') && /onerror/.test(dash.querySelector('.dash-tile-name').textContent));
+    T('dashboard: accepted quotes link to the quote (contract hand-off), escaped', !!dash.querySelector('a[href="#quotes/q1"]') && !dash.querySelector('.dash-tile b'));
+    T('dashboard: New board/script buttons reuse the tools actions', !!dash.querySelector('[data-action="_createNewBoard"]') && !!dash.querySelector('[data-action="_createNewScript"]'));
+    T('dashboard: audience card has the scan button and points at Settings when a handle is missing', !!dash.querySelector('#dashAudience [data-action="runSocialScan"]') && !!dash.querySelector('#dashAudience a[href="#settings"]'));
+    T('dashboard: tool activity counts ideas on the list (not archived)', [...dash.querySelectorAll('.dash-stat')].some((x) => /ideas on the list/.test(x.textContent) && x.querySelector('.dash-stat-num').textContent === '1'));
+    st.INVOICE_DATA = [];
+    A.renderDashboard();
+    T('dashboard: no invoices = friendly empty chart state, no NaN', !document.getElementById('dashboardRevChart') && /New invoice/.test(dash.innerText) && !/NaN/.test(dash.innerText));
+    st.INVOICE_DATA = INV;
+    A.renderRevenue();
+    const rev = document.getElementById('view-revenue');
+    T('revenue: built from invoices (drafts excluded, links to the invoice)', /\$1,200/.test(rev.innerText) && !!rev.querySelector('a[href="#invoices/i2"]') && !rev.querySelector('a[href="#invoices/i4"]') && /1 draft not counted/.test(rev.innerText) && !/888,888/.test(rev.innerText));
+    T('revenue: overdue invoice shows as Overdue, names escaped', /Overdue/.test(rev.innerText) && !rev.querySelector('td img'));
+    Object.assign(st, saved); st._dashRecent = null;
+  }
+
+  // ---- Social: history, trend, scan results ----
+  {
+    const A = __arkives, st = A.state;
+    const h = A.socialHistory([{ platform: 'instagram', date: '2026-09-01', followers: 100 }, { date: '2026-10-11', platforms: { instagram: { followers: 160 }, youtube: { subscribers: 7 } } }, { date: '2026-09-20', platforms: { instagram: { followers: 130 } } }]);
+    T('social: history merges flat + unified snapshots, sorted', h.instagram.map((x) => x.followers).join(',') === '100,130,160' && h.youtube[0].followers === 7);
+    const tr = A.followerTrend(h.instagram, 30);
+    T('social: 30-day trend uses the newest point at least 30 days back', tr && tr.delta === 60 && tr.since === '2026-09-01' && A.followerTrend(h.youtube, 30) === null, JSON.stringify(tr));
+    const ig0 = { ...st.CREATOR.platforms.instagram };
+    A.applyScanResults({ instagram: { followers: 271234, engagementRate: 3.2, posts: 140 }, tiktok: { error: 'x' }, youtube: { skipped: true } });
+    T('social: a scan updates the media-kit numbers in memory', st.CREATOR.platforms.instagram.followersNum === 271234 && st.CREATOR.platforms.instagram.followers === '271.2K' && st.CREATOR.platforms.instagram.engagement === '3.2%');
+    Object.assign(st.CREATOR.platforms.instagram, ig0);
+    T('social: scan error copy (cooldown, not configured, unknown)', /Try again in 3 min/.test(A.scanErrorText({ error: 'cooldown', retryAfterSec: 150 })) && /APIFY_TOKEN/.test(A.scanErrorText({ error: 'not_configured' })) && A.scanErrorText(null) === 'Scan failed. Try again.');
+    st._scanBusy = true;
+    T('social: busy scan button is disabled and says so', /disabled/.test(A.scanButtonHtml()) && /Scanning/.test(A.scanButtonHtml()));
+    st._scanBusy = false;
+    const realScan = A.db.sbScanSocials; let sent = null;
+    A.db.sbScanSocials = async (d) => { sent = d; return { ok: false, error: 'not_configured' }; };
+    await A.runSocialScan();
+    T('social: runSocialScan sends the local date and clears busy after a refusal', sent === A._localISODate() && st._scanBusy === false);
+    A.db.sbScanSocials = realScan;
+  }
 
   // Logout reset
   __arkives.state.CREATOR.name = 'X'; __arkives.state.CREATOR.bankAccountNumber = '999'; __arkives.state.INVOICE_DATA = [{ _sbId: 'i' }];
@@ -925,7 +1044,9 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     await S.loadFor('invoices/abc');
     T('invoices route loads invoices and clients', S.invoices.loaded && S.clients.loaded && st.INVOICE_DATA[0].invoiceNumber === 'ME-1' && st.INVOICE_DATA[0].lineItems[0].fee === 10 && st.CLIENTS.length === 2 && st.CLIENTS[0].invoicePrefix === 'ZED' && st._invoicingMigrationMissing === false, JSON.stringify(st.INVOICE_DATA[0]));
     await S.loadFor('dashboard');
-    T('dashboard route loads deals, calendar and revenue', st.DEALS[0].brand === 'Acme' && st.DEALS[0].paid === 6000 && st.CALENDAR_EVENTS[0].date === '2026-09-10' && st.MONTHLY_REVENUE[0].month === 'Aug 2026' && st.MONTHLY_REVENUE[0].earned === 5000);
+    T('dashboard route loads calendar, invoices, quotes, tasks and ideas (no deals)', st.CALENDAR_EVENTS[0].date === '2026-09-10' && S.invoices.loaded && S.quotes.loaded && S.tasks.loaded && S.ideas.loaded && !S.deals.loaded && S.VIEW_STORES.revenue.map((x) => x.name).join(',') === 'invoices,quotes');
+    await Promise.all([S.deals.load(), S.revenue.load()]);
+    T('deals and monthly revenue loaders still map rows', st.DEALS[0].brand === 'Acme' && st.DEALS[0].paid === 6000 && st.MONTHLY_REVENUE[0].month === 'Aug 2026' && st.MONTHLY_REVENUE[0].earned === 5000);
     await S.loadFor('outreach');
     T('outreach loader maps lists and targets', st.OUTREACH_LISTS[0].name === 'Brands' && st.OUTREACH_TARGETS[0].name === 'Nike' && st._outreachMigrationMissing === false);
     await Promise.all([S.audience.load(), S.inbox.load(), S.campaigns.load()]);

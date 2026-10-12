@@ -61,6 +61,7 @@ Object.assign(invoices, {
     const ok = await db.sbUpdateInvoice(id, { status });
     if (!ok) return false;
     inv.status = status;
+    _stampPaid(inv);
     invoices.notify();
     return true;
   },
@@ -74,6 +75,7 @@ Object.assign(invoices, {
     if (!ok) return false;
     inv.amountPaid = newPaid;
     if (settled) inv.status = 'paid';
+    _stampPaid(inv);
     invoices.notify();
     return true;
   },
@@ -85,7 +87,11 @@ Object.assign(invoices, {
       const ok = await db.sbUpdateInvoice(editingId, payload);
       if (!ok) return false;
       const idx = state.INVOICE_DATA.findIndex((i) => i._sbId === editingId);
-      if (idx !== -1) inv = state.INVOICE_DATA[idx] = { ...state.INVOICE_DATA[idx], ..._mapInvoiceRow({ id: editingId, ...payload }) };
+      if (idx !== -1) {
+        const prev = state.INVOICE_DATA[idx];
+        inv = state.INVOICE_DATA[idx] = { ...prev, ..._mapInvoiceRow({ id: editingId, ...payload }), paidAt: prev.paidAt };
+        _stampPaid(inv);
+      }
     } else {
       const row = await db.sbAddInvoice(payload);
       if (!row) return false;
@@ -103,3 +109,10 @@ Object.assign(invoices, {
     return true;
   },
 });
+
+// Mirrors the 027 trigger locally so the dashboard is right before the
+// next fetch: entering 'paid' stamps now, leaving it clears.
+function _stampPaid(inv) {
+  if (inv.status === 'paid') { if (!inv.paidAt) inv.paidAt = new Date().toISOString(); }
+  else inv.paidAt = '';
+}

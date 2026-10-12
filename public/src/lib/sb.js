@@ -641,6 +641,7 @@ function _mapInvoiceRow(r) {
     date: r.date || '',
     dueDate: r.due_date || '',
     status: r.status || 'draft',
+    paidAt: r.paid_at || '', // migration 027; '' before it runs
     description: r.description || '',
     paymentTerms: r.payment_terms || 'none',
     notes: r.notes || '',
@@ -924,6 +925,28 @@ async function sbDeleteBoardItem(itemId) {
 }
 
 /* ---- THE I/O OBJECT ---- All Supabase reads and writes are called as db.sbX(...). */
+/* ---- SOCIAL SCAN (worker/scan.js) ---- */
+// Asks the Worker to scrape Instagram/TikTok/YouTube for the signed-in
+// account. Resolves to the Worker's JSON ({ ok, results, ... } or
+// { ok:false, error }); never throws.
+async function sbScanSocials(localDate) {
+  try {
+    if (!state._sb) return { ok: false, error: 'signin' };
+    const { data: { session } } = await state._sb.auth.getSession();
+    if (!session) return { ok: false, error: 'signin' };
+    const res = await fetch('/api/social-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+      body: JSON.stringify({ date: localDate }),
+    });
+    const out = await res.json().catch(() => null);
+    if (!out) return { ok: false, error: res.status === 404 ? 'not_deployed' : 'network' };
+    return out;
+  } catch (e) {
+    return { ok: false, error: 'network' };
+  }
+}
+
 export const db = {
   sbAddBoardItem,
   sbAddClient,
@@ -970,6 +993,7 @@ export const db = {
   sbFetchScripts,
   sbReorderScenes,
   sbRespondToQuote,
+  sbScanSocials,
   sbSaveSceneFields,
   sbUpdateBoard,
   sbUpdateBoardItem,

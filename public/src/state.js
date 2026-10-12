@@ -130,6 +130,9 @@ state._qPublic = null; // the public quote page's data (#q/TOKEN)
 state._qPublicToken = null;
 state._qPublicMode = 'idle'; // idle | declining | busy
 state._qPublicError = '';
+state._dashRecent = null; // { at, boards, scripts } read on dashboard entry (no store)
+state._dashSocialTried = false; // dashboard asked for social_stats this session
+state._scanBusy = false; // a social scan is running
 state._contractPrefill = null; // a quote handed to the contract builder (consumed on its next render)
 
 // ---- from outreach.js ----

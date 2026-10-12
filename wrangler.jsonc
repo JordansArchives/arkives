@@ -10,8 +10,13 @@
   "observability": {
     "enabled": true
   },
+  // worker/ handles /api/* only (the follower scan); secrets live in the
+  // Cloudflare dashboard: APIFY_TOKEN (required), SCAN_ALLOWED_EMAILS (optional).
+  "main": "worker/index.js",
   "assets": {
     "directory": "./public",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
   }
 }
