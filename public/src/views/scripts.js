@@ -83,12 +83,22 @@ function _tagOptions(kind) {
 
 
 // Repaint the editor from in-memory state (no refetch). Pending edits are
-// flushed first so a repaint can never resurrect stale text.
+// flushed first so a repaint can never resurrect stale text. The scenes
+// list scrolls inside .script-scenes-wrapper, which the repaint replaces,
+// so its scroll (and any scrolling ancestor's) is carried across.
 async function _scriptRerender() {
   await _flushScriptSaves();
   if (!state._currentScriptRow) return;
+  var container = document.getElementById(state._sharedScriptToken ? 'view-shared-script' : 'view-script-editor');
+  var oldWrap = container && container.querySelector('.script-scenes-wrapper');
+  var innerTop = oldWrap ? oldWrap.scrollTop : 0;
+  var outer = [];
+  for (var el = container; el; el = el.parentElement) { if (el.scrollTop) outer.push([el, el.scrollTop]); }
   if (state._sharedScriptToken) _paintSharedEditor();
-  else _renderEditorUI(document.getElementById('view-script-editor'), state._currentScriptRow, state._currentScenes, false);
+  else _renderEditorUI(container, state._currentScriptRow, state._currentScenes, false);
+  var newWrap = container && container.querySelector('.script-scenes-wrapper');
+  if (newWrap) newWrap.scrollTop = innerTop;
+  outer.forEach(function(p) { p[0].scrollTop = p[1]; });
 }
 
 /* ---- SCRIPTS LIST VIEW ---- */
