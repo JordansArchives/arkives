@@ -2015,6 +2015,7 @@ a.mk-platform-link:hover {
 }
 .script-thumb-preview:hover .script-thumb-remove { opacity: 1; }
 
+.script-col-thumb:focus-visible, .script-col-thumb:focus { outline: 2px solid var(--accent); outline-offset: -4px; }
 .script-col-thumb.sc-thumb-dropover { outline: 2px dashed var(--accent); outline-offset: -4px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .script-thumb-upload {
   display: flex;

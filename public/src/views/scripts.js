@@ -317,7 +317,7 @@ function _renderSceneRow(scene, idx, readOnly) {
   html += '<div class="script-col-scene">' + _renderSceneBlocks(scene, readOnly) + '</div>';
 
   /* Thumbnails */
-  html += '<div class="script-col-thumb">' + _renderSceneThumbs(scene, readOnly) + '</div>';
+  html += '<div class="script-col-thumb"' + (readOnly ? '' : ' tabindex="0" aria-label="Scene ' + (idx + 1) + ' images: click, then paste an image"') + '>' + _renderSceneThumbs(scene, readOnly) + '</div>';
 
   /* Actions */
   if (!readOnly) {
@@ -396,7 +396,7 @@ function _renderSceneThumbs(scene, readOnly) {
   if (!readOnly && thumbs.length < SCENE_THUMBS_MAX) {
     html += '<label class="script-thumb-upload' + (thumbs.length ? ' sc-thumb-more' : '') + '" for="thumbInput_' + scene.id + '">';
     html += '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
-    html += '<span>' + (thumbs.length ? 'Add image' : 'Upload or drop image') + '</span>';
+    html += '<span>' + (thumbs.length ? 'Add image' : 'Upload, drop or paste') + '</span>';
     html += '<input type="file" id="thumbInput_' + scene.id + '" accept="image/*" multiple style="display:none" data-change="_handleThumbUpload" data-change-args="' + _args('$el', scene.id) + '" />';
     html += '</label>';
   } else if (!thumbs.length) {
@@ -652,7 +652,8 @@ async function _deleteSceneRow(sceneId) {
    an image never renders twice. */
 function _readThumbFile(file) {
   return new Promise(function(resolve) {
-    if (!file || file.size > 2 * 1024 * 1024) { _showSaveError('Image too large. Max 2MB.'); return resolve(''); }
+    // Every image is shrunk to 600px wide below, so the input cap only guards memory
+    if (!file || file.size > 20 * 1024 * 1024) { _showSaveError('Image too large. Max 20MB.'); return resolve(''); }
     var reader = new FileReader();
     reader.onload = function(e) {
       /* Resize to max 600px wide for storage efficiency */
@@ -736,6 +737,43 @@ function _bindThumbDrop() {
       _addThumbFiles(sceneId, files);
     });
   });
+}
+
+/* ---- PASTE IMAGES ---- An image on the clipboard goes to the scene
+   whose thumbnail cell is focused or hovered, else the scene whose text
+   is being edited. Text pastes are never touched. */
+function _clipboardImages(e) {
+  var items = (e.clipboardData && e.clipboardData.items) || [];
+  var out = [];
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].kind === 'file' && /^image\//.test(items[i].type)) { var f = items[i].getAsFile(); if (f) out.push(f); }
+  }
+  return out;
+}
+
+function _pasteTargetScene() {
+  var editable = function(row) { return row && row.getAttribute('draggable') === 'true' ? row.getAttribute('data-scene-id') : null; };
+  var active = document.activeElement;
+  var fromFocus = active && active.closest && editable(active.closest('.script-scene-row'));
+  if (fromFocus) return fromFocus;
+  var hovered = document.querySelector('.script-scene-row .script-col-thumb:hover');
+  return hovered ? editable(hovered.closest('.script-scene-row')) : null;
+}
+
+function _onScriptPaste(e) {
+  if (!state._currentScriptRow) return;
+  var files = _clipboardImages(e);
+  if (!files.length) return;
+  // Clipboard text alongside the image (e.g. copied from a web page) still pastes into a text box
+  var active = document.activeElement;
+  var hasText = e.clipboardData && e.clipboardData.getData('text/plain');
+  if (hasText && active && /^(TEXTAREA|INPUT)$/.test(active.tagName)) return;
+  var sceneId = _pasteTargetScene();
+  if (!sceneId) return;
+  e.preventDefault();
+  var cell = document.querySelector('.script-scene-row[data-scene-id="' + sceneId + '"] .script-col-thumb');
+  if (cell) { cell.classList.add('sc-thumb-dropover'); setTimeout(function() { cell.classList.remove('sc-thumb-dropover'); }, 400); }
+  _addThumbFiles(sceneId, files);
 }
 
 /* ---- DRAG & DROP REORDER ---- */
@@ -825,6 +863,7 @@ function _paintSharedEditor() {
 /* ---- SIDE EFFECTS ---- Registered from main.js in a fixed order, not at import time. */
 export function __init() {
   document.addEventListener('keydown', function(e) { if (e.key === 'Escape') _scCloseTagPicker(); });
+  document.addEventListener('paste', _onScriptPaste);
   // Leaving the page or backgrounding the tab (phones do this constantly)
   document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushScriptSaves(); });
   window.addEventListener('pagehide', function() { _flushScriptSaves(); });
@@ -833,4 +872,4 @@ export function __init() {
 act({ _addScene, _createNewScript, _deleteSceneRow, _deleteScript, _handleThumbUpload, _moveScene, _removeThumb,
   _scAddBlock, _scClearTag, _scCloseTagPicker, _scCustomAdd, _scCustomKeydown, _scDeleteBlock, _scMoveBlock, _scPickBackdrop, _scPickTag, _scSetTag });
 
-export { SCENE_TAG_PRESETS, _addThumbFiles, _blocksMirror, _sceneBlocks, _sceneThumbs, _scCloseTagPicker, _scPickTag, _scSetTag, _tagOptions, _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };
+export { SCENE_TAG_PRESETS, _addThumbFiles, _onScriptPaste, _pasteTargetScene, _blocksMirror, _sceneBlocks, _sceneThumbs, _scCloseTagPicker, _scPickTag, _scSetTag, _tagOptions, _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };

@@ -239,6 +239,24 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('set pills render with kind colour classes, unset ones as ghosts', q('.sc-blocks[data-scene-id="b"] .sc-tag-shot:not(.sc-tag-ghost)')?.textContent.includes('Medium') && q('.sc-blocks[data-scene-id="b"] .sc-tag-light.sc-tag-ghost') && q('.sc-blocks[data-scene-id="b"] .sc-block-transition .sc-tag-transition')?.textContent.includes('Match cut'));
     T('the legacy single thumbnail renders ahead of the list', qa('.script-scene-row[data-scene-id="a"] .script-thumb-preview img').length === 1 && qa('.script-scene-row[data-scene-id="b"] .script-thumb-preview img').length === 2);
     T('the upload control allows several files', q('.script-scene-row[data-scene-id="b"] input[type=file]')?.multiple === true);
+    // Paste: an image on the clipboard lands on the focused scene; text-with-image in a text box is left alone
+    {
+      const realSave = __arkives.db.sbSaveSceneFields, pasted = [];
+      __arkives.db.sbSaveSceneFields = async (id, fields) => { pasted.push({ id, n: (fields.thumbnails || []).length }); };
+      const cv = document.createElement('canvas'); cv.width = cv.height = 4;
+      const blob = await new Promise((r) => cv.toBlob(r, 'image/png'));
+      const clip = (withText) => { const dt = new DataTransfer(); dt.items.add(new File([blob], 'shot.png', { type: blob.type || 'image/png' })); if (withText) dt.setData('text/plain', 'hello'); return new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }); };
+      q('.script-scene-row[data-scene-id="a"] .script-col-thumb').focus();
+      const ev = clip(false); document.activeElement.dispatchEvent(ev);
+      await new Promise((r) => setTimeout(r, 300));
+      T('pasting an image adds it to the focused scene thumbnails', ev.defaultPrevented && pasted.length === 1 && pasted[0].id === 'a' && pasted[0].n === 2, JSON.stringify(pasted));
+      const ta = c.querySelector('.script-cell-textarea[data-scene-id="b"][data-field="script_text"]'); ta.focus();
+      const ev2 = clip(true); ta.dispatchEvent(ev2);
+      await new Promise((r) => setTimeout(r, 100));
+      T('pasting text that carries an image into a text box stays a text paste', !ev2.defaultPrevented && pasted.length === 1);
+      __arkives.db.sbSaveSceneFields = realSave;
+      __arkives._renderEditorUI(c, __arkives.state._currentScriptRow, __arkives.state._currentScenes, false);
+    }
     // Typing in a block writes blocks + the mirror into state and the dirty set
     const bt = q('.sc-block-text[data-scene-id="a"][data-bi="0"]');
     bt.value = 'edited'; bt.dispatchEvent(new Event('input', { bubbles: true }));
