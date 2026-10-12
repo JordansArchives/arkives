@@ -254,6 +254,7 @@ function _renderEditorUI(container, script, scenes, readOnly) {
     }
     _bindSceneEvents();
     _bindDragDrop();
+    _bindThumbDrop();
     var scShareBtn = document.getElementById('scShareBtn');
     if (scShareBtn) {
       scShareBtn.addEventListener('click', function() {
@@ -395,7 +396,7 @@ function _renderSceneThumbs(scene, readOnly) {
   if (!readOnly && thumbs.length < SCENE_THUMBS_MAX) {
     html += '<label class="script-thumb-upload' + (thumbs.length ? ' sc-thumb-more' : '') + '" for="thumbInput_' + scene.id + '">';
     html += '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
-    html += '<span>' + (thumbs.length ? 'Add image' : 'Upload image') + '</span>';
+    html += '<span>' + (thumbs.length ? 'Add image' : 'Upload or drop image') + '</span>';
     html += '<input type="file" id="thumbInput_' + scene.id + '" accept="image/*" multiple style="display:none" data-change="_handleThumbUpload" data-change-args="' + _args('$el', scene.id) + '" />';
     html += '</label>';
   } else if (!thumbs.length) {
@@ -680,8 +681,15 @@ async function _saveThumbs(sceneId, thumbs) {
 }
 
 async function _handleThumbUpload(input, sceneId) {
-  var scene = _sceneById(sceneId); if (!scene) return;
   var files = Array.prototype.slice.call(input.files || []);
+  input.value = '';
+  await _addThumbFiles(sceneId, files);
+}
+
+// Shared by the file picker and drag & drop: non-images are ignored
+async function _addThumbFiles(sceneId, files) {
+  var scene = _sceneById(sceneId); if (!scene) return;
+  files = files.filter(function(f) { return f && /^image\//.test(f.type); });
   if (!files.length) return;
   var thumbs = _sceneThumbs(scene);
   var room = SCENE_THUMBS_MAX - thumbs.length;
@@ -690,7 +698,6 @@ async function _handleThumbUpload(input, sceneId) {
     var t = await _readThumbFile(files[i]);
     if (t) thumbs.push(t);
   }
-  input.value = '';
   if (await _saveThumbs(sceneId, thumbs)) _scriptRerender();
 }
 
@@ -699,6 +706,36 @@ async function _removeThumb(sceneId, ti) {
   var thumbs = _sceneThumbs(scene);
   thumbs.splice(typeof ti === 'number' ? ti : 0, 1);
   if (await _saveThumbs(sceneId, thumbs)) _scriptRerender();
+}
+
+/* ---- DRAG & DROP IMAGES ---- Dropping image files on a scene's
+   thumbnail cell adds them. Row reordering drags carry no files and
+   pass through to the row handlers below. */
+function _hasFiles(e) { return !!(e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0); }
+
+function _bindThumbDrop() {
+  document.querySelectorAll('.script-scene-row .script-col-thumb').forEach(function(cell) {
+    var row = cell.closest('.script-scene-row');
+    var sceneId = row && row.getAttribute('data-scene-id');
+    if (!sceneId) return;
+    cell.addEventListener('dragover', function(e) {
+      if (!_hasFiles(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      e.dataTransfer.dropEffect = 'copy';
+      cell.classList.add('sc-thumb-dropover');
+    });
+    cell.addEventListener('dragleave', function(e) {
+      if (!cell.contains(e.relatedTarget)) cell.classList.remove('sc-thumb-dropover');
+    });
+    cell.addEventListener('drop', function(e) {
+      if (!_hasFiles(e)) return;
+      e.preventDefault(); e.stopPropagation();
+      cell.classList.remove('sc-thumb-dropover');
+      var files = Array.prototype.slice.call(e.dataTransfer.files || []);
+      if (!files.some(function(f) { return /^image\//.test(f.type); })) { _showSaveError('Drop an image file'); return; }
+      _addThumbFiles(sceneId, files);
+    });
+  });
 }
 
 /* ---- DRAG & DROP REORDER ---- */
@@ -711,7 +748,8 @@ function _bindDragDrop() {
       row.classList.add('script-row-dragging');
     });
     row.addEventListener('dragover', function(e) {
-      e.preventDefault();
+      e.preventDefault(); // also stops a file dropped off-target from opening in the tab
+      if (state._dragSrcIdx === null || state._dragSrcIdx === undefined) { e.dataTransfer.dropEffect = 'none'; return; }
       e.dataTransfer.dropEffect = 'move';
       row.classList.add('script-row-dragover');
     });
@@ -795,4 +833,4 @@ export function __init() {
 act({ _addScene, _createNewScript, _deleteSceneRow, _deleteScript, _handleThumbUpload, _moveScene, _removeThumb,
   _scAddBlock, _scClearTag, _scCloseTagPicker, _scCustomAdd, _scCustomKeydown, _scDeleteBlock, _scMoveBlock, _scPickBackdrop, _scPickTag, _scSetTag });
 
-export { SCENE_TAG_PRESETS, _blocksMirror, _sceneBlocks, _sceneThumbs, _scCloseTagPicker, _scPickTag, _scSetTag, _tagOptions, _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };
+export { SCENE_TAG_PRESETS, _addThumbFiles, _blocksMirror, _sceneBlocks, _sceneThumbs, _scCloseTagPicker, _scPickTag, _scSetTag, _tagOptions, _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };

@@ -200,10 +200,20 @@ function _audienceHtml() {
         ${p.handle || p.followersNum ? `<span class="dash-aud-num">${_esc(p.followers || '0')}</span>${trendHtml}` : '<a href="#settings" class="dash-aud-add">Add handle</a>'}
       </div>`;
   }).join('');
+  // Total across every platform; the month change sums the platforms whose history reaches back 30 days
+  const total = AUD_PLATFORMS.reduce((n, d) => n + (Number((state.CREATOR.platforms[d.key] || {}).followersNum) || 0), 0);
+  const trends = AUD_PLATFORMS.map((d) => followerTrend(hist[d.key], 30)).filter(Boolean);
+  const totalDelta = trends.reduce((n, t) => n + t.delta, 0);
+  const totalTrend = trends.length ? `<span class="dash-aud-trend ${totalDelta >= 0 ? 'up' : 'down'}">${totalDelta >= 0 ? '+' : '−'}${_compact(Math.abs(totalDelta))} this month</span>` : '';
   return `
     <div class="dash-panel-head">
       <h3>Audience</h3>
       <a href="#analytics" class="dash-panel-link">Open analytics</a>
+    </div>
+    <div class="dash-aud-total">
+      <span class="dash-aud-total-label">Total followers</span>
+      <span class="dash-aud-total-num">${total ? _compact(total) : '0'}</span>
+      ${totalTrend}
     </div>
     <div class="dash-aud">${rows}</div>
     <div class="dash-aud-foot"><span class="dash-aud-last">${lastScanText()}</span></div>`;

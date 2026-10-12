@@ -2015,6 +2015,7 @@ a.mk-platform-link:hover {
 }
 .script-thumb-preview:hover .script-thumb-remove { opacity: 1; }
 
+.script-col-thumb.sc-thumb-dropover { outline: 2px dashed var(--accent); outline-offset: -4px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .script-thumb-upload {
   display: flex;
   flex-direction: column;
@@ -5774,6 +5775,13 @@ body.share-quote .main { padding-bottom: 32px; }
 .dash-panel-link { font-size: 12.5px; font-weight: 500; color: var(--text-secondary); text-decoration: underline; text-decoration-color: var(--border); text-underline-offset: 3px; }
 .dash-panel-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
 
+.dash-aud-total {
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "label num" "label trend";
+  column-gap: 12px; align-items: center; padding: 4px 0 12px; border-bottom: 2px solid var(--text-primary);
+}
+.dash-aud-total-label { grid-area: label; font-weight: 700; font-size: 13.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-secondary); }
+.dash-aud-total-num { grid-area: num; font-family: var(--font-display); font-size: 40px; line-height: 1; color: var(--text-primary); text-align: right; font-variant-numeric: tabular-nums; }
+.dash-aud-total .dash-aud-trend { grid-area: trend; }
 .dash-aud { display: flex; flex-direction: column; }
 .dash-aud-row {
   display: grid;
