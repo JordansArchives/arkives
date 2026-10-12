@@ -25,6 +25,15 @@ function renderDashboard() {
   const tasks = taskSummary(state.TASKS, today);
   const hasInvoices = (state.INVOICE_DATA || []).some((i) => i.status !== 'draft');
 
+  const statusRows = [
+    { href: 'invoices', tone: 'orange', label: 'Outstanding', num: _money(money.outstanding),
+      sub: money.outstandingCount ? `${_plural(money.outstandingCount, 'unpaid invoice')}${money.overdueCount ? `, <span class="dash-warn">${_money(money.overdue)} overdue</span>` : ''}` : 'Nothing owed right now' },
+    { href: 'quotes', tone: 'teal', label: 'Open quotes', num: _money(quotes.openValue),
+      sub: `${_plural(quotes.openCount, 'quote')} waiting on a reply${quotes.winRate != null ? `, ${quotes.winRate}% won` : ''}${quotes.unseen ? `<span class="dash-pill">${_plural(quotes.unseen, 'new reply', 'new replies')}</span>` : ''}` },
+    { href: 'tasks', tone: 'blue', label: 'Open tasks', num: String(tasks.openCount),
+      sub: tasks.dueToday || tasks.overdue ? `${tasks.dueToday} due today${tasks.overdue ? `, <span class="dash-warn">${tasks.overdue} overdue</span>` : ''}` : 'Nothing due today' },
+  ];
+
   container.innerHTML = `
     <div class="view-header">
       <div>
@@ -33,51 +42,41 @@ function renderDashboard() {
       </div>
     </div>
 
-    <section class="dash-tiles" id="dashTiles" aria-label="Quick access">${_tilesHtml(today)}</section>
+    <section class="dash-tiles" id="dashTiles" aria-label="Your tools">${_tilesHtml(today)}</section>
 
-    <div class="dashboard-kpis">
-      <a href="#revenue" class="kpi-card kpi-primary dash-kpi-link">
-        <span class="kpi-label">Paid this month</span>
-        <span class="kpi-value">${_money(money.paidMonth)}</span>
-        <span class="kpi-sub">${_money(money.paidYear)} this year</span>
-      </a>
-      <a href="#invoices" class="kpi-card dash-kpi-link">
-        <span class="kpi-label">Outstanding</span>
-        <span class="kpi-value">${_money(money.outstanding)}</span>
-        <span class="kpi-sub">${money.outstandingCount ? _plural(money.outstandingCount, 'invoice') + ' unpaid' : 'nothing owed'}${money.overdueCount ? ` · <span class="dash-warn">${_money(money.overdue)} overdue</span>` : ''}</span>
-      </a>
-      <a href="#quotes" class="kpi-card dash-kpi-link">
-        <span class="kpi-label">Open quotes</span>
-        <span class="kpi-value">${_money(quotes.openValue)}</span>
-        <span class="kpi-sub">${quotes.openCount} awaiting${quotes.winRate != null ? ` · ${quotes.winRate}% win rate` : ''}${quotes.unseen ? ` · <span class="dash-warn">${_plural(quotes.unseen, 'new reply', 'new replies')}</span>` : ''}</span>
-      </a>
-      <a href="#tasks" class="kpi-card dash-kpi-link">
-        <span class="kpi-label">Open tasks</span>
-        <span class="kpi-value">${tasks.openCount}</span>
-        <span class="kpi-sub">${tasks.dueToday || tasks.overdue ? `${tasks.dueToday} due today${tasks.overdue ? ` · <span class="dash-warn">${tasks.overdue} overdue</span>` : ''}` : 'nothing due today'}</span>
-      </a>
-    </div>
-
-    <div class="dashboard-row">
-      <div class="dashboard-card dashboard-chart-card">
-        <div class="dashboard-card-header">
-          <h3>Revenue</h3>
-          <a href="#revenue" class="dashboard-card-link">Revenue →</a>
+    <div class="dash-money">
+      <section class="dash-ledger" aria-label="Revenue">
+        <div class="dash-ledger-head">
+          <a href="#revenue" class="dash-ledger-total">
+            <span class="dash-label">Paid this month</span>
+            <span class="dash-hero-num">${_money(money.paidMonth)}</span>
+            <span class="dash-sub">${_money(money.paidYear)} so far this year</span>
+          </a>
+          ${hasInvoices ? '<div class="dash-legend"><span class="dash-key dash-key-paid"></span>Paid<span class="dash-key dash-key-inv"></span>Invoiced</div>' : ''}
         </div>
         ${hasInvoices ? `
-          <div class="dash-legend"><span class="dash-key dash-key-paid"></span>Paid <span class="dash-key dash-key-inv"></span>Invoiced</div>
-          <div class="chart-wrap"><canvas id="dashboardRevChart" height="180"></canvas></div>
+          <div class="chart-wrap dash-chart"><canvas id="dashboardRevChart" height="180" aria-label="Paid and invoiced by month, last 12 months" role="img"></canvas></div>
         ` : `
-          <div class="dashboard-empty">
-            <p>Revenue shows up here as you send and get paid on invoices.</p>
-            <a href="#invoices/new" class="btn btn-secondary btn-sm">New invoice</a>
+          <div class="dash-ledger-empty">
+            <p>Your revenue builds up here as you send invoices and mark them paid.</p>
+            <a href="#invoices/new" class="btn btn-primary btn-sm">New invoice</a>
           </div>`}
-      </div>
+      </section>
 
-      <div class="dashboard-card" id="dashAudience">${_audienceHtml()}</div>
+      <div class="dash-status">
+        ${statusRows.map((r) => `
+          <a href="#${r.href}" class="dash-status-row tone-${r.tone}">
+            <span class="dash-label">${r.label}</span>
+            <span class="dash-status-num">${r.num}</span>
+            <span class="dash-sub">${r.sub}</span>
+          </a>`).join('')}
+      </div>
     </div>
 
-    <div class="dashboard-card dash-activity" id="dashActivity">${_activityHtml(today, tasks)}</div>
+    <div class="dash-lower">
+      <section class="dash-panel" id="dashAudience" aria-label="Audience">${_audienceHtml()}</section>
+      <section class="dash-panel dash-activity" id="dashActivity" aria-label="Tool activity">${_activityHtml(today, tasks)}</section>
+    </div>
   `;
 
   if (hasInvoices) setTimeout(() => renderDashboardRevChart(today), 30);
@@ -129,6 +128,20 @@ function _recentList(items, hrefPrefix, emptyText) {
     </a>`).join('');
 }
 
+const TILE_ICONS = {
+  boards: '<path d="M3.2 4.1h17.6v13.7H3.2z"/><path d="M8.1 21.2l3.9-3.3 3.9 3.2"/><path d="M6.8 7.9h4.1v3.9H6.8z"/><path d="M13.9 9.6h3.4"/><path d="M13.8 12.4h3.5"/>',
+  scripts: '<path d="M4.1 3.2h11.8l4 4.1v13.5c0 .6-.5 1.1-1.1 1.1H4.1c-.6 0-1.1-.5-1.1-1.1V4.3c0-.6.5-1.1 1.1-1.1z"/><path d="M7.2 8.1h5.8"/><path d="M7.2 12h9.6"/><path d="M7.2 15.9h9.6"/><path d="M14.1 3.2v5h5"/>',
+  contracts: '<path d="M14.1 2.2H6.2c-1.2 0-2.1.9-2.1 2v15.8c0 1.1.9 2 2.1 2h11.6c1.2 0 2.1-.9 2.1-2V8.1z"/><path d="M14 2.2v5.9h5.9"/><path d="M9.1 15.1l2 1.9 3.8-3.9"/>',
+  calendar: '<path d="M3.2 4.2h17.6c.6 0 1.1.5 1.1 1.1v14.5c0 .6-.5 1.1-1.1 1.1H3.2c-.6 0-1.1-.5-1.1-1.1V5.3c0-.6.5-1.1 1.1-1.1z"/><path d="M16.1 2.1v4.1"/><path d="M8 2.1v4.1"/><path d="M2.1 10.1h19.8"/>',
+};
+
+function _tileHead(key, title, newHtml) {
+  return `<div class="dash-tile-head">
+    <a href="#${key}" class="dash-tile-title"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${TILE_ICONS[key]}</svg>${title}</a>
+    ${newHtml}
+  </div>`;
+}
+
 function _tilesHtml(today) {
   const r = state._dashRecent || {};
   const accepted = (state.QUOTES || []).filter((q) => q.status === 'accepted')
@@ -136,29 +149,29 @@ function _tilesHtml(today) {
   const upcoming = (state.CALENDAR_EVENTS || []).filter((e) => e.date && e.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3);
   return `
-    <div class="dash-tile">
-      <div class="dash-tile-head"><a href="#boards" class="dash-tile-title">Boards</a><button class="btn btn-secondary btn-sm" data-action="_createNewBoard">+ New</button></div>
-      ${_recentList(r.boards, 'board', 'No boards yet.')}
+    <div class="dash-tile tile-boards">
+      ${_tileHead('boards', 'Boards', '<button class="dash-tile-new" data-action="_createNewBoard" aria-label="New board">+ New</button>')}
+      ${_recentList(r.boards, 'board', 'Start a moodboard for your next shoot.')}
     </div>
-    <div class="dash-tile">
-      <div class="dash-tile-head"><a href="#scripts" class="dash-tile-title">Scripts</a><button class="btn btn-secondary btn-sm" data-action="_createNewScript">+ New</button></div>
-      ${_recentList(r.scripts, 'script', 'No scripts yet.')}
+    <div class="dash-tile tile-scripts">
+      ${_tileHead('scripts', 'Scripts', '<button class="dash-tile-new" data-action="_createNewScript" aria-label="New script">+ New</button>')}
+      ${_recentList(r.scripts, 'script', 'Write the first scene of a script.')}
     </div>
-    <div class="dash-tile">
-      <div class="dash-tile-head"><a href="#contracts" class="dash-tile-title">Contracts</a><a href="#contracts" class="btn btn-secondary btn-sm">+ New</a></div>
+    <div class="dash-tile tile-contracts">
+      ${_tileHead('contracts', 'Contracts', '<a href="#contracts" class="dash-tile-new" aria-label="New contract">+ New</a>')}
       ${accepted.length ? `<div class="dash-tile-hint">Accepted quotes, ready for a contract</div>` + accepted.map((q) => `
         <a class="dash-tile-row" href="#quotes/${encodeURIComponent(q._sbId)}">
           <span class="dash-tile-name">${_esc(q.title || q.quoteNumber)}</span>
           <span class="dash-tile-meta">${_esc(q.clientCompany || q.clientName || '')}</span>
-        </a>`).join('') : '<div class="dash-tile-empty">Accepted quotes show up here, ready to turn into a contract.</div>'}
+        </a>`).join('') : '<div class="dash-tile-empty">When a client accepts a quote, it lands here ready to turn into a contract.</div>'}
     </div>
-    <div class="dash-tile">
-      <div class="dash-tile-head"><a href="#calendar" class="dash-tile-title">Calendar</a><a href="#calendar" class="btn btn-secondary btn-sm">+ Add</a></div>
+    <div class="dash-tile tile-calendar">
+      ${_tileHead('calendar', 'Calendar', '<a href="#calendar" class="dash-tile-new" aria-label="Add event">+ Add</a>')}
       ${upcoming.length ? upcoming.map((e) => `
         <a class="dash-tile-row" href="#calendar">
           <span class="dash-tile-name"><span class="dash-tile-date">${_shortMonth(e.date)} ${_shortDay(e.date)}</span>${_esc(e.brand || 'Event')}</span>
           <span class="dash-tile-meta">${_esc(e.type || '')}</span>
-        </a>`).join('') : '<div class="dash-tile-empty">Nothing scheduled.</div>'}
+        </a>`).join('') : '<div class="dash-tile-empty">Nothing scheduled. Add a shoot or a posting date.</div>'}
     </div>`;
 }
 
@@ -175,7 +188,7 @@ function _audienceHtml() {
   const rows = AUD_PLATFORMS.map((d) => {
     const p = state.CREATOR.platforms[d.key] || {};
     const trend = followerTrend(hist[d.key], 30);
-    const trendHtml = trend ? `<span class="dash-aud-trend ${trend.delta >= 0 ? 'up' : 'down'}">${trend.delta >= 0 ? '+' : '−'}${_compact(Math.abs(trend.delta))} in 30 days</span>` : '';
+    const trendHtml = trend ? `<span class="dash-aud-trend ${trend.delta >= 0 ? 'up' : 'down'}">${trend.delta >= 0 ? '+' : '−'}${_compact(Math.abs(trend.delta))} this month</span>` : '';
     return `
       <div class="dash-aud-row">
         <span class="platform-icon ${d.cls}" style="width:28px;height:28px">${SKETCHY_ICONS[d.icon] || ''}</span>
@@ -184,9 +197,9 @@ function _audienceHtml() {
       </div>`;
   }).join('');
   return `
-    <div class="dashboard-card-header">
+    <div class="dash-panel-head">
       <h3>Audience</h3>
-      <a href="#analytics" class="dashboard-card-link">Analytics →</a>
+      <a href="#analytics" class="dash-panel-link">Open analytics</a>
     </div>
     <div class="dash-aud">${rows}</div>
     <div class="dash-aud-foot">
@@ -210,16 +223,16 @@ function _activityHtml(today, tasks) {
   const invoicesSent = (state.INVOICE_DATA || []).filter((i) => i.status !== 'draft' && (i.date || '').slice(0, 7) === month).length;
   const ideasOpen = (state.IDEAS || []).filter((i) => !i.archived).length;
   const editedThisWeek = (xs) => (xs || []).filter((x) => Date.now() - Date.parse(x.updated_at || 0) < 7 * 864e5).length;
-  const stat = (href, value, label) => `<a href="#${href}" class="dash-stat"><span class="dash-stat-num">${value}</span><span class="dash-stat-label">${label}</span></a>`;
+  const stat = (href, tone, value, label) => `<a href="#${href}" class="dash-stat tone-${tone}"><span class="dash-stat-num">${value}</span><span class="dash-stat-label">${label}</span></a>`;
   return `
-    <div class="dashboard-card-header"><h3>Tool activity</h3></div>
+    <div class="dash-panel-head"><h3>This week in your tools</h3></div>
     <div class="dash-stats">
-      ${stat('tasks', tasks.doneThisWeek, 'tasks done, last 7 days')}
-      ${stat('quotes', quotesSent, 'quotes sent this month')}
-      ${stat('invoices', invoicesSent, 'invoices issued this month')}
-      ${stat('boards', r.boards ? editedThisWeek(r.boards) : '–', 'boards edited this week')}
-      ${stat('scripts', r.scripts ? editedThisWeek(r.scripts) : '–', 'scripts edited this week')}
-      ${stat('ideas', ideasOpen, 'ideas on the list')}
+      ${stat('boards', 'yellow', r.boards ? editedThisWeek(r.boards) : '–', 'boards edited this week')}
+      ${stat('scripts', 'blue', r.scripts ? editedThisWeek(r.scripts) : '–', 'scripts edited this week')}
+      ${stat('tasks', 'blue', tasks.doneThisWeek, 'tasks done, last 7 days')}
+      ${stat('quotes', 'teal', quotesSent, 'quotes sent this month')}
+      ${stat('invoices', 'orange', invoicesSent, 'invoices issued this month')}
+      ${stat('ideas', 'pink', ideasOpen, 'ideas on the list')}
     </div>`;
 }
 
@@ -232,7 +245,7 @@ function renderDashboardRevChart(today) {
   try { if (canvas._chartInstance) canvas._chartInstance.destroy(); } catch (e) {}
 
   const isDark = document.documentElement.dataset.theme === 'dark';
-  const teal = getComputedStyle(document.documentElement).getPropertyValue('--teal').trim() || '#2A6B5A';
+  const ink = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#C73539';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   const textColor = isDark ? '#B8B4AC' : '#5C5852';
 
@@ -241,8 +254,8 @@ function renderDashboardRevChart(today) {
     data: {
       labels: months.map((m) => m.label),
       datasets: [
-        { label: 'Paid', data: months.map((m) => m.paid), backgroundColor: teal, borderRadius: 4 },
-        { label: 'Invoiced', data: months.map((m) => m.invoiced), backgroundColor: teal + '33', borderColor: teal + '80', borderWidth: 1, borderRadius: 4 },
+        { label: 'Paid', data: months.map((m) => m.paid), backgroundColor: ink, borderRadius: 1, barPercentage: 0.7, categoryPercentage: 0.7 },
+        { label: 'Invoiced', data: months.map((m) => m.invoiced), backgroundColor: ink + '1F', borderColor: ink + '99', borderWidth: 1.5, borderRadius: 1, barPercentage: 0.7, categoryPercentage: 0.7 },
       ],
     },
     options: {
@@ -250,7 +263,7 @@ function renderDashboardRevChart(today) {
       maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + _money(ctx.parsed.y) } } },
       scales: {
-        x: { grid: { display: false }, ticks: { color: textColor, font: { size: 11 } } },
+        x: { grid: { display: false }, ticks: { color: textColor, font: { size: 11 }, maxRotation: 0, autoSkipPadding: 10 } },
         y: { grid: { color: gridColor }, beginAtZero: true, ticks: { color: textColor, font: { size: 11 }, callback: (v) => (v >= 1000 ? '$' + (v / 1000).toFixed(0) + 'K' : '$' + v) } },
       },
     },
