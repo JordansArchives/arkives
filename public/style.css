@@ -518,6 +518,7 @@ a:hover { text-decoration: underline; }
 .platform-icon.yt { }
 .platform-icon.tw { }
 .platform-icon.li { }
+.platform-icon.th { }
 .platform-stat-value {
   font-family: var(--font-display);
   font-size: 20px;

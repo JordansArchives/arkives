@@ -182,6 +182,9 @@ const AUD_PLATFORMS = [
   { key: 'instagram', cls: 'ig', icon: 'instagramSmall', label: 'Instagram' },
   { key: 'tiktok', cls: 'tt', icon: 'tiktokSmall', label: 'TikTok' },
   { key: 'youtube', cls: 'yt', icon: 'youtubeSmall', label: 'YouTube' },
+  { key: 'twitter', cls: 'tw', icon: 'twitterSmall', label: 'X' },
+  { key: 'linkedin', cls: 'li', icon: 'linkedinSmall', label: 'LinkedIn' },
+  { key: 'threads', cls: 'th', icon: 'threadsSmall', label: 'Threads' },
 ];
 
 function _audienceHtml() {

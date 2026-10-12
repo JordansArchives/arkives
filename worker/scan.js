@@ -1,9 +1,11 @@
 // Arkives — social follower scan (server side).
 // POST /api/social-scan runs Apify scrapers for the caller's Instagram,
-// TikTok and YouTube handles (from their `platforms` rows), then writes
-// the numbers back through Supabase AS THE CALLER (their JWT, so RLS
-// applies): the platforms rows (media kit) and a dated snapshot in
-// social_stats (analytics history). X and LinkedIn stay manual.
+// TikTok, YouTube, X, LinkedIn and Threads handles (from their
+// `platforms` rows), then writes the numbers back through Supabase AS
+// THE CALLER (their JWT, so RLS applies): the platforms rows (media kit)
+// and a dated snapshot in social_stats (analytics history). Threads
+// accounts are Instagram accounts, so with no Threads row the Instagram
+// handle is scanned and a Threads row is created from it.
 //
 // Pure helpers are exported so tests/checks.mjs can run them in Node
 // with a fake fetch; nothing here touches the network at import time.
@@ -12,12 +14,15 @@ export const SUPABASE_URL = 'https://wqblmehsqcmsdstyweus.supabase.co';
 // The public (publishable) key the browser already ships with
 export const SUPABASE_ANON = 'sb_publishable_jYnmjabjsjkfnBvo1Eii0g_c3aKkCf2';
 
-export const SCAN_PLATFORMS = ['instagram', 'tiktok', 'youtube'];
+export const SCAN_PLATFORMS = ['instagram', 'tiktok', 'youtube', 'twitter', 'linkedin', 'threads'];
 export const SCAN_COOLDOWN_MS = 10 * 60 * 1000; // each scan spends Apify credit
 const ACTORS = {
   instagram: 'apify~instagram-profile-scraper',
   tiktok: 'clockworks~tiktok-profile-scraper',
   youtube: 'streamers~youtube-channel-scraper',
+  twitter: 'clappi~x-twitter-profile-scraper',
+  linkedin: 'harvestapi~linkedin-profile-scraper',
+  threads: 'apify~threads-profile-api-scraper',
 };
 
 export function cleanHandle(h) {
@@ -43,6 +48,15 @@ export function actorInput(platform, row) {
     const url = (row && row.profile_url && /youtube\.com/i.test(row.profile_url)) ? row.profile_url : (handle ? `https://www.youtube.com/@${handle}` : '');
     return url ? { startUrls: [{ url }], maxResults: 1, maxResultsShorts: 0, maxResultStreams: 0 } : null;
   }
+  if (platform === 'twitter') return handle ? { profileUrls: [`https://x.com/${handle}`] } : null;
+  if (platform === 'linkedin') {
+    // A pasted profile URL is used as is: cleanHandle would keep only "in"
+    const url = (row && row.profile_url && /linkedin\.com\/in\//i.test(row.profile_url)) ? row.profile_url
+      : /linkedin\.com\/in\//i.test(String(row && row.handle)) ? String(row.handle).trim()
+      : (handle ? `https://www.linkedin.com/in/${handle}` : '');
+    return url ? { urls: [url], profileScraperMode: 'Profile details no email ($4 per 1k)' } : null;
+  }
+  if (platform === 'threads') return handle ? { usernames: [handle] } : null;
   return null;
 }
 
@@ -73,6 +87,24 @@ export function parseResult(platform, items) {
     if (subs == null) return { error: it.error ? String(it.error) : 'Subscriber count missing' };
     return { followers: subs, videos: _num(about.channelTotalVideos) ?? _num(it.channelTotalVideos), views: _num(about.channelTotalViews) ?? _num(it.channelTotalViews) };
   }
+  if (platform === 'twitter') {
+    const it = items[0];
+    if (it.is_protected) return { error: 'Account is protected' };
+    if (it.status && it.status !== 'available') return { error: `Account ${it.status}` };
+    if (_num(it.followers) == null) return { error: 'Follower count missing' };
+    return { followers: it.followers, following: _num(it.following), posts: _num(it.tweets_count) };
+  }
+  if (platform === 'linkedin') {
+    const it = items[0];
+    if (_num(it.followerCount) == null) return { error: it.error ? String(it.error) : 'Follower count missing' };
+    return { followers: it.followerCount, connections: _num(it.connectionsCount) };
+  }
+  if (platform === 'threads') {
+    const it = items[0];
+    if (it.is_private || it.text_post_app_is_private) return { error: 'Account is private' };
+    if (_num(it.follower_count) == null) return { error: it.error ? String(it.error) : 'Follower count missing' };
+    return { followers: it.follower_count };
+  }
   return { error: 'Unsupported platform' };
 }
 
@@ -88,6 +120,8 @@ export function platformRowUpdate(platform, r) {
     if (r.videos != null) u.videos = r.videos;
   }
   if (platform === 'youtube' && r.videos != null) u.videos = r.videos;
+  if (platform === 'twitter' && r.posts != null) u.posts = r.posts;
+  if (platform === 'linkedin' && r.connections != null) u.connections = r.connections;
   return u;
 }
 
@@ -111,6 +145,15 @@ export function mergePayload(payload, results, date, nowIso) {
     } else if (plat === 'youtube') {
       out.platforms.youtube = { ...prev, subscribers: r.followers, videos: r.videos ?? prev.videos, views: r.views ?? prev.views };
       snapPlats.youtube = { subscribers: r.followers, videos: r.videos ?? undefined };
+    } else if (plat === 'twitter') {
+      out.platforms.twitter = { ...prev, followers: r.followers, following: r.following ?? prev.following, tweets: r.posts ?? prev.tweets };
+      snapPlats.twitter = { followers: r.followers, posts: r.posts ?? undefined };
+    } else if (plat === 'linkedin') {
+      out.platforms.linkedin = { ...prev, followers: r.followers, connections: r.connections ?? prev.connections };
+      snapPlats.linkedin = { followers: r.followers, connections: r.connections ?? undefined };
+    } else if (plat === 'threads') {
+      out.platforms.threads = { ...prev, followers: r.followers };
+      snapPlats.threads = { followers: r.followers };
     }
   }
   if (Object.keys(snapPlats).length) {
@@ -154,7 +197,7 @@ export async function handleScan(req, env, fetchImpl = fetch) {
   const date = /^\d{4}-\d{2}-\d{2}$/.test(body.date || '') ? body.date : new Date().toISOString().slice(0, 10);
 
   const [platRes, statsRes] = await Promise.all([
-    rest('platforms?select=id,platform,handle,profile_url'),
+    rest('platforms?select=id,user_id,platform,handle,profile_url'),
     rest('social_stats?select=id,payload&limit=1'),
   ]);
   if (!platRes.ok) return _json({ ok: false, error: 'read_failed' }, 502);
@@ -168,7 +211,9 @@ export async function handleScan(req, env, fetchImpl = fetch) {
 
   const jobs = SCAN_PLATFORMS.map((plat) => {
     const row = rows.find((r) => r.platform === plat);
-    const input = actorInput(plat, row);
+    // Threads logs in with Instagram: same username unless set separately
+    const ig = rows.find((r) => r.platform === 'instagram');
+    const input = actorInput(plat, plat === 'threads' && !(row && cleanHandle(row.handle)) ? ig : row);
     return { plat, row, input };
   });
   const results = {};
@@ -189,8 +234,14 @@ export async function handleScan(req, env, fetchImpl = fetch) {
   const writes = [];
   for (const { plat, row } of jobs) {
     const r = results[plat];
-    if (!r || r.error || r.skipped || !row) continue;
-    writes.push(rest(`platforms?id=eq.${encodeURIComponent(row.id)}`, { method: 'PATCH', body: JSON.stringify(platformRowUpdate(plat, r)) }));
+    if (!r || r.error || r.skipped) continue;
+    if (row) {
+      writes.push(rest(`platforms?id=eq.${encodeURIComponent(row.id)}`, { method: 'PATCH', body: JSON.stringify(platformRowUpdate(plat, r)) }));
+    } else if (plat === 'threads') {
+      // platforms.user_id is the profile id (not the auth id): reuse the Instagram row's
+      const ig = rows.find((x) => x.platform === 'instagram');
+      if (ig && ig.user_id) writes.push(rest('platforms', { method: 'POST', body: JSON.stringify({ user_id: ig.user_id, platform: 'threads', handle: cleanHandle(ig.handle), ...platformRowUpdate(plat, r) }) }));
+    }
   }
   const scannedAt = new Date().toISOString();
   const payload = mergePayload(stats && stats.payload, results, date, scannedAt);

@@ -54,7 +54,8 @@ function renderAnalytics() {
   const igFollowers = p.instagram ? p.instagram.followers : 0;
   const ttFollowers = p.tiktok ? p.tiktok.followers : 0;
   const ytSubscribers = p.youtube ? p.youtube.subscribers : 0;
-  const totalReach = igFollowers + ttFollowers + ytSubscribers;
+  const otherFollowers = ['twitter', 'linkedin', 'threads'].reduce((n, k) => n + ((p[k] && Number(p[k].followers)) || 0), 0);
+  const totalReach = igFollowers + ttFollowers + ytSubscribers + otherFollowers;
   const igER = p.instagram ? p.instagram.engagement_rate : 0;
 
   // Compute follower growth from history for the selected period (guard for no data)
@@ -67,7 +68,7 @@ function renderAnalytics() {
     <div class="view-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
       <div>
         <h1 class="view-title">Social Analytics</h1>
-        <p class="view-subtitle">Instagram, TikTok and YouTube scanned on demand &middot; ${lastScanText()}</p>
+        <p class="view-subtitle">Instagram, TikTok, YouTube, X, LinkedIn and Threads scanned on demand &middot; ${lastScanText()}</p>
       </div>
       <div class="dash-scan">${scanButtonHtml()}${scanNoteHtml()}</div>
     </div>
@@ -107,10 +108,13 @@ function renderAnalytics() {
           <span class="platform-icon yt" style="width:24px;height:24px">${SKETCHY_ICONS.youtubeSmall}</span> YouTube
         </button>
         <button class="analytics-tab ${state.analyticsPlatform === "twitter" ? "active" : ""}" data-ap="twitter">
-          <span class="platform-icon tw" style="width:24px;height:24px">${SKETCHY_ICONS.twitterSmall}</span> Twitter
+          <span class="platform-icon tw" style="width:24px;height:24px">${SKETCHY_ICONS.twitterSmall}</span> X
         </button>
         <button class="analytics-tab ${state.analyticsPlatform === "linkedin" ? "active" : ""}" data-ap="linkedin">
           <span class="platform-icon li" style="width:24px;height:24px">${SKETCHY_ICONS.linkedinSmall}</span> LinkedIn
+        </button>
+        <button class="analytics-tab ${state.analyticsPlatform === "threads" ? "active" : ""}" data-ap="threads">
+          <span class="platform-icon th" style="width:24px;height:24px">${SKETCHY_ICONS.threadsSmall}</span> Threads
         </button>
       </div>
       <div class="analytics-period-btns">
@@ -177,7 +181,7 @@ function renderAnalyticsContent() {
 }
 
 function renderAnalyticsPlatform(platform) {
-  if (!state.analyticsData) return '<div class="card"><p class="text-muted" style="padding:20px">No data loaded yet. Click Refresh Data.</p></div>';
+  if (!state.analyticsData) return '<div class="card"><p class="text-muted" style="padding:20px">No data loaded yet. Press Scan now.</p></div>';
 
   const p = (state.analyticsData && state.analyticsData.platforms) ? state.analyticsData.platforms[platform] : null;
   const history = filterHistoryByPeriod((state.analyticsData && state.analyticsData.history && state.analyticsData.history[platform]) || [], state.analyticsTimePeriod);
@@ -310,16 +314,15 @@ function renderAnalyticsPlatform(platform) {
         <div class="card analytics-stat-card">
           <div class="analytics-stat-value">${fmtNum(p.followers)}</div>
           <div class="analytics-stat-label">Followers</div>
-          <div class="analytics-stat-delta ${growth.delta >= 0 ? 'up' : 'down'}">${growth.delta >= 0 ? '+' : ''}${fmtNum(growth.delta)}</div>
+          <div class="analytics-stat-delta ${growth.delta >= 0 ? 'up' : 'down'}">${growth.delta >= 0 ? '+' : ''}${fmtNum(growth.delta)} (${growth.pct}%)</div>
         </div>
         <div class="card analytics-stat-card">
-          <div class="analytics-stat-value">${p.tweets || 0}</div>
+          <div class="analytics-stat-value">${fmtNum(p.tweets || 0)}</div>
           <div class="analytics-stat-label">Posts</div>
         </div>
         <div class="card analytics-stat-card">
-          <div class="analytics-stat-value">${p.grade || 'New'}</div>
-          <div class="analytics-stat-label">Status</div>
-          <div class="analytics-stat-delta">${p.handle ? '@' + p.handle.replace(/^@/, '') : '—'}</div>
+          <div class="analytics-stat-value">${p.following != null ? fmtNum(p.following) : '--'}</div>
+          <div class="analytics-stat-label">Following</div>
         </div>
       </div>
       <div class="card">
@@ -329,17 +332,11 @@ function renderAnalyticsPlatform(platform) {
         </div>
         <div class="chart-container"><canvas id="chartGrowth"></canvas></div>
       </div>
-      <div class="card" style="padding:16px;text-align:center;border:1px dashed var(--border)">
-        <p style="color:var(--text-muted);font-size:13px">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-          X/Twitter is a new account &mdash; growth data is based on estimated milestones. Live tracking updates daily.
-        </p>
-      </div>
     `;
   }
 
   if (platform === "twitter" && !p) {
-    return '<div class="card" style="padding:40px;text-align:center"><p style="color:var(--text-muted)">Click "Refresh Data" to load X/Twitter data</p></div>';
+    return '<div class="card" style="padding:40px;text-align:center"><p style="color:var(--text-muted)">Press Scan now to load your X numbers (add your handle in Settings, Platforms first)</p></div>';
   }
 
   if (platform === "linkedin" && p) {
@@ -355,10 +352,30 @@ function renderAnalyticsPlatform(platform) {
           <div class="analytics-stat-value">${fmtNum(p.connections || 0)}</div>
           <div class="analytics-stat-label">Connections</div>
         </div>
+
+      </div>
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Follower Growth (${periodLabel})</span>
+          <span class="card-subtitle">${history.length} data points &middot; ${history.length ? fmtDateShort(history[0].date) + ' \u2014 ' + fmtDateShort(history[history.length-1].date) : 'No data'}</span>
+        </div>
+        <div class="chart-container"><canvas id="chartGrowth"></canvas></div>
+      </div>
+    `;
+  }
+
+  if (platform === "linkedin" && !p) {
+    return '<div class="card" style="padding:40px;text-align:center"><p style="color:var(--text-muted)">Press Scan now to load your LinkedIn numbers (add your profile in Settings, Platforms first)</p></div>';
+  }
+
+  if (platform === "threads" && p) {
+    const growth = calcGrowth(history, "followers");
+    return `
+      <div class="analytics-stats-row">
         <div class="card analytics-stat-card">
-          <div class="analytics-stat-value">${p.grade || 'N/A'}</div>
-          <div class="analytics-stat-label">Status</div>
-          <div class="analytics-stat-delta">${p.handle ? '/in/' + p.handle.replace(/^@/, '') + '/' : '—'}</div>
+          <div class="analytics-stat-value">${fmtNum(p.followers)}</div>
+          <div class="analytics-stat-label">Followers</div>
+          <div class="analytics-stat-delta ${growth.delta >= 0 ? 'up' : 'down'}">${growth.delta >= 0 ? '+' : ''}${fmtNum(growth.delta)} (${growth.pct}%)</div>
         </div>
       </div>
       <div class="card">
@@ -368,17 +385,11 @@ function renderAnalyticsPlatform(platform) {
         </div>
         <div class="chart-container"><canvas id="chartGrowth"></canvas></div>
       </div>
-      <div class="card" style="padding:16px;text-align:center;border:1px dashed var(--border)">
-        <p style="color:var(--text-muted);font-size:13px">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-          LinkedIn growth is based on estimated milestones. Connect the LinkedIn API for live daily tracking.
-        </p>
-      </div>
     `;
   }
 
-  if (platform === "linkedin" && !p) {
-    return '<div class="card" style="padding:40px;text-align:center"><p style="color:var(--text-muted)">Click "Refresh Data" to load LinkedIn data</p></div>';
+  if (platform === "threads" && !p) {
+    return '<div class="card" style="padding:40px;text-align:center"><p style="color:var(--text-muted)">Press Scan now to load your Threads numbers (it uses your Instagram handle)</p></div>';
   }
 
   return '';
@@ -415,7 +426,8 @@ function renderGrowthChart(platform) {
     tiktok: "#69C9D0",
     youtube: "#FF0000",
     twitter: "#1DA1F2",
-    linkedin: "#0A66C2"
+    linkedin: "#0A66C2",
+    threads: "#8A8580"
   };
 
   const followerKey = platform === "youtube" ? "subscribers" : "followers";

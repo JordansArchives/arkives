@@ -65,7 +65,14 @@ S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr[
 {
   const W = await import('../worker/scan.js');
   S('scan: handle cleanup strips @, URLs and paths', W.cleanHandle('@me.x') === 'me.x' && W.cleanHandle('https://instagram.com/me.x/?hl=en') === 'me.x' && W.cleanHandle('') === '');
-  S('scan: no handle = nothing to scan', W.actorInput('instagram', { handle: '' }) === null && W.actorInput('tiktok', null) === null && W.actorInput('twitter', { handle: 'x' }) === null);
+  S('scan: no handle = nothing to scan', W.actorInput('instagram', { handle: '' }) === null && W.actorInput('tiktok', null) === null && W.actorInput('twitter', { handle: '' }) === null && W.actorInput('linkedin', null) === null);
+  S('scan: X / LinkedIn / Threads inputs', W.actorInput('twitter', { handle: '@me' }).profileUrls[0] === 'https://x.com/me' && W.actorInput('linkedin', { handle: 'me' }).urls[0] === 'https://www.linkedin.com/in/me' && W.actorInput('linkedin', { handle: 'https://www.linkedin.com/in/me/' }).urls[0] === 'https://www.linkedin.com/in/me/' && W.actorInput('threads', { handle: '@me.x' }).usernames[0] === 'me.x');
+  const xr = W.parseResult('twitter', [{ followers: 2315, following: 71, tweets_count: 184, status: 'available' }]);
+  const lr = W.parseResult('linkedin', [{ followerCount: 481, connectionsCount: 441 }]);
+  const tr = W.parseResult('threads', [{ follower_count: 13272 }]);
+  S('scan: X / LinkedIn / Threads parse (shapes from live runs 2026-10-12)', xr.followers === 2315 && xr.posts === 184 && lr.followers === 481 && lr.connections === 441 && tr.followers === 13272 && !!W.parseResult('twitter', [{ is_protected: true, followers: 1 }]).error && !!W.parseResult('threads', [{}]).error, JSON.stringify([xr, lr, tr]));
+  const m2 = W.mergePayload({}, { twitter: xr, linkedin: lr, threads: tr }, '2026-10-12', 'NOW');
+  S('scan: X / LinkedIn / Threads land in the snapshot and detail', m2.snapshots[0].platforms.twitter.followers === 2315 && m2.snapshots[0].platforms.linkedin.connections === 441 && m2.snapshots[0].platforms.threads.followers === 13272 && m2.platforms.twitter.tweets === 184 && m2.platforms.linkedin.connections === 441);
   S('scan: YouTube uses the profile URL, else @handle', W.actorInput('youtube', { handle: 'me', profile_url: 'https://youtube.com/c/Me' }).startUrls[0].url === 'https://youtube.com/c/Me' && W.actorInput('youtube', { handle: '@me' }).startUrls[0].url === 'https://www.youtube.com/@me');
   const ig = W.parseResult('instagram', [{ followersCount: 270000, followsCount: 500, postsCount: 130, latestPosts: [{ likesCount: 9000, commentsCount: 100, isPinned: true }, { likesCount: 2000, commentsCount: 100 }, { likesCount: 4000, commentsCount: 300 }] }]);
   S('scan: Instagram parse skips pinned posts for engagement', ig.followers === 270000 && ig.posts === 130 && ig.averageLikes === 3000 && ig.averageComments === 200 && ig.engagementRate === 1.19, JSON.stringify(ig));
@@ -111,6 +118,24 @@ S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr[
   S('scan: success scans only platforms with handles and reports per-platform errors', ok.status === 200 && okBody.ok && okBody.results.instagram.followers === 271000 && okBody.results.tiktok.error === 'Apify credit used up' && okBody.results.youtube.skipped === true && !calls.some((c) => c.url.includes('youtube-channel-scraper')), JSON.stringify(okBody));
   S('scan: success writes the Instagram row and the social_stats snapshot, as the caller', patches.length === 2 && patches.some((c) => c.url.includes('platforms?id=eq.pl1') && JSON.parse(c.body).followers === 271000) && patches.some((c) => c.url.includes('social_stats?id=eq.s1') && JSON.parse(c.body).payload.snapshots[0].date === '2026-10-11') && !patches.some((c) => c.url.includes('pl2')));
   S('scan: Supabase calls carry the caller JWT, only Apify gets the Apify token', calls.filter((c) => c.url.includes('supabase.co')).every((c) => c.auth === 'Bearer jwt') && calls.filter((c) => c.url.includes('api.apify.com')).every((c) => c.auth === 'Bearer t' && !c.url.includes('token=')));
+  {
+    const tc = [];
+    const f = async (url, init = {}) => {
+      tc.push({ url: String(url), method: init.method || 'GET', body: init.body });
+      const J = (x, status = 200) => new Response(JSON.stringify(x), { status });
+      if (url.includes('/auth/v1/user')) return J({ id: 'auth-1', email: 'me@x.com' });
+      if (url.includes('/rest/v1/platforms?select')) return J([{ id: 'pl1', user_id: 'prof-1', platform: 'instagram', handle: '@me.x' }]);
+      if (url.includes('/rest/v1/social_stats?select')) return J([]);
+      if (url.includes('threads-profile-api-scraper')) return J([{ follower_count: 13272 }]);
+      if (url.includes('api.apify.com')) return J([], 200);
+      return J([], 201);
+    };
+    const res = await W.handleScan(new Request('https://arkives.xyz/api/social-scan', { method: 'POST', headers: { Authorization: 'Bearer jwt' }, body: '{}' }), { APIFY_TOKEN: 't' }, f);
+    const body = await res.json();
+    const th = tc.find((c) => c.url.includes('threads-profile-api-scraper'));
+    const post = tc.find((c) => c.method === 'POST' && c.url.endsWith('/rest/v1/platforms'));
+    S('scan: Threads with no row scans the Instagram handle and creates the row under the profile id', body.results.threads.followers === 13272 && th && JSON.parse(th.body).usernames[0] === 'me.x' && post && JSON.parse(post.body).user_id === 'prof-1' && JSON.parse(post.body).platform === 'threads' && JSON.parse(post.body).followers === 13272 && body.results.twitter.skipped === true, JSON.stringify(body));
+  }
   const css = fs.readFileSync(ROOT + 'style.css', 'utf8');
   S('buttons keep a hover footprint so the lift cannot flicker', /\.btn \{ position: relative; \}/.test(css) && /\.btn::after \{ content: ''; position: absolute; inset: -2px -4px -4px -2px; \}/.test(css));
   const wsrc = fs.readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');

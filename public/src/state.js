@@ -13,7 +13,8 @@ state.CREATOR = {
     tiktok: { handle: "", followers: "0", followersNum: 0, likes: "0" },
     youtube: { handle: "", followers: "0", followersNum: 0, videos: 0 },
     twitter: { handle: "", followers: "0", followersNum: 0, status: "new" },
-    linkedin: { handle: "", followers: "0", followersNum: 0, connections: 0 }
+    linkedin: { handle: "", followers: "0", followersNum: 0, connections: 0 },
+    threads: { handle: "", followers: "0", followersNum: 0 }
   }
 };
 state.RATE_CARD = {

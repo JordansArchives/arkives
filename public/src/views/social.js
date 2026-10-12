@@ -8,9 +8,9 @@ import { db } from '../lib/sb.js';
 import { showToast } from '../lib/toast.js';
 import { _localISODate } from './tasks.js';
 
-const HISTORY_KEYS = ['instagram', 'tiktok', 'youtube', 'twitter', 'linkedin'];
-export const SCAN_PLATFORMS = ['instagram', 'tiktok', 'youtube'];
-const LABEL = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube' };
+const HISTORY_KEYS = ['instagram', 'tiktok', 'youtube', 'twitter', 'linkedin', 'threads'];
+export const SCAN_PLATFORMS = ['instagram', 'tiktok', 'youtube', 'twitter', 'linkedin', 'threads'];
+const LABEL = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', twitter: 'X', linkedin: 'LinkedIn', threads: 'Threads' };
 
 // Views repaint themselves after a scan (registered from their __init)
 const _listeners = new Set();
@@ -106,6 +106,8 @@ export function applyScanResults(results) {
     }
     if (plat === 'tiktok' && r.likes != null) p.likes = fmt(r.likes);
     if ((plat === 'tiktok' || plat === 'youtube') && r.videos != null) p.videos = r.videos;
+    if (plat === 'twitter' && r.posts != null) p.posts = r.posts;
+    if (plat === 'linkedin' && r.connections != null) p.connections = r.connections;
   }
 }
 

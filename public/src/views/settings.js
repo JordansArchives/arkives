@@ -154,16 +154,17 @@ async function saveProfile() {
 /* ---- SETTINGS: Platforms tab ---- */
 function renderPlatformsSettings() {
   const platformsObj = (state.CREATOR && state.CREATOR.platforms) || {};
-  const platformOrder = ['instagram', 'tiktok', 'youtube', 'twitter', 'linkedin'];
+  const platformOrder = ['instagram', 'tiktok', 'youtube', 'twitter', 'linkedin', 'threads'];
+  const platformName = { twitter: 'X', linkedin: 'LinkedIn', tiktok: 'TikTok', youtube: 'YouTube' };
   const rows = platformOrder.map(key => {
     const p = platformsObj[key] || {};
     return `
       <div class="platform-row" data-platform="${key}">
-        <div class="platform-name">${key.charAt(0).toUpperCase() + key.slice(1)}</div>
+        <div class="platform-name">${platformName[key] || key.charAt(0).toUpperCase() + key.slice(1)}</div>
         <div class="form-row">
           <div class="form-group">
             <label>Handle</label>
-            <input type="text" id="setPlat_${key}_handle" value="${_esc(p.handle)}" placeholder="@yourname">
+            <input type="text" id="setPlat_${key}_handle" value="${_esc(p.handle)}" placeholder="${key === 'linkedin' ? 'linkedin.com/in/yourname' : key === 'threads' ? 'blank = your Instagram handle' : '@yourname'}">
           </div>
           <div class="form-group">
             <label>Followers</label>
@@ -187,7 +188,7 @@ function renderPlatformsSettings() {
 
 async function savePlatforms() {
   if (!state._sb || !state.CREATOR?._sbId) { _showSaveError('Not connected'); return; }
-  const keys = ['instagram', 'tiktok', 'youtube', 'twitter', 'linkedin'];
+  const keys = ['instagram', 'tiktok', 'youtube', 'twitter', 'linkedin', 'threads'];
   let errors = 0;
   for (const key of keys) {
     const handle = document.getElementById(`setPlat_${key}_handle`)?.value.trim() || '';
