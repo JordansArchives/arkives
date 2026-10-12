@@ -85,6 +85,9 @@ export function scanErrorText(out) {
     const mins = Math.max(1, Math.ceil((out.retryAfterSec || 60) / 60));
     return `Scanned a few minutes ago. Try again in ${mins} min.`;
   }
+  if (out && out.error === 'forbidden' && out.email) {
+    return `Scanning is limited to the emails in SCAN_ALLOWED_EMAILS (Cloudflare), and your login ${out.email} isn't one of them. Add it there, or delete that setting.`;
+  }
   return SCAN_ERRORS[out && out.error] || 'Scan failed. Try again.';
 }
 
@@ -117,24 +120,36 @@ export function scanSummary(results) {
   return { ok, bad };
 }
 
+// The outcome of the last scan stays on screen next to the button
+// (toasts vanish in 2s, too fast for an error that says what to fix)
+function _note(type, text) { state._scanNote = { type, text }; }
+
 async function runSocialScan() {
   if (state._scanBusy) return;
   state._scanBusy = true;
+  state._scanNote = null;
   _emit();
   const out = await db.sbScanSocials(_localISODate());
   if (out && out.ok) {
     applyScanResults(out.results);
     await loadSocialStats();
     const { ok, bad } = scanSummary(out.results);
-    if (!ok.length && !bad.length) showToast('Nothing to scan: add your handles in Settings → Platforms.', 'error');
-    else if (bad.length && !ok.length) showToast('Scan failed. ' + bad.join(' · '), 'error');
-    else showToast('Updated: ' + ok.join(' · ') + (bad.length ? '. Not updated: ' + bad.join(' · ') : ''), bad.length || out.writeFailed ? 'error' : 'success');
+    if (!ok.length && !bad.length) _note('error', 'Nothing to scan yet. Add your handles in Settings, Platforms.');
+    else if (bad.length && !ok.length) _note('error', 'Scan failed. ' + bad.join('. '));
+    else _note(bad.length || out.writeFailed ? 'warn' : 'ok', 'Updated ' + ok.join(', ') + (bad.length ? '. Not updated: ' + bad.join('. ') : '') + (out.writeFailed ? '. Some numbers didn\'t save; scan again later.' : ''));
+    showToast(state._scanNote.type === 'ok' ? 'Followers updated' : 'Scan finished with problems', state._scanNote.type === 'ok' ? 'success' : 'error');
   } else {
-    showToast(scanErrorText(out), 'error');
+    _note('error', scanErrorText(out));
   }
   state._scanBusy = false;
   _emit();
 }
+
+export function scanNoteHtml() {
+  const n = state._scanNote;
+  return n ? `<p class="scan-note scan-note-${n.type}" role="status">${_escText(n.text)}</p>` : '';
+}
+function _escText(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 // The button both views render; the label says what is happening
 export function scanButtonHtml(extraClass = '') {

@@ -122,6 +122,12 @@ export function mergePayload(payload, results, date, nowIso) {
   return out;
 }
 
+// "a@x.com, b@y.com" -> ['a@x.com','b@y.com']; tolerates quotes,
+// semicolons, newlines and stray spaces pasted into the dashboard
+export function parseAllowList(v) {
+  return String(v || '').split(/[,;\s]+/).map((x) => x.replace(/^["'<]+|["'>]+$/g, '').trim().toLowerCase()).filter((x) => x.includes('@'));
+}
+
 const _json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
 });
@@ -137,8 +143,10 @@ export async function handleScan(req, env, fetchImpl = fetch) {
   const userRes = await fetchImpl(`${SUPABASE_URL}/auth/v1/user`, { headers: sbHeaders });
   if (!userRes.ok) return _json({ ok: false, error: 'signin' }, 401);
   const user = await userRes.json();
-  const allow = String(env.SCAN_ALLOWED_EMAILS || '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-  if (allow.length && !allow.includes(String(user.email || '').toLowerCase())) return _json({ ok: false, error: 'forbidden' }, 403);
+  const allow = parseAllowList(env.SCAN_ALLOWED_EMAILS);
+  const email = String(user.email || '').trim().toLowerCase();
+  // The caller's own login email comes back so the message can say what to add
+  if (allow.length && !allow.includes(email)) return _json({ ok: false, error: 'forbidden', email }, 403);
   if (!env.APIFY_TOKEN) return _json({ ok: false, error: 'not_configured' }, 503);
 
   let body = {};

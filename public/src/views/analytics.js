@@ -2,7 +2,7 @@
 import { state } from '../state.js';
 import { fmtDate, fmtDateShort, fmtNum } from '../lib/format.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
-import { lastScanText, loadSocialStats, onSocialUpdate, scanButtonHtml } from './social.js';
+import { lastScanText, loadSocialStats, onSocialUpdate, scanButtonHtml, scanNoteHtml } from './social.js';
 
 
 function filterHistoryByPeriod(history, period) {
@@ -69,7 +69,7 @@ function renderAnalytics() {
         <h1 class="view-title">Social Analytics</h1>
         <p class="view-subtitle">Instagram, TikTok and YouTube scanned on demand &middot; ${lastScanText()}</p>
       </div>
-      ${scanButtonHtml()}
+      <div class="dash-scan">${scanButtonHtml()}${scanNoteHtml()}</div>
     </div>
 
     <div class="kpi-grid">
@@ -146,7 +146,8 @@ function renderAnalytics() {
   });
 
   // If no data yet, load from cache first (fast), then user can manually refresh
-  if (!state.analyticsData && !state.analyticsLoading) {
+  if (!state.analyticsData && !state.analyticsLoading && !state._analyticsTried) {
+    state._analyticsTried = true; // one automatic read per session; Scan now refreshes
     fetchAnalyticsData(false);  // load from cache first
   } else if (state.analyticsData) {
     setTimeout(() => {

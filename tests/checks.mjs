@@ -98,7 +98,10 @@ S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr[
   const r401b = await W.handleScan(req(), { APIFY_TOKEN: 't' }, fakeFetch({ authOk: false }));
   const r503 = await W.handleScan(req(), {}, fakeFetch({ authOk: true }));
   const r403 = await W.handleScan(req(), { APIFY_TOKEN: 't', SCAN_ALLOWED_EMAILS: 'boss@x.com' }, fakeFetch({ authOk: true }));
-  S('scan: no token / bad session / not allowed / not configured are refused', r401.status === 401 && r401b.status === 401 && r403.status === 403 && r503.status === 503 && (await r503.json()).error === 'not_configured');
+  S('scan: allowlist tolerates quotes, spaces, semicolons and case', JSON.stringify(W.parseAllowList(' "Me@X.com" ; <b@y.com>\n,')) === JSON.stringify(['me@x.com', 'b@y.com']) && W.parseAllowList('').length === 0);
+  const r403b = await W.handleScan(req(), { APIFY_TOKEN: 't', SCAN_ALLOWED_EMAILS: '"ME@x.com "' }, fakeFetch({ authOk: true, stats: { id: 's1', payload: { last_fetch: new Date().toISOString() } } }));
+  S('scan: a pasted-with-quotes allowlist still admits the owner', r403b.status === 429);
+  S('scan: no token / bad session / not allowed / not configured are refused', r401.status === 401 && r401b.status === 401 && r403.status === 403 && (await r403.clone().json()).email === 'me@x.com' && r503.status === 503 && (await r503.json()).error === 'not_configured');
   const r429 = await W.handleScan(req(), { APIFY_TOKEN: 't' }, fakeFetch({ authOk: true, stats: { id: 's1', payload: { last_fetch: new Date(Date.now() - 60000).toISOString() } } }));
   S('scan: a second scan inside 10 minutes is refused (credit guard)', r429.status === 429 && (await r429.json()).retryAfterSec > 0);
   calls.length = 0;
@@ -108,6 +111,8 @@ S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr[
   S('scan: success scans only platforms with handles and reports per-platform errors', ok.status === 200 && okBody.ok && okBody.results.instagram.followers === 271000 && okBody.results.tiktok.error === 'Apify credit used up' && okBody.results.youtube.skipped === true && !calls.some((c) => c.url.includes('youtube-channel-scraper')), JSON.stringify(okBody));
   S('scan: success writes the Instagram row and the social_stats snapshot, as the caller', patches.length === 2 && patches.some((c) => c.url.includes('platforms?id=eq.pl1') && JSON.parse(c.body).followers === 271000) && patches.some((c) => c.url.includes('social_stats?id=eq.s1') && JSON.parse(c.body).payload.snapshots[0].date === '2026-10-11') && !patches.some((c) => c.url.includes('pl2')));
   S('scan: Supabase calls carry the caller JWT, only Apify gets the Apify token', calls.filter((c) => c.url.includes('supabase.co')).every((c) => c.auth === 'Bearer jwt') && calls.filter((c) => c.url.includes('api.apify.com')).every((c) => c.auth === 'Bearer t' && !c.url.includes('token=')));
+  const css = fs.readFileSync(ROOT + 'style.css', 'utf8');
+  S('buttons keep a hover footprint so the lift cannot flicker', /\.btn \{ position: relative; \}/.test(css) && /\.btn::after \{ content: ''; position: absolute; inset: -2px -4px -4px -2px; \}/.test(css));
   const wsrc = fs.readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   S('wrangler: worker runs first only for /api/*', /"run_worker_first":\s*\["\/api\/\*"\]/.test(wsrc) && /"main":\s*"worker\/index\.js"/.test(wsrc) && /"binding":\s*"ASSETS"/.test(wsrc));
 }
@@ -461,7 +466,7 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('dashboard: recent board links open the board; titles escaped', !!dash.querySelector('a.dash-tile-row[href="#board/b1"]') && !dash.querySelector('.dash-tile img') && /onerror/.test(dash.querySelector('.dash-tile-name').textContent));
     T('dashboard: accepted quotes link to the quote (contract hand-off), escaped', !!dash.querySelector('a[href="#quotes/q1"]') && !dash.querySelector('.dash-tile b'));
     T('dashboard: New board/script buttons reuse the tools actions', !!dash.querySelector('[data-action="_createNewBoard"]') && !!dash.querySelector('[data-action="_createNewScript"]'));
-    T('dashboard: audience card has the scan button and points at Settings when a handle is missing', !!dash.querySelector('#dashAudience [data-action="runSocialScan"]') && !!dash.querySelector('#dashAudience a[href="#settings"]'));
+    T('dashboard: Scan now sits in the header (first screen); audience points at Settings for a missing handle', !!dash.querySelector('.view-header #dashScan [data-action="runSocialScan"]') && !dash.querySelector('#dashAudience [data-action="runSocialScan"]') && !!dash.querySelector('#dashAudience a[href="#settings"]'));
     T('dashboard: tool activity counts ideas on the list (not archived)', [...dash.querySelectorAll('.dash-stat')].some((x) => /ideas on the list/.test(x.textContent) && x.querySelector('.dash-stat-num').textContent === '1'));
     st.INVOICE_DATA = [];
     A.renderDashboard();
@@ -493,6 +498,15 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     A.db.sbScanSocials = async (d) => { sent = d; return { ok: false, error: 'not_configured' }; };
     await A.runSocialScan();
     T('social: runSocialScan sends the local date and clears busy after a refusal', sent === A._localISODate() && st._scanBusy === false);
+    T('social: the refusal stays on screen as a status line (not just a 2s toast)', st._scanNote && st._scanNote.type === 'error' && /APIFY_TOKEN/.test(A.scanNoteHtml()) && /role="status"/.test(A.scanNoteHtml()));
+    A.db.sbScanSocials = async () => ({ ok: false, error: 'forbidden', email: 'me<b>@x.com' });
+    await A.runSocialScan();
+    T('social: forbidden names the login to add, escaped', /SCAN_ALLOWED_EMAILS/.test(st._scanNote.text) && /me<b>@x\.com/.test(st._scanNote.text) && !/<b>/.test(A.scanNoteHtml()));
+    A.db.sbScanSocials = async () => ({ ok: true, results: { instagram: { followers: 280000 }, tiktok: { error: 'Apify credit used up' }, youtube: { skipped: true } } });
+    const ig1 = { ...st.CREATOR.platforms.instagram };
+    await A.runSocialScan();
+    T('social: partial success is a warning that lists what failed', st._scanNote.type === 'warn' && /Instagram 280K/.test(st._scanNote.text) && /TikTok: Apify credit used up/.test(st._scanNote.text));
+    Object.assign(st.CREATOR.platforms.instagram, ig1); st._scanNote = null;
     A.db.sbScanSocials = realScan;
   }
 

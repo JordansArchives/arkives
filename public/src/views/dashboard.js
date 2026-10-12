@@ -7,7 +7,7 @@ import { formatDate } from '../lib/format.js';
 import { db } from '../lib/sb.js';
 import { moneySummary, quoteSummary, revenueByMonth, taskSummary } from '../lib/metrics.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
-import { followerTrend, lastScanText, loadSocialStats, onSocialUpdate, scanButtonHtml } from './social.js';
+import { followerTrend, lastScanText, loadSocialStats, onSocialUpdate, scanButtonHtml, scanNoteHtml } from './social.js';
 import { _localISODate } from './tasks.js';
 
 const RECENT_TTL_MS = 60 * 1000;
@@ -35,11 +35,12 @@ function renderDashboard() {
   ];
 
   container.innerHTML = `
-    <div class="view-header">
+    <div class="view-header dash-header">
       <div>
         <h1 class="view-title">Dashboard</h1>
         <p class="view-subtitle">${formatDate(new Date())}</p>
       </div>
+      <div class="dash-scan" id="dashScan">${_scanHtml()}</div>
     </div>
 
     <section class="dash-tiles" id="dashTiles" aria-label="Your tools">${_tilesHtml(today)}</section>
@@ -202,10 +203,11 @@ function _audienceHtml() {
       <a href="#analytics" class="dash-panel-link">Open analytics</a>
     </div>
     <div class="dash-aud">${rows}</div>
-    <div class="dash-aud-foot">
-      <span class="dash-aud-last">${lastScanText()}</span>
-      ${scanButtonHtml()}
-    </div>`;
+    <div class="dash-aud-foot"><span class="dash-aud-last">${lastScanText()}</span></div>`;
+}
+
+function _scanHtml() {
+  return `<div class="dash-scan-row"><span class="dash-scan-last">${lastScanText()}</span>${scanButtonHtml()}</div>${scanNoteHtml()}`;
 }
 
 function _compact(n) {
@@ -287,7 +289,9 @@ function _slug(s) {
 
 export function __init() {
   onSocialUpdate(() => {
-    if ((location.hash || '#dashboard').slice(1) === 'dashboard') _repaintPart('dashAudience', _audienceHtml);
+    if ((location.hash || '#dashboard').slice(1) !== 'dashboard') return;
+    _repaintPart('dashAudience', _audienceHtml);
+    _repaintPart('dashScan', _scanHtml);
   });
 }
 

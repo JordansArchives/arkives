@@ -133,6 +133,8 @@ state._qPublicError = '';
 state._dashRecent = null; // { at, boards, scripts } read on dashboard entry (no store)
 state._dashSocialTried = false; // dashboard asked for social_stats this session
 state._scanBusy = false; // a social scan is running
+state._scanNote = null; // { type: ok|warn|error, text } from the last scan, shown by the button
+state._analyticsTried = false; // Analytics read social_stats once this session
 state._contractPrefill = null; // a quote handed to the contract builder (consumed on its next render)
 
 // ---- from outreach.js ----
