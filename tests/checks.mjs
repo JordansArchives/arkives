@@ -95,7 +95,7 @@ S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr[
     if (url.includes('/auth/v1/user')) return opts.authOk ? J({ email: 'me@x.com' }) : J({}, 401);
     if (url.includes('/rest/v1/platforms?select')) return J([{ id: 'pl1', platform: 'instagram', handle: '@me' }, { id: 'pl2', platform: 'tiktok', handle: 'me' }, { id: 'pl3', platform: 'youtube', handle: '' }]);
     if (url.includes('/rest/v1/social_stats?select')) return J(opts.stats ? [opts.stats] : []);
-    if (url.includes('instagram-profile-scraper')) return J([{ followersCount: 271000, postsCount: 131, latestPosts: [] }]);
+    if (url.includes('instagram-profile-scraper')) return opts.igBusy && opts.igBusy-- ? J({ error: { type: 'actor-memory-limit-exceeded' } }, 402) : J([{ followersCount: 271000, postsCount: 131, latestPosts: [] }]);
     if (url.includes('tiktok-profile-scraper')) return opts.ttFail ? J({ error: 'x' }, 402) : J([{ authorMeta: { fans: 33000 } }]);
     if (init.method === 'PATCH' || init.method === 'POST') return J([], 201);
     return J({}, 404);
@@ -116,6 +116,10 @@ S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr[
   const okBody = await ok.json();
   const patches = calls.filter((c) => c.method === 'PATCH');
   S('scan: success scans only platforms with handles and reports per-platform errors', ok.status === 200 && okBody.ok && okBody.results.instagram.followers === 271000 && okBody.results.tiktok.error === 'Apify credit used up' && okBody.results.youtube.skipped === true && !calls.some((c) => c.url.includes('youtube-channel-scraper')), JSON.stringify(okBody));
+  calls.length = 0;
+  const busy = await (await W.handleScan(req(), { APIFY_TOKEN: 't' }, fakeFetch({ authOk: true, igBusy: 1, stats: { id: 's1', payload: { last_fetch: '2026-01-01T00:00:00Z', snapshots: [] } } }))).json();
+  const busy2 = await (await W.handleScan(req(), { APIFY_TOKEN: 't' }, fakeFetch({ authOk: true, igBusy: 2, stats: { id: 's1', payload: { last_fetch: '2026-01-01T00:00:00Z', snapshots: [] } } }))).json();
+  S('scan: a 402 memory-limit run is retried once after the batch, and named as busy (not credit) if it still fails', busy.results.instagram.followers === 271000 && !('retry' in busy.results.instagram) && busy2.results.instagram.error === 'Apify busy (memory limit), scan again' && !('retry' in busy2.results.instagram), JSON.stringify([busy, busy2]));
   S('scan: success writes the Instagram row and the social_stats snapshot, as the caller', patches.length === 2 && patches.some((c) => c.url.includes('platforms?id=eq.pl1') && JSON.parse(c.body).followers === 271000) && patches.some((c) => c.url.includes('social_stats?id=eq.s1') && JSON.parse(c.body).payload.snapshots[0].date === '2026-10-11') && !patches.some((c) => c.url.includes('pl2')));
   S('scan: Supabase calls carry the caller JWT, only Apify gets the Apify token', calls.filter((c) => c.url.includes('supabase.co')).every((c) => c.auth === 'Bearer jwt') && calls.filter((c) => c.url.includes('api.apify.com')).every((c) => c.auth === 'Bearer t' && !c.url.includes('token=')));
   {

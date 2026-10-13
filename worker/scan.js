@@ -217,18 +217,29 @@ export async function handleScan(req, env, fetchImpl = fetch) {
     return { plat, row, input };
   });
   const results = {};
-  await Promise.all(jobs.map(async ({ plat, input }) => {
-    if (!input) { results[plat] = { skipped: true }; return; }
+  const run = async (plat, input) => {
     try {
       const res = await fetchImpl(`https://api.apify.com/v2/acts/${ACTORS[plat]}/run-sync-get-dataset-items?timeout=150&clean=true`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.APIFY_TOKEN}` }, body: JSON.stringify(input),
       });
-      if (!res.ok) { results[plat] = { error: res.status === 402 ? 'Apify credit used up' : `Scraper failed (${res.status})` }; return; }
-      results[plat] = parseResult(plat, await res.json());
+      if (res.ok) return parseResult(plat, await res.json());
+      if (res.status !== 402) return { error: `Scraper failed (${res.status})` };
+      // Apify sends 402 for both an empty balance and too many runs at once (memory cap)
+      let type = '';
+      try { type = String(((await res.json()).error || {}).type || ''); } catch { type = ''; }
+      return { error: /memory/.test(type) ? 'Apify busy (memory limit), scan again' : 'Apify credit used up', retry: true };
     } catch (e) {
-      results[plat] = { error: 'Scraper unreachable' };
+      return { error: 'Scraper unreachable' };
     }
+  };
+  await Promise.all(jobs.map(async ({ plat, input }) => {
+    results[plat] = input ? await run(plat, input) : { skipped: true };
   }));
+  // Once the parallel batch has freed its memory, retry each 402 one at a time
+  for (const { plat, input } of jobs) {
+    if (results[plat].retry) results[plat] = await run(plat, input);
+    delete results[plat].retry;
+  }
 
   // Write back as the caller
   const writes = [];
