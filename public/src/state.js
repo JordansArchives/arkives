@@ -131,6 +131,15 @@ state._qPublic = null; // the public quote page's data (#q/TOKEN)
 state._qPublicToken = null;
 state._qPublicMode = 'idle'; // idle | declining | busy
 state._qPublicError = '';
+// ---- from timelines.js ----
+state.TIMELINES = [];
+state._timelinesMigrationMissing = false;
+state._tlEditorOpen = false;
+state._tlEditingId = null; // _sbId of the timeline being edited; null = new
+state._tl = null; // working copy while the editor is open
+state._tlLinkFor = null; // timeline _sbId whose share link banner shows on the list
+state._tlPublic = null; // the public timeline page's data (#t/TOKEN)
+state._tlPublicToken = null;
 state._dashRecent = null; // { at, boards, scripts } read on dashboard entry (no store)
 state._dashSocialTried = false; // dashboard asked for social_stats this session
 state._scanBusy = false; // a social scan is running

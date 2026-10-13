@@ -17,6 +17,7 @@ import { renderRevenue } from './views/revenue.js';
 import { _flushScriptSaves, renderScriptEditor, renderScripts, renderSharedScript } from './views/scripts.js';
 import { renderSettings } from './views/settings.js';
 import { renderTasks, unmountTasks } from './views/tasks.js';
+import { renderPublicTimeline, renderTimelines, unmountTimelines } from './views/timelines.js';
 
 
 
@@ -44,6 +45,7 @@ const VIEWS = {
   contracts: { render: renderContracts },
   invoices: { render: renderInvoices, unmount: unmountInvoices }, // render(sub) applies the route; render() keeps the editor
   quotes: { render: renderQuotes, unmount: unmountQuotes }, // same sub-route contract as invoices
+  timelines: { render: renderTimelines, unmount: unmountTimelines }, // same sub-route contract as quotes
   tasks: { render: renderTasks, unmount: unmountTasks },
   ideas: { render: renderIdeas, unmount: unmountIdeas },
 };
@@ -55,22 +57,23 @@ const EDITORS = {
   'board/': { unmount: unmountBoardEditor },
   'bshared/': { unmount: unmountBoardEditor },
   'q/': { unmount: function() {} },
+  't/': { unmount: function() {} },
 };
 function unmountBoardEditor() { _bdCommitActiveText(); _bdFlushPendingSaves(); _bdLiveLeave(); }
 const SKELETON = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:200px;border-radius:12px"></div></div>';
 
-/* Public shared links (#shared/TOKEN, #bshared/TOKEN, #q/TOKEN) have no
+/* Public shared links (#shared/TOKEN, #bshared/TOKEN, #q/TOKEN, #t/TOKEN) have no
    sidebar. The shell is a two-column grid, so hiding the sidebar alone drops
    the page into the sidebar's 240px track: `share-open` collapses the grid to
    one column, `share-board` makes a shared board fill the window, and
-   `share-quote` drops the phone chrome from a client's quote. Every route
+   `share-quote` drops the phone chrome from a client's quote or timeline. Every route
    passes through here, so leaving a shared link always restores the app. */
 const _baseTitle = document.title;
 function _setShareChrome(view) {
-  const share = /^(bshared|shared|q)\//.test(view);
+  const share = /^(bshared|shared|q|t)\//.test(view);
   document.body.classList.toggle('share-open', share);
   document.body.classList.toggle('share-board', view.startsWith('bshared/'));
-  document.body.classList.toggle('share-quote', view.startsWith('q/'));
+  document.body.classList.toggle('share-quote', view.startsWith('q/') || view.startsWith('t/'));
   if (!share) {
     const sb = document.getElementById('sidebar');
     if (sb) sb.style.display = '';
@@ -103,7 +106,7 @@ async function navigate(view) {
   const token = ++_navToken;
   _setShareChrome(view);
   /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN, bshared/TOKEN */
-  if (/^(bshared|board|script|shared|q)\//.test(view)) _leave(view);
+  if (/^(bshared|board|script|shared|q|t)\//.test(view)) _leave(view);
   if (view.startsWith('q/')) {
     // Public quote link: works logged out, no app chrome
     document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
@@ -114,6 +117,18 @@ async function navigate(view) {
     if (qMc) qMc.style.marginLeft = '0';
     renderPublicQuote(view.split('?')[0].split('/')[1] || '');
     _enter(view, EDITORS['q/'], '', null);
+    return;
+  }
+  if (view.startsWith('t/')) {
+    // Public timeline link: works logged out, no app chrome
+    document.querySelectorAll('.view').forEach(function(v) { v.style.display = 'none'; v.classList.remove('active'); });
+    var tEl = document.getElementById('view-timeline-public');
+    if (tEl) { tEl.style.display = 'block'; tEl.classList.add('active'); }
+    document.getElementById('sidebar').style.display = 'none';
+    var tMc = document.querySelector('.main') || document.getElementById('mainContent');
+    if (tMc) tMc.style.marginLeft = '0';
+    renderPublicTimeline(view.split('?')[0].split('/')[1] || '');
+    _enter(view, EDITORS['t/'], '', null);
     return;
   }
   if (view.startsWith('bshared/')) {

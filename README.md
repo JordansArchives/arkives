@@ -52,7 +52,7 @@ arkives/
 │   │   ├── router.js       # hash routing with a view registry: loads a view's stores, mounts/unmounts (flushes), subscribes views to stores
 │   │   ├── stores/         # one store per domain: load() memoized per session, subscribe()/notify(), domain writes (tasks, invoices, clients)
 │   │   ├── lib/            # actions (event delegation), sb (Supabase client + `db`), toast, esc, format, icons, storage, share
-│   │   └── views/          # one module per view: auth, dashboard, revenue, mediakit, analytics, inbox, calendar, tasks, settings, scripts, quotes, invoices, outreach, boards, contracts, social (scan + history)
+│   │   └── views/          # one module per view: auth, dashboard, revenue, mediakit, analytics, inbox, calendar, tasks, settings, scripts, quotes, timelines, invoices, outreach, boards, contracts, social (scan + history)
 │   ├── style.css           # full design system, all component styles
 │   ├── _headers            # Cloudflare response headers: enforced CSP (no inline scripts), frame and referrer policies
 │   └── (assets)            # manifest.webmanifest, favicon.svg, logo-*.svg/png, paper-tile*.webp, trip-sans-*.woff2, invoice-red-*
@@ -308,7 +308,7 @@ No build step. `public/` is what ships. Tooling lives outside it:
 ```bash
 npm install          # eslint, globals, playwright-core (no browser download; uses installed Chrome)
 npm run lint         # regenerates tools/app-globals.json, then ESLint over public/ tools/ tests/
-npm test             # tests/checks.mjs (logic, stubbed Supabase) + tests/smoke.mjs (14 views x populated/empty x desktop/phone)
+npm test             # tests/checks.mjs (logic, stubbed Supabase) + tests/smoke.mjs (16 views x populated/empty x desktop/phone)
 npm run serve        # serves public/ on :8741 with the production headers from public/_headers (CSP enforced)
 ```
 
@@ -320,7 +320,7 @@ CI (`.github/workflows/ci.yml`) runs lint + test on every push and PR. Screensho
 
 **Security headers.** `public/_headers` ships an enforced Content-Security-Policy with no `'unsafe-inline'` for scripts (switched from report-only on 2026-09-04 once the last inline handler was gone). The test server sends the same headers, so the smoke run exercises the app under the real policy, and `tests/checks.mjs` fails on any `on*=` attribute or inline `<script>` in `public/`, on any `data-action` name that has no registered handler, and on any constant `data-args` that is not a JSON array.
 
-**Migrations still run by hand** in the Supabase SQL editor. `migrations/020_share_hardening.sql`, `021_script_media.sql`, `022_ideas.sql` and `023_shared_board_media_fix.sql` must be applied (each is idempotent and safe before or after deploy; the Ideas view explains itself until 022 exists, and images on a shared board read "Image unavailable" to logged-out visitors until 023 exists). `introspect.sql` at the repo root is a read-only schema dump for checking drift.
+**Migrations still run by hand** in the Supabase SQL editor. `migrations/020_share_hardening.sql`, `021_script_media.sql`, `022_ideas.sql` and `023_shared_board_media_fix.sql` must be applied (each is idempotent and safe before or after deploy; the Ideas view explains itself until 022 exists, and images on a shared board read "Image unavailable" to logged-out visitors until 023 exists). `028_timelines.sql` adds the Timelines tool (production schedules shared with brands at `#t/{token}`); the view shows a setup card until it exists. `introspect.sql` at the repo root is a read-only schema dump for checking drift.
 
 See `ARCHITECTURE-AUDIT.md` for the roadmap this tooling belongs to.
 

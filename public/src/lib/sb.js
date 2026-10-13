@@ -330,6 +330,22 @@ async function sbFetchQuotes() {
   } catch (err) { return _loadFailed('quotes', err); }
 }
 
+// Timelines: table added in migration 028
+async function sbFetchTimelines() {
+  try {
+    const res = await _own('timelines').order('created_at', { ascending: false });
+    if (res.error) {
+      state._timelinesMigrationMissing = _missingTable(res.error);
+      if (!state._timelinesMigrationMissing) console.error('timelines fetch error:', res.error);
+      state.TIMELINES = [];
+      return true;
+    }
+    state._timelinesMigrationMissing = false;
+    state.TIMELINES = (res.data || []).map(_mapTimelineRow);
+    return true;
+  } catch (err) { return _loadFailed('timelines', err); }
+}
+
 // Client responses the owner has not opened yet (the sidebar badge).
 // Runs before the quotes store loads; a missing table counts as none.
 async function sbFetchQuoteBadge() {
@@ -495,6 +511,42 @@ async function sbDeleteQuoteService(sbId) {
   if (error) { _showSaveError('Failed to delete service'); console.error(error); return false; }
   _showSaveSuccess();
   return true;
+}
+
+/* ---- SUPABASE CRUD: TIMELINES ---- */
+async function sbAddTimeline(payload) {
+  if (!state._sb || !state.CREATOR._sbId) return null;
+  const { data: row, error } = await state._sb.from('timelines').insert(payload).select().single();
+  if (error) { _showSaveError('Failed to save timeline'); console.error(error); return null; }
+  _showSaveSuccess();
+  return row;
+}
+
+async function sbUpdateTimeline(sbId, updates, silent) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('timelines').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to update timeline'); console.error(error); return false; }
+  if (!silent) _showSaveSuccess();
+  return true;
+}
+
+async function sbDeleteTimeline(sbId) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('timelines').delete().eq('id', sbId);
+  if (error) { _showSaveError('Failed to delete timeline'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
+// Public timeline page (#t/TOKEN): mapped timeline, null when the link
+// is not live, or { _error } when the request itself failed.
+async function sbFetchSharedTimeline(token) {
+  if (!state._sb) return { _error: 'offline' };
+  try {
+    const res = await state._sb.rpc('get_shared_timeline', { p_token: token });
+    if (res.error) { console.error('get_shared_timeline:', res.error); return { _error: res.error.message || 'error' }; }
+    return res.data ? _mapTimelineRow(res.data) : null;
+  } catch (e) { console.error('get_shared_timeline:', e); return { _error: 'network' }; }
 }
 
 // Public quote page (#q/TOKEN): works logged out through the 026 RPCs.
@@ -685,6 +737,25 @@ function _mapQuoteRow(r) {
     declineReason: r.decline_reason || '',
     responseSeen: r.response_seen !== false,
     expired: r.expired === true,
+    createdAt: r.created_at || ''
+  };
+}
+
+// Also maps the public RPC's payload
+function _mapTimelineRow(r) {
+  return {
+    _sbId: r.id || null,
+    title: r.title || '',
+    clientName: r.client_name || '',
+    clientLogo: r.client_logo || '',
+    fromName: r.from_name || '',
+    fromLogo: r.from_logo || '',
+    kickoffDate: r.kickoff_date || '',
+    steps: Array.isArray(r.steps) ? r.steps : [],
+    notes: r.notes || '',
+    status: r.status || 'draft',
+    shareToken: r.share_token || '',
+    viewedAt: r.viewed_at || '',
     createdAt: r.created_at || ''
   };
 }
@@ -957,6 +1028,7 @@ export const db = {
   sbAddQuote,
   sbAddQuoteService,
   sbAddTask,
+  sbAddTimeline,
   sbCreateBoard,
   sbCreateScript,
   sbDeleteBoard,
@@ -971,6 +1043,7 @@ export const db = {
   sbDeleteScene,
   sbDeleteScript,
   sbDeleteTasks,
+  sbDeleteTimeline,
   sbFetchAudienceData,
   sbFetchCalendarEvents,
   sbFetchCampaignResults,
@@ -985,7 +1058,9 @@ export const db = {
   sbFetchQuoteBadge,
   sbFetchQuotes,
   sbFetchSharedQuote,
+  sbFetchSharedTimeline,
   sbFetchTasks,
+  sbFetchTimelines,
   sbFetchBoardItems,
   sbFetchBoards,
   sbFetchScenes,
@@ -1007,6 +1082,7 @@ export const db = {
   sbUpdateQuoteService,
   sbUpdateScript,
   sbUpdateTask,
+  sbUpdateTimeline,
 };
 
 /* ---- SIDE EFFECTS ---- Registered from main.js in a fixed order, not at import time. */
@@ -1029,4 +1105,4 @@ export function __init() {
   }
 }
 
-export { SUPABASE_ANON_KEY, SUPABASE_URL, _mapIdeaRow, _mapInvoiceRow, _mapOutreachRow, _mapQuoteRow, _mapQuoteServiceRow, sbAddBoardItem, sbAddClient, sbAddIdea, sbAddInvoice, sbAddOutreachList, sbAddOutreachTarget, sbAddTask, sbCreateBoard, sbCreateScript, sbDeleteBoard, sbDeleteBoardItem, sbDeleteClient, sbDeleteIdeas, sbDeleteInvoice, sbDeleteOutreachList, sbDeleteOutreachTarget, sbDeleteScene, sbDeleteScript, sbDeleteTasks, sbFetchBoardItems, sbFetchBoards, sbFetchIdeas, sbFetchScenes, sbFetchScriptByToken, sbFetchScripts, sbReorderScenes, sbSaveSceneFields, sbUpdateBoard, sbUpdateBoardItem, sbUpdateClient, sbUpdateIdea, sbUpdateInvoice, sbUpdateOutreachList, sbUpdateOutreachTarget, sbUpdateProfile, sbUpdateScript, sbUpdateTask };
+export { SUPABASE_ANON_KEY, SUPABASE_URL, _mapIdeaRow, _mapInvoiceRow, _mapOutreachRow, _mapQuoteRow, _mapQuoteServiceRow, _mapTimelineRow, sbAddBoardItem, sbAddClient, sbAddIdea, sbAddInvoice, sbAddOutreachList, sbAddOutreachTarget, sbAddTask, sbCreateBoard, sbCreateScript, sbDeleteBoard, sbDeleteBoardItem, sbDeleteClient, sbDeleteIdeas, sbDeleteInvoice, sbDeleteOutreachList, sbDeleteOutreachTarget, sbDeleteScene, sbDeleteScript, sbDeleteTasks, sbFetchBoardItems, sbFetchBoards, sbFetchIdeas, sbFetchScenes, sbFetchScriptByToken, sbFetchScripts, sbReorderScenes, sbSaveSceneFields, sbUpdateBoard, sbUpdateBoardItem, sbUpdateClient, sbUpdateIdea, sbUpdateInvoice, sbUpdateOutreachList, sbUpdateOutreachTarget, sbUpdateProfile, sbUpdateScript, sbUpdateTask };

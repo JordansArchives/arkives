@@ -33,9 +33,10 @@ import * as settings from './views/settings.js';
 import * as social from './views/social.js';
 import * as metrics from './lib/metrics.js';
 import * as tasks from './views/tasks.js';
+import * as timelines from './views/timelines.js';
 
 // Shared-link routes render without a session
-function _isPublicRoute(h) { return /^(shared|bshared|q)\//.test(h); }
+function _isPublicRoute(h) { return /^(shared|bshared|q|t)\//.test(h); }
 
 async function boot() {
   try {
@@ -106,7 +107,7 @@ analytics.__init();
 // window.__arkives: every export of every module, plus state and db. The
 // tests drive the app through it; it is also handy in the console.
 const __arkives = { state, db, stores };
-for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, quotes, revenue, scripts, settings, social, metrics, tasks]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
+for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, quotes, revenue, scripts, settings, social, metrics, tasks, timelines]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
 window.__arkives = __arkives;
 
 boot();

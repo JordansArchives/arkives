@@ -158,7 +158,7 @@ await page.goto(`http://localhost:${PORT}/#dashboard`, { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 
 // Which store-owned state keys each view module reads (for the VIEW_STORES guard)
-const STORE_KEY_RE = /state\.(CREATOR|RATE_CARD|DEALS|CAMPAIGN_RESULTS|CALENDAR_EVENTS|MONTHLY_REVENUE|AUDIENCE_DATA|INBOX_ITEMS|TASKS|_tasksTableMissing|IDEAS|_ideasTableMissing|CLIENTS|_invoicingMigrationMissing|INVOICE_DATA|OUTREACH_LISTS|OUTREACH_TARGETS|_outreachMigrationMissing|QUOTES|QUOTE_SERVICES|_quotesMigrationMissing)\b/g;
+const STORE_KEY_RE = /state\.(CREATOR|RATE_CARD|DEALS|CAMPAIGN_RESULTS|CALENDAR_EVENTS|MONTHLY_REVENUE|AUDIENCE_DATA|INBOX_ITEMS|TASKS|_tasksTableMissing|IDEAS|_ideasTableMissing|CLIENTS|_invoicingMigrationMissing|INVOICE_DATA|OUTREACH_LISTS|OUTREACH_TARGETS|_outreachMigrationMissing|QUOTES|QUOTE_SERVICES|_quotesMigrationMissing|TIMELINES|_timelinesMigrationMissing)\b/g;
 const VIEW_KEYS = {};
 for (const f of SRC.filter((x) => x.startsWith('src/views/'))) {
   const view = f.replace('src/views/', '').replace('.js', '');
@@ -392,6 +392,32 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('the new client is selected and fills the parties', sel2.value === 'c2' && val('cBrandName') === 'Lee Films' && val('cContact') === 'Bo Lee' && val('cBrandCity') === 'Santa Monica' && getComputedStyle(cv.querySelector('#cNewClient')).display === 'none');
     T('typed fields survive the store repaint', val('cCampaign') === 'keep me' && val('cAgreementType') === 'services' && val('cSvcDayRate') === '2500' && getComputedStyle(cv.querySelector('#dealServices')).display !== 'none');
     __arkives.state.CLIENTS = []; __arkives.state._contractClientId = null;
+  }
+
+  // ---- Timelines ----
+  {
+    const A = __arkives;
+    const st = (phase, name, days, extra) => Object.assign({ id: name, phase, name, detail: '', days, owner: 'you', cal: false, on: true }, extra || {});
+    // Listed out of phase order on purpose: the schedule runs pre, prod, post
+    const t = { title: 'Fall, launch; "x"', clientName: 'Acme', fromName: 'Me', kickoffDate: '2026-10-16', shareToken: 'tok', steps: [
+      st('post', 'Edit', 3, { cal: true, owner: 'brand' }), st('pre', 'Kickoff', 1, { cal: true }), st('pre', 'Prep', 2), st('pre', 'Skip', 4, { on: false }), st('prod', 'Shoot', 1, { cal: true })] };
+    const s = A.tlSchedule(t);
+    const at = (n) => s.steps.find((x) => x.name === n);
+    T('timeline: steps run pre, prod, post in list order, skipped steps take no days', s.steps.map((x) => x.name).join() === 'Kickoff,Prep,Shoot,Edit' && s.bizDays === 7, JSON.stringify(s.steps.map((x) => [x.name, x.start, x.end])));
+    T('timeline: business days skip the weekend (Fri kickoff, 2-day step lands Mon-Tue)', at('Kickoff').start === '2026-10-16' && at('Prep').start === '2026-10-19' && at('Prep').end === '2026-10-20' && at('Shoot').start === '2026-10-21' && at('Edit').start === '2026-10-22' && at('Edit').end === '2026-10-26');
+    T('timeline: phases span their steps', s.phases.length === 3 && s.phases[0].start === '2026-10-16' && s.phases[0].end === '2026-10-20' && s.phases[0].bizDays === 3 && s.phases[2].endIdx === 6);
+    T('timeline: a weekend kickoff starts Monday; moving the kickoff shifts every date', A.tlSchedule({ ...t, kickoffDate: '2026-10-17' }).start === '2026-10-19' && A.tlSchedule({ ...t, kickoffDate: '2026-11-02' }).end === '2026-11-10');
+    T('timeline: status before / during / after', A.tlStatus(s, '2026-10-01').kind === 'before' && A.tlStatus(s, '2026-10-21').step.name === 'Shoot' && A.tlStatus(s, '2026-10-24').step.name === 'Edit' && A.tlStatus(s, '2026-11-01').kind === 'after');
+    const g = A.tlGoogleUrl(t, at('Edit'));
+    T('timeline: Google Calendar link is an all-day event with an exclusive end date', g.startsWith('https://calendar.google.com/calendar/render?action=TEMPLATE') && g.includes('&dates=20261022/20261027') && g.includes(encodeURIComponent('Edit · Fall, launch; "x"')), g);
+    const ics = A.tlIcs(t, s);
+    T('timeline: .ics has only calendar-checked steps, escaped, CRLF', (ics.match(/BEGIN:VEVENT/g) || []).length === 3 && ics.includes('DTSTART;VALUE=DATE:20261022\r\nDTEND;VALUE=DATE:20261027') && ics.includes('SUMMARY:Kickoff · Fall\\, launch\\; "x"') && !ics.includes('Prep') && ics.endsWith('END:VCALENDAR\r\n'));
+    const card = A.renderTimelineCard({ ...t, title: '<img src=x onerror="window.__xss=1">', steps: [st('pre', '<b>bold</b>', 1, { cal: true })] });
+    T('timeline: card escapes text, skips nothing it should show, and has no skipped steps', !card.includes('<b>bold') && card.includes('&lt;b&gt;bold') && !card.includes('<img src=x') && !A.renderTimelineCard(t).includes('>Skip<'));
+    T('timeline: logos must be image data URLs', !A.renderTimelineCard({ ...t, fromLogo: 'javascript:alert(1)', clientLogo: 'https://evil.example/x.png' }).includes('evil') && A.renderTimelineCard({ ...t, fromLogo: 'data:image/png;base64,iVBORw0KGgo=' }).includes('class="tl-logo" src="data:image/png'));
+    const p = A._tlPayload({ ...t, fromLogo: 'https://x/y.png', steps: [{ phase: 'bad', name: ' N ', days: 999, owner: 'boss', on: true }] });
+    T('timeline: payload clamps days, fixes bad phase/owner, drops non-data logos', p.steps[0].days === 60 && p.steps[0].phase === 'pre' && p.steps[0].owner === 'you' && p.steps[0].name === 'N' && p.from_logo === '' && !!p.steps[0].id);
+    T('timeline: default plan matches the template (11 steps, 27 business days, all on)', A.tlDefaultSteps().length === 11 && A.tlSchedule({ kickoffDate: '2026-10-19', steps: A.tlDefaultSteps() }).bizDays === 27);
   }
 
   // ---- Quotes ----

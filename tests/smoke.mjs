@@ -15,7 +15,7 @@ const PORT = 8741;
 const OUTDIR = fileURLToPath(new URL('./.shots/', import.meta.url));
 fs.mkdirSync(OUTDIR, { recursive: true });
 
-const VIEWS = ['dashboard', 'inbox', 'revenue', 'mediakit', 'analytics', 'outreach', 'boards', 'scripts', 'ideas', 'quotes', 'contracts', 'invoices', 'calendar', 'tasks', 'settings'];
+const VIEWS = ['dashboard', 'inbox', 'revenue', 'mediakit', 'analytics', 'outreach', 'boards', 'scripts', 'ideas', 'quotes', 'timelines', 'contracts', 'invoices', 'calendar', 'tasks', 'settings'];
 // Supabase calls fail under anon RLS in tests; that noise is expected.
 const NOISE = /supabase|Failed to fetch|net::ERR|fetch|NetworkError|Load failed|401|403|PGRST|JWT|favicon|ERR_INTERNET|ERR_NAME|fontshare/i;
 
@@ -53,12 +53,16 @@ const POPULATED = () => {
   __arkives.state.QUOTES = [
     { _sbId: 'q1', clientId: 'c1', invoiceId: null, quoteNumber: 'Q-0001', title: 'Spring <img src=x onerror="window.__xss=1">', clientName: 'Jane', clientCompany: 'Acme Media', clientEmail: 'j@acme.com', clientAddress: '2 St', fromName: 'Test LLC', fromEmail: 't@example.com', fromAddress: '1 Main St', scope: 'One hero film\n\nEight cuts', timeline: 'May', exclusions: 'Talent', lineItems: [{ desc: 'Hero film', detail: 'Shoot + post', unit: 'flat', qty: 1, rate: 40000 }, { desc: 'Editing', detail: '', unit: 'day', qty: 3, rate: 1500 }], total: 44500, depositPct: 50, balanceTerms: 'delivery', revisionRounds: 2, usageRights: '6 months paid', notes: '', issueDate: '2026-10-01', validUntil: '2099-01-01', status: 'accepted', shareToken: 'tok1', viewedAt: '2026-10-02', respondedAt: '2026-10-03T00:00:00Z', acceptedName: 'Jane Doe', declineReason: '', responseSeen: false },
     { _sbId: 'q2', clientId: null, invoiceId: null, quoteNumber: 'Q-0002', title: 'UGC set', clientName: 'Bo', clientCompany: '', clientEmail: '', clientAddress: '', fromName: 'Test LLC', fromEmail: '', fromAddress: '', scope: '', timeline: '', exclusions: '', lineItems: [{ desc: 'UGC cut', detail: '', unit: 'each', qty: 4, rate: 0 }], total: 0, depositPct: 0, balanceTerms: 'NET30', revisionRounds: 0, usageRights: '', notes: 'n', issueDate: '2026-10-01', validUntil: '2026-01-01', status: 'sent', shareToken: 'tok2', viewedAt: '', respondedAt: '', acceptedName: '', declineReason: '', responseSeen: true }];
+  __arkives.state.TIMELINES = [{ _sbId: 'tl1', title: 'Fall launch <img src=x onerror="window.__xss=1">', clientName: 'Acme "Co"', clientLogo: '', fromName: 'Test LLC', fromLogo: '', kickoffDate: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), notes: 'Product ships Oct 20.', status: 'shared', shareToken: 'ttok', viewedAt: '', createdAt: '2026-10-01',
+    steps: [['pre', 'Kickoff <b>call</b>', 1, 'both', true, true], ['pre', 'Shot list & prep', 5, 'you', false, true], ['pre', 'Skipped step', 2, 'you', false, false], ['prod', 'Shoot day', 1, 'you', true, true], ['post', 'First cut', 3, 'you', false, true], ['post', 'Brand review', 2, 'brand', true, true], ['post', 'Full edit with a long descriptive name that wraps', 6, 'you', false, true], ['post', 'Final delivery', 1, 'you', true, true]]
+      .map(([phase, name, days, owner, cal, on], i) => ({ id: 's' + i, phase, name, detail: i === 1 ? 'Script, locations, <img src=x onerror="window.__xss=1">' : '', days, owner, cal, on })) },
+    { _sbId: 'tl2', title: '', clientName: '', clientLogo: '', fromName: '', fromLogo: '', kickoffDate: '', notes: '', status: 'draft', shareToken: 't2', viewedAt: '', createdAt: '2026-10-01', steps: [] }];
 };
 const EMPTY = () => {
   __arkives.state.CREATOR._sbId = '00000000-0000-0000-0000-000000000001';
   __arkives.state.DEALS = []; __arkives.state.TASKS = []; __arkives.state.IDEAS = []; __arkives.state.INVOICE_DATA = []; __arkives.state.CLIENTS = []; __arkives.state.CALENDAR_EVENTS = []; __arkives.state.INBOX_ITEMS = []; __arkives.state.MONTHLY_REVENUE = []; __arkives.state.CAMPAIGN_RESULTS = [];
   __arkives.state.OUTREACH_TARGETS = []; __arkives.state.OUTREACH_LISTS = [];
-  __arkives.state.QUOTES = []; __arkives.state.QUOTE_SERVICES = [];
+  __arkives.state.QUOTES = []; __arkives.state.QUOTE_SERVICES = []; __arkives.state.TIMELINES = [];
   __arkives.state._dashRecent = { at: Date.now(), boards: [], scripts: [] }; __arkives.state.analyticsData = null; __arkives.state.analyticsLastFetch = null;
 };
 
@@ -225,6 +229,46 @@ for (const state of ['populated', 'empty']) {
       if (qp.chrome.length) flagged.push(`quote page shows app chrome: ${qp.chrome.join(', ')}`);
       if (qp.scrollX) flagged.push('quote page: horizontal page overflow');
       await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-quote-public.png`), animations: 'disabled', fullPage: true });
+      await page.evaluate(() => { __arkives.state._sb = window.__realSb; location.hash = 'dashboard'; __arkives.navigate('dashboard'); });
+
+      // Timeline editor and the brand's timeline page (#t/TOKEN) at this width
+      currentView = 'timeline-editor';
+      await page.evaluate(() => { location.hash = 'timelines/tl1'; __arkives.navigate('timelines/tl1'); });
+      await page.waitForTimeout(250);
+      const te = await page.evaluate(() => {
+        const v = document.getElementById('view-timelines');
+        return { switches: v.querySelectorAll('.tl-switch').length, bars: v.querySelectorAll('#tlPreview .tl-g-bar').length, injected: !!v.querySelector('#tlPreview b, #tlPreview img[src="x"]'),
+                 scrollX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
+      });
+      if (te.switches !== 8) flagged.push(`timeline editor: ${te.switches} step switches, expected 8`);
+      if (te.bars !== 7) flagged.push(`timeline editor: ${te.bars} bars in the preview, expected 7 (one step skipped)`);
+      if (te.injected) flagged.push('timeline editor: step or title rendered as HTML');
+      if (te.scrollX) flagged.push('timeline editor: horizontal page overflow');
+      await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-timeline-editor.png`), animations: 'disabled', fullPage: true });
+
+      currentView = 'timeline-public';
+      await page.evaluate(() => {
+        const st = __arkives.state;
+        window.__realSb = st._sb;
+        const t = st.TIMELINES[0];
+        const row = { title: 'Fall launch: 3 hero videos', client_name: 'Acme', client_logo: '', from_name: 'Test LLC', from_logo: '', kickoff_date: t.kickoffDate, notes: t.notes, status: 'shared', steps: t.steps.filter((s) => s.on) };
+        st._sb = Object.create(window.__realSb || null, { rpc: { value: async () => ({ data: row, error: null }) } });
+        location.hash = 't/ttok'; __arkives.navigate('t/ttok');
+      });
+      await page.waitForTimeout(300);
+      const tp = await page.evaluate(() => {
+        const shown = (sel) => { const e = document.querySelector(sel); return !!e && getComputedStyle(e).display !== 'none'; };
+        return { card: !!document.querySelector('#view-timeline-public .tl-card'), today: !!document.querySelector('#view-timeline-public .tl-g-today'),
+                 gcal: document.querySelectorAll('#view-timeline-public .tl-gcal').length, ics: !!document.querySelector('[data-action="tlPublicIcs"]'),
+                 chrome: ['#sidebar', '.mobile-header', '#tabbar'].filter(shown),
+                 scrollX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
+      });
+      if (!tp.card) flagged.push('timeline page: card missing');
+      if (!tp.today) flagged.push('timeline page: no today marker on a running project');
+      if (tp.gcal !== 4 || !tp.ics) flagged.push(`timeline page: ${tp.gcal} Google Calendar links (expected 4) or no calendar file button`);
+      if (tp.chrome.length) flagged.push(`timeline page shows app chrome: ${tp.chrome.join(', ')}`);
+      if (tp.scrollX) flagged.push('timeline page: horizontal page overflow');
+      await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-timeline-public.png`), animations: 'disabled', fullPage: true });
       await page.evaluate(() => { __arkives.state._sb = window.__realSb; location.hash = 'dashboard'; __arkives.navigate('dashboard'); });
     }
     if (state === 'populated' && vp.name === 'phone') {

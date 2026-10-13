@@ -5611,6 +5611,163 @@ body.share-quote .main { padding-bottom: 32px; }
 }
 
 /* ==========================================================
+   TIMELINES (views/timelines.js): the brand-facing production card,
+   its editor, the public #t/ page and the PDF. Phase colors: blue =
+   pre-production, accent red = production, teal = post-production.
+   ========================================================== */
+.tl-ph-pre { --tl-c: var(--blue); --tl-dim: var(--blue-dim); }
+.tl-ph-prod { --tl-c: var(--accent); --tl-dim: var(--accent-dim); }
+.tl-ph-post { --tl-c: var(--teal); --tl-dim: var(--teal-dim); }
+.tl-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--tl-c); flex: none; }
+.tl-dot-brand { background: repeating-linear-gradient(45deg, var(--text-primary) 0 2px, transparent 2px 4px); border: 1px solid var(--text-primary); }
+
+.tl-card { background: var(--bg-1); border: 2px solid var(--border); box-shadow: var(--shadow-md); padding: 32px; color: var(--text-primary); }
+.tl-head { margin-bottom: 24px; }
+.tl-brands { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; min-height: 36px; }
+.tl-logo { max-height: 40px; max-width: 150px; object-fit: contain; display: block; }
+.tl-logo-name { font-weight: 600; font-size: 15px; }
+.tl-x { color: var(--text-muted); font-size: 18px; }
+.tl-eyebrow { text-transform: uppercase; letter-spacing: 1.5px; font-size: 11px; font-weight: 600; color: var(--text-muted); margin: 0 0 4px; }
+.tl-title { font-family: var(--font-display); font-weight: 400; font-size: 40px; line-height: 1.05; margin: 0 0 8px; overflow-wrap: anywhere; }
+.tl-span { color: var(--text-secondary); margin: 0; font-size: 14px; }
+.tl-status { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 0; padding: 6px 12px; border: 1.5px solid var(--border); background: var(--bg-2); font-size: 13px; font-weight: 600; }
+.tl-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.tl-status-during .tl-status-dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+.tl-status-after .tl-status-dot { background: var(--teal); }
+
+/* Gantt: label column + one column per business day */
+.tl-gantt-wrap { overflow-x: auto; margin: 0 -4px 10px; padding: 0 4px 22px; }
+.tl-gantt { position: relative; display: grid; grid-template-columns: minmax(150px, 190px) repeat(var(--tl-cols), minmax(16px, 1fr)); grid-auto-rows: minmax(30px, auto); row-gap: 4px; min-width: calc(170px + var(--tl-cols) * 16px); }
+.tl-g-corner { grid-row: 1; grid-column: 1; }
+.tl-g-week { grid-row: 1; font-size: 11px; color: var(--text-muted); border-left: 1.5px dashed var(--bg-3); padding: 4px 0 4px 6px; white-space: nowrap; overflow: hidden; align-self: end; }
+.tl-g-label { grid-column: 1; display: flex; align-items: center; gap: 8px; font-size: 13px; padding-right: 10px; min-width: 0; }
+.tl-g-bar { position: relative; z-index: 1; align-self: center; height: 24px; background: var(--tl-c); border: 1.5px solid var(--border); display: flex; align-items: center; padding: 0 6px; overflow: hidden; }
+.tl-g-bar span { color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.tl-g-short { overflow: visible; }
+.tl-g-short span { position: absolute; left: calc(100% + 6px); color: var(--text-secondary); background: var(--bg-1); padding: 0 2px; }
+.tl-g-left span { left: auto; right: calc(100% + 6px); }
+.tl-g-brand { background: repeating-linear-gradient(45deg, var(--tl-c) 0 6px, color-mix(in srgb, var(--tl-c) 70%, #fff) 6px 12px); }
+.tl-g-today { position: relative; z-index: 0; justify-self: center; width: 2px; background: var(--accent); pointer-events: none; }
+.tl-g-today span { position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; white-space: nowrap; }
+.tl-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 28px; }
+.tl-legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Phase cards */
+.tl-phases { display: grid; gap: 16px; }
+.tl-phase { border: 2px solid var(--border); border-top: 6px solid var(--tl-c); padding: 18px 20px; background: var(--bg-1); break-inside: avoid; }
+.tl-phase-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.tl-phase-head h3 { font-family: var(--font-display); font-weight: 400; font-size: 26px; margin: 0; }
+.tl-phase-head span { font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+.tl-phase-blurb { color: var(--text-secondary); font-size: 14px; margin: 4px 0 12px; }
+.tl-steps { list-style: none; margin: 0; padding: 0; }
+.tl-step { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0 10px 12px; border-top: 1px dashed var(--bg-3); border-left: 3px solid transparent; }
+.tl-step-now { border-left-color: var(--accent); background: var(--tl-dim); }
+.tl-step-main { min-width: 0; }
+.tl-step-main strong { font-size: 15px; }
+.tl-step-main p { margin: 2px 0 0; font-size: 13px; color: var(--text-secondary); }
+.tl-step-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; text-align: right; }
+.tl-when { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.tl-owner { font-size: 11px; font-weight: 600; padding: 1px 8px; border: 1.5px solid var(--border); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.tl-owner-brand { background: var(--orange-dim); }
+.tl-owner-both { background: var(--purple-dim); }
+.tl-gcal { font-size: 12px; color: var(--text-secondary); text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.tl-gcal:hover { color: var(--accent); }
+.tl-notes { margin: 20px 0 0; padding: 12px 14px; background: var(--bg-2); font-size: 14px; white-space: pre-wrap; }
+.tl-foot { margin: 18px 0 0; font-size: 12px; color: var(--text-muted); }
+.tl-empty { color: var(--text-secondary); padding: 8px 0; margin: 0; }
+.tl-pill { display: inline-block; font-family: var(--font-body); font-size: 11px; font-weight: 600; letter-spacing: 0.4px; padding: 2px 8px; border: 1.5px solid var(--border); background: var(--bg-2); vertical-align: middle; }
+.tl-pill-live { background: var(--teal-dim); color: var(--teal); border-color: var(--teal); }
+.tl-row-actions { white-space: nowrap; text-align: right; }
+.tl-row-actions svg { width: 14px; height: 14px; }
+
+/* Editor: form left, live preview right */
+.tl-editor { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 24px; align-items: start; }
+.tl-editor-form { display: grid; gap: 16px; min-width: 0; }
+.tl-editor-preview { position: sticky; top: 16px; min-width: 0; }
+.tl-preview-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--text-muted); font-weight: 600; margin: 0 0 8px; }
+.tl-editor-preview .tl-card { padding: 22px; }
+.tl-editor-preview .tl-title { font-size: 32px; }
+.tl-editor-form .card { padding: 20px; }
+/* The preview column is narrow: fit the whole chart, dates live in the phase cards */
+.tl-editor-preview .tl-gantt { grid-template-columns: 130px repeat(var(--tl-cols), minmax(0, 1fr)); min-width: 0; }
+.tl-editor-preview .tl-g-bar { padding: 0; }
+.tl-editor-preview .tl-g-bar span { display: none; }
+.tl-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tl-logo-field { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tl-logo-thumb { width: 64px; height: 40px; object-fit: contain; border: 1.5px solid var(--border); background: var(--bg-2); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; color: var(--text-muted); }
+.tl-ed-total { font-size: 14px; color: var(--text-secondary); margin-bottom: 12px; }
+.tl-ed-total strong { color: var(--text-primary); }
+.tl-ed-phase { padding: 12px 0; border-top: 2px solid var(--border); }
+.tl-ed-phase-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tl-ed-phase-head h3 { font-size: 15px; margin: 0; }
+.tl-ed-phase-sum { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+.tl-ed-step { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px dashed var(--bg-3); }
+.tl-ed-off .tl-ed-step-body { opacity: 0.45; }
+.tl-ed-step-body { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.tl-ed-step-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.tl-ed-name { flex: 1 1 160px; min-width: 0; font-weight: 600; }
+.tl-ed-days { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+.tl-ed-days input { width: 56px; }
+.tl-ed-cal { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.tl-ed-detail { font-size: 13px; }
+.tl-ed-when { font-size: 12px; color: var(--text-muted); }
+.tl-ed-tools { display: flex; flex-direction: column; gap: 2px; }
+.tl-ed-add { margin-top: 8px; }
+/* On/off switch */
+.tl-switch { position: relative; flex: none; width: 34px; height: 20px; margin-top: 6px; cursor: pointer; }
+.tl-switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.tl-switch span { position: absolute; inset: 0; border: 1.5px solid var(--border); background: var(--bg-3); border-radius: 20px; transition: background 0.15s; pointer-events: none; }
+.tl-switch span::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--bg-1); border: 1.5px solid var(--border); transition: transform 0.15s; }
+.tl-switch input:checked + span { background: var(--teal); }
+.tl-switch input:checked + span::after { transform: translateX(13px); }
+.tl-switch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Public page */
+.tl-public { max-width: 920px; margin: 0 auto; padding: 24px 0 48px; }
+.tl-cal-hint { font-size: 12px; color: var(--text-muted); margin: 14px 2px 0; }
+.tl-missing p { color: var(--text-secondary); }
+
+@media (max-width: 1100px) {
+  .tl-editor { grid-template-columns: minmax(0, 1fr); }
+  .tl-editor-preview { position: static; }
+}
+@media (max-width: 640px) {
+  .tl-card { padding: 20px 16px; box-shadow: var(--shadow-sm); }
+  .tl-title, .tl-editor-preview .tl-title { font-size: 30px; }
+  .tl-step { flex-direction: column; gap: 6px; }
+  .tl-step-meta { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; text-align: left; }
+  .tl-two { grid-template-columns: 1fr; }
+  /* Phone: the whole schedule fits the width; dates live in the phase cards */
+  .tl-gantt { grid-template-columns: 96px repeat(var(--tl-cols), minmax(0, 1fr)); min-width: 0; column-gap: 0; }
+  .tl-g-label { font-size: 11px; line-height: 1.25; gap: 6px; padding-right: 6px; }
+  .tl-g-label .tl-dot { width: 7px; height: 7px; }
+  .tl-g-bar { height: 18px; padding: 0; border-width: 1px; }
+  .tl-g-bar span { display: none; }
+  .tl-g-week { font-size: 10px; padding-left: 3px; }
+  .quote-public-bar > span:first-child { display: none; }
+  .tl-public { padding: 12px 0 32px; }
+}
+
+/* PDF: the card alone, light paper, all phases visible */
+#timelinePrintHost { display: none; }
+@media print {
+  body.printing-timeline > *:not(#timelinePrintHost) { display: none !important; }
+  body.printing-timeline #timelinePrintHost {
+    display: block !important;
+    --bg-0: #fff; --bg-1: #fff; --bg-2: #f3f0eb; --bg-3: #e3ddd4;
+    --text-primary: #1A1714; --text-secondary: #3B3632; --text-muted: #6E6862;
+    --border: #1A1714; --accent: #C73539; --blue: #2A5B8F; --teal: #2A6B5A;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  body.printing-timeline .tl-card { box-shadow: none; border: none; padding: 0; }
+  body.printing-timeline .tl-gantt-wrap { overflow: visible; }
+  body.printing-timeline .tl-gantt { min-width: 0; grid-template-columns: 150px repeat(var(--tl-cols), minmax(0, 1fr)); }
+  body.printing-timeline .tl-gcal { display: none; }
+  body.printing-timeline .tl-step { break-inside: avoid; }
+  html:has(body.printing-timeline), body.printing-timeline { background: #fff !important; }
+}
+
+/* ==========================================================
    DASHBOARD v2: a studio desk. The tool tiles are sticky notes in
    the Boards palette (the one loud thing); money is one ledger panel
    in red ink with three slim status rows; audience and activity sit

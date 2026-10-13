@@ -224,6 +224,7 @@ function resetAllState() {
   state._dashRecent = null; state._dashSocialTried = false; state._scanBusy = false; state._scanNote = null; state._analyticsTried = false; state.analyticsData = null; state.analyticsLastFetch = null;
   state._qEditorOpen = false; state._qEditingId = null; state._q = null; state._qNewClientOpen = false; state._qLinkFor = null;
   state._qFilter = 'all'; state._qSearch = ''; state._qServiceEditingId = null; state._qRowMenuId = null; state._contractPrefill = null;
+  state.TIMELINES = []; state._timelinesMigrationMissing = false; state._tlEditorOpen = false; state._tlEditingId = null; state._tl = null; state._tlLinkFor = null;
   var qBadge = document.getElementById('quoteNavBadge'); if (qBadge) qBadge.hidden = true;
   state._scriptsCache = []; state._currentScriptId = null; state._currentScriptRow = null; state._currentScenes = [];
   state._sharedScriptToken = null; state._sceneDirty = {}; state._titleDirty = null;
