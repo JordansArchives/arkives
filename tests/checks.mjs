@@ -292,6 +292,20 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('removing an empty block needs no confirm and leaves the rest', __arkives.state._currentScenes[0].blocks.length === 1 && __arkives.state._currentScenes[0].blocks[0].text === 'edited');
     await __arkives._flushScriptSaves();
     T('block edits save blocks + scene_description together', saved.some((x) => x.id === 'a' && Array.isArray(x.fields.blocks) && typeof x.fields.scene_description === 'string'));
+    // Thumbnail reorder: arrows on each image when a scene has 2+, saved in the new order
+    const PX2 = PX.replace(/.$/, PX.endsWith('=') ? 'A' : '=');
+    __arkives.state._currentScenes[1].thumbnails = [PX, PX2];
+    __arkives._scriptRerender();
+    await new Promise((r) => setTimeout(r, 30));
+    const tb = '.script-scene-row[data-scene-id="b"] .script-thumb-preview';
+    T('a scene with 2+ images shows move arrows, first up and last down disabled, images draggable', qa(tb + ' .sc-thumb-move-btn').length === 4 && q(tb + '[data-ti="0"] .sc-thumb-move-btn[title="Move image up"]').disabled && q(tb + '[data-ti="1"] .sc-thumb-move-btn[title="Move image down"]').disabled && q(tb + '[data-ti="0"]').getAttribute('draggable') === 'true');
+    saved.length = 0;
+    q(tb + '[data-ti="0"] .sc-thumb-move-btn[title="Move image down"]').click();
+    await new Promise((r) => setTimeout(r, 30));
+    T('moving an image down saves the swapped order', saved[0]?.id === 'b' && saved[0].fields.thumbnails[0] === PX2 && saved[0].fields.thumbnails[1] === PX && __arkives.state._currentScenes[1].thumbnails[0] === PX2, JSON.stringify(saved.map((x) => x.id)));
+    saved.length = 0;
+    await __arkives._moveThumb('b', 0, 5);
+    T('an out-of-range move saves nothing', saved.length === 0);
     // Thumbnail removal writes the list and clears the legacy column
     saved.length = 0;
     await __arkives._removeThumb('b', 0);

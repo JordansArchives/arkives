@@ -2014,6 +2014,14 @@ a.mk-platform-link:hover {
   transition: opacity 0.15s;
 }
 .script-thumb-preview:hover .script-thumb-remove { opacity: 1; }
+.script-thumb-preview[draggable="true"] { cursor: grab; }
+.sc-thumb-move { position: absolute; top: 4px; left: 4px; display: flex; flex-direction: column; gap: 2px; opacity: 0; transition: opacity 0.15s; }
+.script-thumb-preview:hover .sc-thumb-move, .sc-thumb-move:focus-within { opacity: 1; }
+.sc-thumb-move-btn { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border); background: var(--bg-1); color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+.sc-thumb-move-btn svg { width: 12px; height: 12px; }
+.sc-thumb-move-btn:disabled { opacity: 0.3; cursor: default; }
+.sc-thumb-dragging { opacity: 0.4; }
+.sc-thumb-dragover img { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .script-col-thumb:focus-visible, .script-col-thumb:focus { outline: 2px solid var(--accent); outline-offset: -4px; }
 .script-col-thumb.sc-thumb-dropover { outline: 2px dashed var(--accent); outline-offset: -4px; background: color-mix(in srgb, var(--accent) 8%, transparent); }
@@ -5234,7 +5242,7 @@ body.share-board .bd-zoom { flex-shrink: 0; }
 .script-row-action:disabled { opacity: 0.2 !important; cursor: default; }
 @media (hover: none) {
   .script-row-action { opacity: 1; }
-  .script-thumb-remove { opacity: 1; }
+  .script-thumb-remove, .sc-thumb-move { opacity: 1; }
 }
 
 /* Under 640px each scene is a card: number + actions on top, then script,

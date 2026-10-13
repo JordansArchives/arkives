@@ -255,6 +255,7 @@ function _renderEditorUI(container, script, scenes, readOnly) {
     _bindSceneEvents();
     _bindDragDrop();
     _bindThumbDrop();
+    _bindThumbReorder();
     var scShareBtn = document.getElementById('scShareBtn');
     if (scShareBtn) {
       scShareBtn.addEventListener('click', function() {
@@ -386,10 +387,17 @@ function _renderSceneThumbs(scene, readOnly) {
   var thumbs = _sceneThumbs(scene);
   var html = '<div class="sc-thumbs">';
   thumbs.forEach(function(t, ti) {
-    html += '<div class="script-thumb-preview">';
-    html += '<img src="' + _esc(t) + '" alt="Scene thumbnail ' + (ti + 1) + '" />';
+    var movable = !readOnly && thumbs.length > 1;
+    html += '<div class="script-thumb-preview" data-ti="' + ti + '"' + (movable ? ' draggable="true"' : '') + '>';
+    html += '<img src="' + _esc(t) + '" alt="Scene thumbnail ' + (ti + 1) + '" draggable="false" />';
     if (!readOnly) {
       html += '<button class="script-thumb-remove" data-action="_removeThumb" data-args="' + _args(scene.id, ti) + '" title="Remove thumbnail">&times;</button>';
+    }
+    if (movable) {
+      html += '<div class="sc-thumb-move">';
+      html += '<button type="button" class="sc-thumb-move-btn" data-action="_moveThumbBy" data-args="' + _args(scene.id, ti, -1) + '" title="Move image up" aria-label="Move image ' + (ti + 1) + ' up"' + (ti === 0 ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowUp + '</button>';
+      html += '<button type="button" class="sc-thumb-move-btn" data-action="_moveThumbBy" data-args="' + _args(scene.id, ti, 1) + '" title="Move image down" aria-label="Move image ' + (ti + 1) + ' down"' + (ti === thumbs.length - 1 ? ' disabled' : '') + '>' + SKETCHY_ICONS.arrowDown + '</button>';
+      html += '</div>';
     }
     html += '</div>';
   });
@@ -709,6 +717,56 @@ async function _removeThumb(sceneId, ti) {
   if (await _saveThumbs(sceneId, thumbs)) _scriptRerender();
 }
 
+// Arrow buttons and drag both land here; works on touch
+async function _moveThumb(sceneId, from, to) {
+  var scene = _sceneById(sceneId); if (!scene) return;
+  var thumbs = _sceneThumbs(scene);
+  if (from < 0 || from >= thumbs.length || to < 0 || to >= thumbs.length || from === to) return;
+  thumbs.splice(to, 0, thumbs.splice(from, 1)[0]);
+  if (await _saveThumbs(sceneId, thumbs)) _scriptRerender();
+}
+function _moveThumbBy(sceneId, ti, dir) { return _moveThumb(sceneId, ti, ti + dir); }
+
+/* ---- DRAG TO REORDER IMAGES ---- Within one scene only. Stops the
+   events so the scene row underneath does not start its own reorder. */
+function _bindThumbReorder() {
+  document.querySelectorAll('.script-scene-row .script-thumb-preview[draggable="true"]').forEach(function(prev) {
+    var row = prev.closest('.script-scene-row');
+    var sceneId = row && row.getAttribute('data-scene-id');
+    if (!sceneId) return;
+    prev.addEventListener('dragstart', function(e) {
+      e.stopPropagation();
+      state._dragThumb = { sceneId: sceneId, ti: parseInt(prev.getAttribute('data-ti')) };
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', ''); } catch (err) { /* Firefox needs data to start a drag */ }
+      prev.classList.add('sc-thumb-dragging');
+    });
+    prev.addEventListener('dragover', function(e) {
+      var d = state._dragThumb;
+      if (!d || d.sceneId !== sceneId) return;
+      e.preventDefault(); e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      prev.classList.add('sc-thumb-dragover');
+    });
+    prev.addEventListener('dragleave', function(e) {
+      if (!prev.contains(e.relatedTarget)) prev.classList.remove('sc-thumb-dragover');
+    });
+    prev.addEventListener('drop', function(e) {
+      var d = state._dragThumb;
+      if (!d || d.sceneId !== sceneId) return;
+      e.preventDefault(); e.stopPropagation();
+      prev.classList.remove('sc-thumb-dragover');
+      state._dragThumb = null;
+      _moveThumb(sceneId, d.ti, parseInt(prev.getAttribute('data-ti')));
+    });
+    prev.addEventListener('dragend', function(e) {
+      e.stopPropagation();
+      prev.classList.remove('sc-thumb-dragging');
+      state._dragThumb = null;
+    });
+  });
+}
+
 /* ---- DRAG & DROP IMAGES ---- Dropping image files on a scene's
    thumbnail cell adds them. Row reordering drags carry no files and
    pass through to the row handlers below. */
@@ -869,7 +927,7 @@ export function __init() {
   window.addEventListener('pagehide', function() { _flushScriptSaves(); });
 }
 
-act({ _addScene, _createNewScript, _deleteSceneRow, _deleteScript, _handleThumbUpload, _moveScene, _removeThumb,
+act({ _addScene, _createNewScript, _deleteSceneRow, _deleteScript, _handleThumbUpload, _moveScene, _moveThumbBy, _removeThumb,
   _scAddBlock, _scClearTag, _scCloseTagPicker, _scCustomAdd, _scCustomKeydown, _scDeleteBlock, _scMoveBlock, _scPickBackdrop, _scPickTag, _scSetTag });
 
-export { SCENE_TAG_PRESETS, _addThumbFiles, _onScriptPaste, _pasteTargetScene, _blocksMirror, _sceneBlocks, _sceneThumbs, _scCloseTagPicker, _scPickTag, _scSetTag, _tagOptions, _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };
+export { SCENE_TAG_PRESETS, _addThumbFiles, _onScriptPaste, _pasteTargetScene, _blocksMirror, _sceneBlocks, _sceneThumbs, _scCloseTagPicker, _scPickTag, _scSetTag, _tagOptions, _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _moveThumb, _moveThumbBy, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };
