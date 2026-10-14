@@ -4724,7 +4724,7 @@ button.sc-tag { appearance: none; }
 }
 .board-viewport:active { cursor: grabbing; }
 .board-viewport[data-tool="pen"] { cursor: crosshair; }
-.board-viewport[data-tool="note"], .board-viewport[data-tool="text"] { cursor: copy; }
+.board-viewport[data-tool="note"], .board-viewport[data-tool="text"], .board-viewport[data-tool="letter"] { cursor: copy; }
 .board-plane, .bd-pen-live {
   position: absolute;
   top: 0; left: 0;
@@ -4955,6 +4955,33 @@ button.sc-tag { appearance: none; }
 }
 .bd-stab:hover { background: var(--bg-2); }
 .bd-stab.active { color: var(--accent); background: var(--accent-dim); }
+/* Letter tool strip: what to place, color, font */
+.bd-letter-input {
+  width: 46px;
+  padding: 4px 2px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text-primary);
+  font: 700 15px var(--font-body);
+  text-align: center;
+}
+.bd-letter-input:focus { outline: none; border-color: var(--accent); }
+.bd-letter-font {
+  width: 30px; height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.bd-letter-font:hover { background: var(--bg-2); }
+.bd-letter-font.active { color: var(--accent); background: var(--accent-dim); }
+.bd-kind-letter text { white-space: pre; }
+.bd-kind-letter text.bd-ink { fill: var(--text-primary); }
 
 /* ---- Video popover & drop hint ---- */
 .bd-video-popover {

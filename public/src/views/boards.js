@@ -14,6 +14,12 @@ const BD_STICKY_COLORS = {
 const BD_PEN_COLORS = {
   ink: '#1A1714', red: '#C73539', teal: '#2A6B5A'
 };
+// Big letters / numbers: drawn as SVG text stretched to fill the item box
+const BD_LETTER_FONTS = {
+  sans: { label: 'Sans', family: "'General Sans', -apple-system, BlinkMacSystemFont, sans-serif", weight: 700 },
+  serif: { label: 'Serif', family: "'Instrument Serif', Georgia, serif", weight: 400 },
+  mono: { label: 'Mono', family: 'ui-monospace, Menlo, Consolas, monospace', weight: 700 }
+};
 const BD_MIN_ZOOM = 0.1, BD_MAX_ZOOM = 4;
 const BD_TEXT_SIZES = ['small', 'body', 'large', 'title'];
 const BD_TEXT_ALIGNS = ['left', 'center', 'right'];
@@ -163,6 +169,10 @@ function _bdEditorShellHtml(shared) {
     '<button class="bd-dot' + (c === state._bdPenColor ? ' active' : '') + '" data-pen-color="' + c + '" style="background:' + BD_PEN_COLORS[c] + '" title="' + c + '"></button>').join('');
   const stickyDots = Object.keys(BD_STICKY_COLORS).map(c =>
     '<button class="bd-dot' + (c === state._bdStickyColor ? ' active' : '') + '" data-sticky-color="' + c + '" style="background:' + BD_STICKY_COLORS[c] + '" title="' + c + '"></button>').join('');
+  const letterDots = Object.keys(BD_PEN_COLORS).map(c =>
+    '<button class="bd-dot" data-letter-color="' + c + '" style="background:' + BD_PEN_COLORS[c] + '" title="' + c + '"></button>').join('');
+  const letterFonts = Object.keys(BD_LETTER_FONTS).map(f =>
+    '<button class="bd-letter-font" data-letter-font="' + f + '" title="' + BD_LETTER_FONTS[f].label + '" style="font-family:' + _esc(BD_LETTER_FONTS[f].family) + ';font-weight:' + BD_LETTER_FONTS[f].weight + '">Aa</button>').join('');
   // Stabilization: four steps, drawn as a wobble that settles as the level rises
   const stabBtns = BD_PEN_STAB.map((s, i) =>
     '<button class="bd-stab' + (i === state._bdPenStab ? ' active' : '') + '" data-pen-stab="' + i + '" title="Stabilization: ' + BD_PEN_STAB_LABELS[i] + '">' +
@@ -197,6 +207,7 @@ function _bdEditorShellHtml(shared) {
           '<button class="bd-tool active" data-tool="select" title="Select / move (Esc)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.2 3.1l14.7 7.2-6.4 1.9-2.1 6.3z"/></svg></button>' +
           '<button class="bd-tool" data-tool="note" title="Sticky note"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.1 4.2h15.7v10.9l-4.9 4.8H4.2z"/><path d="M14.9 19.9v-4.8h4.9"/></svg></button>' +
           '<button class="bd-tool" data-tool="text" title="Text"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.1 6.2V4.1h15.8v2.1"/><path d="M12 4.2v15.7"/><path d="M9.1 19.9h5.8"/></svg></button>' +
+          '<button class="bd-tool" data-tool="letter" title="Big letter or number"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 20.1L11.9 3.9l7.9 16.2"/><path d="M7.4 13.6h9.3"/></svg></button>' +
           '<button class="bd-tool" data-tool="pen" title="Pen"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.1 3.2l3.8 3.7L7.2 20.7l-4.1.4.5-4z"/></svg></button>' +
           '<div class="bd-tool-sep"></div>' +
           '<button class="bd-tool" data-cmd="image" title="Add image (or drag & drop / paste)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 4.1h17.6v15.8H3.2z"/><circle cx="8.6" cy="9" r="1.7"/><path d="M20.7 15.2l-4.8-4.9-9.7 9.6"/></svg></button>' +
@@ -212,6 +223,11 @@ function _bdEditorShellHtml(shared) {
           '<div class="bd-opt-sep"></div>' + stabBtns +
         '</div>' +
         '<div class="bd-tool-options" id="bdStickyOptions" style="display:none">' + stickyDots + '</div>' +
+        '<div class="bd-tool-options" id="bdLetterOptions" style="display:none">' +
+          '<input type="text" class="bd-letter-input" id="bdLetterText" maxlength="12" autocomplete="off" spellcheck="false" title="Letters or numbers" value="' + _esc(state._bdLetterText) + '">' +
+          '<div class="bd-opt-sep"></div>' + letterDots +
+          '<div class="bd-opt-sep"></div>' + letterFonts +
+        '</div>' +
         '<div class="bd-video-popover" id="bdVideoPopover" style="display:none">' +
           '<input type="text" id="bdVideoUrl" placeholder="Paste a YouTube, Vimeo, or any link…">' +
           '<button class="btn btn-primary" data-action="_bdAddVideoFromPopover">Add</button>' +
@@ -462,6 +478,16 @@ function _bdItemEl(it) {
     el.style.height = it.h + 'px';
     el.innerHTML = '<div class="bd-media-frame">' + _bdVideoInnerHtml(it.id, c) + '</div>' +
       _bdCaptionHtml(c.caption) + _bdHandlesHtml(it);
+  } else if (it.kind === 'letter') {
+    el.style.height = it.h + 'px';
+    const font = BD_LETTER_FONTS[c.font] ? c.font : 'sans';
+    const color = BD_PEN_COLORS[c.color] ? c.color : 'ink';
+    const text = String(c.text || '?').slice(0, 12);
+    const b = _bdLetterBox(text, font);
+    el.innerHTML =
+      '<svg width="100%" height="100%" viewBox="' + [b.x, b.y, b.w, b.h].map(n => Math.round(n * 100) / 100).join(' ') + '" preserveAspectRatio="none" style="display:block;overflow:visible">' +
+      '<text x="0" y="0"' + (color === 'ink' ? ' class="bd-ink"' : '') + ' fill="' + BD_PEN_COLORS[color] + '" font-family="' + _esc(BD_LETTER_FONTS[font].family) + '" font-weight="' + BD_LETTER_FONTS[font].weight + '" font-size="100">' + _escHtml(text) + '</text></svg>' +
+      _bdHandlesHtml(it);
   } else if (it.kind === 'draw') {
     el.style.height = it.h + 'px';
     const pts = c.points || [];
@@ -540,6 +566,101 @@ function _bdPathD(pts) {
   }
   const l = pts[pts.length - 1];
   return d + ' L' + l[0] + ' ' + l[1];
+}
+
+/* ---- LETTERS ---- */
+/* A letter item's SVG viewBox is the ink bounds of its text at 100px, so
+   the glyphs fill the item box exactly and scale (or stretch) with it.
+   Bounds come from canvas metrics, re-measured once web fonts arrive. */
+
+const _bdLetterBoxes = new Map();
+let _bdLetterCtx = null, _bdFontsWatched = false;
+
+function _bdLetterBox(text, font) {
+  const key = font + '|' + text;
+  if (_bdLetterBoxes.has(key)) return _bdLetterBoxes.get(key);
+  _bdWatchLetterFonts();
+  const f = BD_LETTER_FONTS[font] || BD_LETTER_FONTS.sans;
+  let box = null;
+  try {
+    _bdLetterCtx = _bdLetterCtx || document.createElement('canvas').getContext('2d');
+    _bdLetterCtx.font = f.weight + ' 100px ' + f.family;
+    const m = _bdLetterCtx.measureText(text);
+    const l = m.actualBoundingBoxLeft || 0, r = m.actualBoundingBoxRight || 0;
+    const a = m.actualBoundingBoxAscent || 0, d = m.actualBoundingBoxDescent || 0;
+    if (l + r > 0 && a + d > 0) box = { x: -l, y: -a, w: l + r, h: a + d };
+    else if (m.width > 0) box = { x: 0, y: -72, w: m.width, h: 72 }; // spaces only, or no ink metrics
+  } catch (_) { /* no canvas: fall through */ }
+  box = box || { x: 0, y: -72, w: 60 * Math.max(1, text.length), h: 72 };
+  _bdLetterBoxes.set(key, box);
+  return box;
+}
+
+// Web fonts land after the first render: drop the fallback-font bounds and redraw
+function _bdWatchLetterFonts() {
+  if (_bdFontsWatched || !document.fonts || !document.fonts.addEventListener) return;
+  _bdFontsWatched = true;
+  document.fonts.addEventListener('loadingdone', function() {
+    _bdLetterBoxes.clear();
+    (state._bdItems || []).forEach(function(it) { if (it.kind === 'letter') _bdRefreshItem(it.id); });
+  });
+}
+
+// Make sure a letter font is loaded before its bounds decide a new item's shape
+async function _bdLoadLetterFont(font, text) {
+  const f = BD_LETTER_FONTS[font] || BD_LETTER_FONTS.sans;
+  try {
+    if (document.fonts && document.fonts.load) {
+      await document.fonts.load(f.weight + ' 100px ' + f.family, text);
+      _bdLetterBoxes.clear();
+    }
+  } catch (_) { /* measure with whatever is there */ }
+}
+
+async function _bdAddLetterAt(bx, by) {
+  const text = String(state._bdLetterText || '').trim().slice(0, 12) || '1';
+  const font = state._bdLetterFont, color = state._bdLetterColor;
+  await _bdLoadLetterFont(font, text);
+  const b = _bdLetterBox(text, font);
+  const h = 240, w = Math.max(16, h * b.w / b.h);
+  const row = await _bdCreateItem('letter', bx - w / 2, by - h / 2, w, h, { text: text, color: color, font: font });
+  _bdSetTool('select');
+  if (row) _bdSelect(row.id);
+}
+
+function _bdSelectedLetter() {
+  return state._bdItems.find(i => i.id === state._bdSelectedId && i.kind === 'letter') || null;
+}
+
+// The letter strip shows while the tool is on or a letter is selected,
+// and reflects the selected letter (else the defaults for the next one)
+function _bdSyncLetterOptions() {
+  const opts = document.getElementById('bdLetterOptions');
+  if (!opts) return;
+  const sel = state._bdReadOnly ? null : _bdSelectedLetter();
+  opts.style.display = (state._bdTool === 'letter' || sel) ? 'flex' : 'none';
+  const c = sel ? sel.content || {} : { text: state._bdLetterText, color: state._bdLetterColor, font: state._bdLetterFont };
+  const input = document.getElementById('bdLetterText');
+  if (input && document.activeElement !== input) input.value = c.text || '';
+  opts.querySelectorAll('[data-letter-color]').forEach(d => d.classList.toggle('active', d.dataset.letterColor === (c.color || 'ink')));
+  opts.querySelectorAll('[data-letter-font]').forEach(d => d.classList.toggle('active', d.dataset.letterFont === (c.font || 'sans')));
+}
+
+// Change the selected letter. Text changes keep its height and refit its
+// width to the new word; one undo step per committed change.
+async function _bdUpdateLetter(it, patch, before) {
+  const next = Object.assign({}, it.content, patch);
+  if (patch.text !== undefined || patch.font !== undefined) await _bdLoadLetterFont(next.font, next.text);
+  const oldBox = _bdLetterBox(String(it.content.text || '?'), it.content.font || 'sans');
+  const newBox = _bdLetterBox(String(next.text || '?'), next.font || 'sans');
+  // Keep any stretch the user gave it: scale width by the change in natural shape
+  const stretch = (it.w / it.h) / (oldBox.w / oldBox.h);
+  const w = Math.max(16, it.h * (newBox.w / newBox.h) * stretch);
+  const prev = before || { content: _bdClone(it.content), w: it.w };
+  it.content = next; it.w = w;
+  _bdRefreshItem(it.id);
+  _bdQueueItemSave(it.id, { content: it.content, w: Math.round(w) });
+  if (!before) _bdPushUndo({ type: 'update', id: it.id, before: prev, after: { content: _bdClone(it.content), w: it.w } });
 }
 
 /* ---- RICH TEXT ---- */
@@ -706,7 +827,7 @@ async function _bdRemoveItemLocal(id) {
   state._bdItems = state._bdItems.filter(i => i.id !== id);
   const el = document.querySelector('.bd-item[data-id="' + id + '"]');
   if (el) el.remove();
-  if (state._bdSelectedId === id) state._bdSelectedId = null;
+  if (state._bdSelectedId === id) { state._bdSelectedId = null; _bdSyncLetterOptions(); }
   _bdQueueOnNote();
   await db.sbDeleteBoardItem(id);
   _bdLiveSend({ board: state._bdBoard && state._bdBoard.id, type: 'delete', id: id });
@@ -970,6 +1091,7 @@ function _bdSelect(id) {
     const el = document.querySelector('.bd-item[data-id="' + id + '"]');
     if (el) el.classList.add('selected');
   }
+  _bdSyncLetterOptions();
 }
 
 function _bdStartTextEdit(id) {
@@ -996,6 +1118,12 @@ function _bdEditItem(id) {
   const it = state._bdItems.find(i => i.id === id);
   const itemEl = document.querySelector('.bd-item[data-id="' + id + '"]');
   if (!it || !itemEl) return false;
+  if (it.kind === 'letter') {
+    _bdSelect(id);
+    const input = document.getElementById('bdLetterText');
+    if (input && !state._bdReadOnly) { input.focus(); input.select(); }
+    return true;
+  }
   const sel = (it.kind === 'note' || it.kind === 'text') ? '.bd-text-content'
     : ((it.kind === 'image' || it.kind === 'video') ? '.bd-caption' : null);
   const el = sel && itemEl.querySelector(sel);
@@ -1084,7 +1212,7 @@ async function _bdCopySelected(cut) {
   if (!it) return false;
   const c = it.content || {};
   const text = (it.kind === 'note' || it.kind === 'text') ? _bdPlainText(c).trim()
-    : (it.kind === 'video' ? (c.url || '') : (c.caption || ''));
+    : it.kind === 'letter' ? String(c.text || '') : (it.kind === 'video' ? (c.url || '') : (c.caption || ''));
   const marker = text || 'Arkives board item';
   state._bdClipboard = { kind: it.kind, w: it.w, h: it.h, content: _bdClone(c), marker: marker, pastes: 0 };
   // Grab the image bytes now: after a cut, the file is purged when the board is left
@@ -1169,6 +1297,8 @@ function _bdSetTool(tool) {
   const stickyOpts = document.getElementById('bdStickyOptions');
   if (penOpts) penOpts.style.display = tool === 'pen' ? 'flex' : 'none';
   if (stickyOpts) stickyOpts.style.display = tool === 'note' ? 'flex' : 'none';
+  _bdSyncLetterOptions();
+  if (tool === 'letter') _bdLoadLetterFont(state._bdLetterFont, state._bdLetterText || '1');
   const vp = document.getElementById('bdViewport');
   if (vp) vp.dataset.tool = tool;
 }
@@ -1247,6 +1377,44 @@ function _bdBindEditor() {
     });
   });
 
+  /* Letter strip: edits the selected letter, else sets up the next one */
+  const letterOpts = document.getElementById('bdLetterOptions');
+  const letterInput = document.getElementById('bdLetterText');
+  letterOpts.addEventListener('click', function(e) {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const patch = btn.dataset.letterColor ? { color: btn.dataset.letterColor }
+      : (btn.dataset.letterFont ? { font: btn.dataset.letterFont } : null);
+    if (!patch) return;
+    if (patch.color) state._bdLetterColor = patch.color;
+    if (patch.font) state._bdLetterFont = patch.font;
+    const it = _bdSelectedLetter();
+    if (it) _bdUpdateLetter(it, patch).then(_bdSyncLetterOptions);
+    else _bdSyncLetterOptions();
+  });
+  letterInput.addEventListener('focus', function() {
+    const it = _bdSelectedLetter();
+    state._bdLetterEditBefore = it ? { id: it.id, content: _bdClone(it.content), w: it.w } : null;
+  });
+  letterInput.addEventListener('input', function() {
+    const text = letterInput.value.trim().slice(0, 12);
+    const it = _bdSelectedLetter();
+    if (!it) { state._bdLetterText = letterInput.value.slice(0, 12); return; }
+    if (text) _bdUpdateLetter(it, { text: text }, state._bdLetterEditBefore || true);
+  });
+  letterInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); letterInput.blur(); }
+    e.stopPropagation();
+  });
+  letterInput.addEventListener('blur', function() {
+    const b = state._bdLetterEditBefore; state._bdLetterEditBefore = null;
+    const it = b && state._bdItems.find(i => i.id === b.id);
+    if (it && it.content.text !== b.content.text) {
+      _bdPushUndo({ type: 'update', id: it.id, before: { content: b.content, w: b.w }, after: { content: _bdClone(it.content), w: it.w } });
+    }
+    _bdSyncLetterOptions();
+  });
+
   /* File input */
   document.getElementById('bdFileInput').addEventListener('change', async function(e) {
     const files = Array.from(e.target.files || []);
@@ -1323,6 +1491,12 @@ function _bdBindEditor() {
       return;
     }
 
+    if (state._bdTool === 'letter') {
+      const p = _bdScreenToBoard(e.clientX, e.clientY);
+      _bdAddLetterAt(p.x, p.y);
+      return;
+    }
+
     if (state._bdTool === 'note' || state._bdTool === 'text') {
       const p = _bdScreenToBoard(e.clientX, e.clientY);
       if (state._bdTool === 'note') _bdAddNoteAt(p.x, p.y); else _bdAddTextAt(p.x, p.y);
@@ -1385,10 +1559,12 @@ function _bdBindEditor() {
       el.style.top = it.y + 'px';
       state._bdPtr.moved = true;
     } else if (state._bdPtr.mode === 'resize') {
-      const minW = it.kind === 'note' ? 100 : 60;
+      const minW = it.kind === 'note' ? 100 : (it.kind === 'letter' ? 16 : 60);
       let w = Math.max(minW, state._bdPtr.w + (p.x - state._bdPtr.sx));
-      let h = Math.max(40, state._bdPtr.h + (p.y - state._bdPtr.sy));
-      if (it.kind === 'image' && it.content.natW && it.content.natH) {
+      let h = Math.max(it.kind === 'letter' ? 16 : 40, state._bdPtr.h + (p.y - state._bdPtr.sy));
+      if (it.kind === 'letter' && !e.shiftKey) {
+        h = w * (state._bdPtr.h / state._bdPtr.w); // letters scale evenly; Shift stretches
+      } else if (it.kind === 'image' && it.content.natW && it.content.natH) {
         h = w * (it.content.natH / it.content.natW); // images keep their aspect
       } else if (it.kind === 'video' && it.content.provider !== 'link') {
         h = w * 9 / 16;
@@ -1833,4 +2009,4 @@ export function __init() {
 
 act({ _bdAddVideoFromPopover, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard });
 
-export { BD_HILITE, BD_HILITE_RGB, BD_MAX_ZOOM, BD_MIN_ZOOM, BD_PEN_COLORS, BD_PEN_STAB, BD_STICKY_COLORS, BD_TEXT_ALIGNS, BD_TEXT_SIZES, _bdAlignOf, _bdEditEl, _bdEditItem, _bdHitTarget, _bdPenStep, _bdStabIconPath, _bdAddImageFiles, _bdAddNoteAt, _bdAddTextAt, _bdAddVideoAt, _bdAddVideoFromPopover, _bdApplyOp, _bdApplyRemoteOp, _bdApplyView, _bdBindEditor, _bdBindPinch, _bdBindShared, _bdCaptionHtml, _bdCapture, _bdClone, _bdCommitActiveText, _bdCommitTextEdit, _bdCopySelected, _bdCreateItem, _bdDeleteItem, _bdEditorActive, _bdEditorShellHtml, _bdEmbedSrc, _bdFlushOrphans, _bdFlushPendingSaves, _bdHandlesHtml, _bdHideFormatBar, _bdItemEl, _bdLiveJoin, _bdLiveLeave, _bdLiveSend, _bdNum, _bdParseVideoUrl, _bdPasteItem, _bdPathD, _bdPlainText, _bdPositionFormatBar, _bdPrepareImage, _bdPushUndo, _bdQueueItemSave, _bdQueueViewSave, _bdRedo, _bdRefreshItem, _bdRemoveItemLocal, _bdResolveSharedImages, _bdResolveSignedUrls, _bdRestoreItem, _bdRotFor, _bdSafeUrl, _bdSanitizeHtml, _bdScreenToBoard, _bdSelect, _bdSerializeRich, _bdSetBoardShare, _bdSetSaveState, _bdSetTool, _bdShareLink, _bdShowFormatBar, _bdStartTextEdit, _bdSyncSharePopover, _bdSyncUndoButtons, _bdTextHtml, _bdUndo, _bdUrlForPath, _bdValidVid, _bdVideoInnerHtml, _bdZoomAt, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard, renderBoardEditor, renderBoards, renderSharedBoard };
+export { BD_HILITE, BD_HILITE_RGB, BD_LETTER_FONTS, BD_MAX_ZOOM, BD_MIN_ZOOM, BD_PEN_COLORS, BD_PEN_STAB, BD_STICKY_COLORS, BD_TEXT_ALIGNS, BD_TEXT_SIZES, _bdAlignOf, _bdEditEl, _bdEditItem, _bdHitTarget, _bdPenStep, _bdStabIconPath, _bdAddImageFiles, _bdAddLetterAt, _bdAddNoteAt, _bdAddTextAt, _bdAddVideoAt, _bdAddVideoFromPopover, _bdApplyOp, _bdApplyRemoteOp, _bdApplyView, _bdBindEditor, _bdBindPinch, _bdBindShared, _bdCaptionHtml, _bdCapture, _bdClone, _bdCommitActiveText, _bdCommitTextEdit, _bdCopySelected, _bdCreateItem, _bdDeleteItem, _bdEditorActive, _bdEditorShellHtml, _bdEmbedSrc, _bdFlushOrphans, _bdFlushPendingSaves, _bdHandlesHtml, _bdHideFormatBar, _bdItemEl, _bdLetterBox, _bdLiveJoin, _bdLiveLeave, _bdLiveSend, _bdNum, _bdParseVideoUrl, _bdPasteItem, _bdPathD, _bdPlainText, _bdPositionFormatBar, _bdPrepareImage, _bdPushUndo, _bdQueueItemSave, _bdQueueViewSave, _bdRedo, _bdRefreshItem, _bdRemoveItemLocal, _bdResolveSharedImages, _bdResolveSignedUrls, _bdRestoreItem, _bdRotFor, _bdSafeUrl, _bdSanitizeHtml, _bdScreenToBoard, _bdSelect, _bdSerializeRich, _bdSetBoardShare, _bdSetSaveState, _bdSetTool, _bdShareLink, _bdShowFormatBar, _bdStartTextEdit, _bdSyncSharePopover, _bdSyncLetterOptions, _bdSyncUndoButtons, _bdUpdateLetter, _bdTextHtml, _bdUndo, _bdUrlForPath, _bdValidVid, _bdVideoInnerHtml, _bdZoomAt, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard, renderBoardEditor, renderBoards, renderSharedBoard };

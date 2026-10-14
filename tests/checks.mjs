@@ -678,6 +678,28 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   T('dblclick on a media item edits its caption', __arkives._bdEditItem('i1') === true && document.querySelector('.bd-item[data-id="i1"] .bd-caption').getAttribute('contenteditable') === 'true' && !document.querySelector('.bd-item[data-id="i1"] .bd-caption').classList.contains('empty'));
   document.querySelector('.bd-item[data-id="i1"] .bd-caption').blur();
   T('pen strokes have nothing to edit', __arkives._bdEditItem('nope') === false);
+  // Big letters: SVG text fills the box, placed from the letter strip, scales evenly
+  {
+    const xEl = __arkives._bdItemEl({ id: 'L0', kind: 'letter', x: 0, y: 0, w: 100, h: 100, z: 1, content: { text: '<img src=x onerror=window.__x=1>', color: '"><b', font: 'nope' } });
+    T('letter text, color and font are escaped or allowlisted', !xEl.querySelector('img') && xEl.querySelector('text').getAttribute('fill') === __arkives.BD_PEN_COLORS.ink && xEl.querySelector('text').getAttribute('font-weight') === '700');
+    __arkives._bdSetTool('letter');
+    T('letter tool shows its strip', getComputedStyle(document.getElementById('bdLetterOptions')).display !== 'none');
+    __arkives.state._bdLetterText = '7'; __arkives.state._bdLetterColor = 'red';
+    await __arkives._bdAddLetterAt(400, 400);
+    const L = __arkives.state._bdItems[__arkives.state._bdItems.length - 1];
+    const svg = document.querySelector('.bd-item[data-id="' + L.id + '"] svg');
+    T('placing a letter makes a 240px-tall red 7, selected, back on the select tool',
+      L.kind === 'letter' && L.content.text === '7' && L.content.color === 'red' && L.h === 240 && L.w > 16 && L.w < 240 &&
+      __arkives.state._bdSelectedId === L.id && __arkives.state._bdTool === 'select' && svg.getAttribute('preserveAspectRatio') === 'none' && svg.querySelector('text').textContent === '7', JSON.stringify(L));
+    T('the strip stays up for a selected letter', getComputedStyle(document.getElementById('bdLetterOptions')).display !== 'none');
+    const w7 = L.w;
+    await __arkives._bdUpdateLetter(L, { text: '77' });
+    T('changing the text keeps the height and widens to fit', L.h === 240 && L.w > w7 * 1.6 && L.content.text === '77', L.w + ' vs ' + w7);
+    await __arkives._bdUndo();
+    T('undo restores the text and width', L.content.text === '7' && Math.abs(L.w - w7) < 0.01);
+    __arkives._bdSelect(null);
+    T('the strip hides when nothing letter-ish is selected', getComputedStyle(document.getElementById('bdLetterOptions')).display === 'none');
+  }
   // Copy / cut / paste: the copy lands under the cursor as a new item with the same content
   {
     const n1 = __arkives.state._bdItems.find(i => i.id === 'n1');
