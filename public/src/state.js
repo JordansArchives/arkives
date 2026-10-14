@@ -172,6 +172,7 @@ state._bdPenColor = 'ink';
 state._bdLetterText = '1'; // what the letter tool places next
 state._bdLetterColor = 'ink';
 state._bdLetterFont = 'sans';
+state._bdTypeDefaults = {}; // last font + size picked per kind (note / text), used for new ones
 state._bdPenWidth = 3;
 state._bdPenStab = 0; // pen stabilization level (index into BD_PEN_STAB)
 state._bdPenFollow = null; // smoothed pen position during a stroke

@@ -4967,19 +4967,6 @@ button.sc-tag { appearance: none; }
   text-align: center;
 }
 .bd-letter-input:focus { outline: none; border-color: var(--accent); }
-.bd-letter-font {
-  width: 30px; height: 22px;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-}
-.bd-letter-font:hover { background: var(--bg-2); }
-.bd-letter-font.active { color: var(--accent); background: var(--accent-dim); }
 .bd-kind-letter text { white-space: pre; }
 .bd-kind-letter text.bd-ink { fill: var(--text-primary); }
 
@@ -5102,6 +5089,37 @@ button.sc-tag { appearance: none; }
 .bd-format-bar button:hover { background: var(--bg-2); }
 .bd-format-bar button.active { background: var(--accent-dim); color: var(--accent); }
 .bd-fmt-sep { width: 1.5px; align-self: stretch; margin: 2px 3px; background: var(--border); opacity: 0.4; }
+/* Typeface + size dropdowns (custom menus: a native select would steal focus from the text) */
+.bd-fmt-dd { position: relative; display: flex; }
+.bd-format-bar .bd-fmt-dd-btn { display: flex; align-items: center; gap: 4px; font-weight: 500; white-space: nowrap; }
+.bd-format-bar .bd-fmt-dd-font { min-width: 112px; justify-content: space-between; font-size: 13.5px; }
+.bd-fmt-caret { font-size: 9px; color: var(--text-secondary); }
+.bd-fmt-menu {
+  position: absolute;
+  top: calc(100% + 8px); left: 0;
+  flex-direction: column;
+  min-width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--bg-1);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: var(--shadow-sm);
+  z-index: 30;
+}
+.bd-format-bar .bd-fmt-menu button { text-align: left; font-weight: 500; white-space: nowrap; }
+.bd-format-bar .bd-fmt-menu [data-font] { font-size: 15px; }
+.bd-fmt-menu-size { min-width: 64px; }
+.bd-letter-font-select {
+  width: 58px;
+  padding: 3px 2px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text-primary);
+  font: 500 12px var(--font-body);
+}
 .bd-fmt-hilite { background: #F7E9A9; color: #1A1714; padding: 0 4px; border-radius: 2px; }
 
 /* Share button + popover */

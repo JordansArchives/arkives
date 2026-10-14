@@ -700,6 +700,32 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     __arkives._bdSelect(null);
     T('the strip hides when nothing letter-ish is selected', getComputedStyle(document.getElementById('bdLetterOptions')).display === 'none');
   }
+  // Typeface + size dropdowns: picking a size never changes the font
+  {
+    const A = __arkives;
+    A.state._bdItems.push({ id: 'ty1', board_id: 'B1', kind: 'text', x: 600, y: 600, w: 260, h: 40, z: 9, content: { text: 'Big title', size: 'title' } });
+    document.getElementById('bdPlane').appendChild(A._bdItemEl(A.state._bdItems[A.state._bdItems.length - 1]));
+    const ty = () => A.state._bdItems.find(i => i.id === 'ty1');
+    T('a legacy title reads as Instrument Serif 28', A._bdFontOf(ty().content) === 'serif' && A._bdFontSizeOf(ty().content, 'text') === 28);
+    A._bdStartTextEdit('ty1');
+    const bar = document.getElementById('bdFormatBar');
+    T('the bar shows the font and size of the text being edited', document.getElementById('bdFmtFontLabel').textContent === 'Instrument Serif' && document.getElementById('bdFmtSizeLabel').textContent === '28' && bar.style.display === 'flex');
+    bar.querySelector('[data-dd-open="size"]').click();
+    T('the size menu opens with the standard scale', getComputedStyle(document.getElementById('bdFmtMenu-size')).display !== 'none' && A.BD_FONT_SIZES.join() === '8,9,10,11,12,14,16,18,20,24,28,32,36,48,60,72,96');
+    bar.querySelector('[data-font-size="48"]').click();
+    const tEl = document.querySelector('.bd-item[data-id="ty1"] .bd-text-content');
+    T('picking 48 keeps the serif, sizes the text, closes the menu', ty().content.fontSize === 48 && ty().content.font === 'serif' && tEl.style.fontSize === '48px' && /Instrument Serif/.test(tEl.style.fontFamily) && document.getElementById('bdFmtMenu-size').style.display === 'none');
+    bar.querySelector('[data-dd-open="font"]').click();
+    bar.querySelector('[data-font="sans"]').click();
+    T('switching to General Sans keeps 48', ty().content.font === 'sans' && ty().content.fontSize === 48 && /General Sans/.test(tEl.style.fontFamily));
+    T('the pick becomes the default for the next text box', A.state._bdTypeDefaults.text.font === 'sans' && A.state._bdTypeDefaults.text.fontSize === 48);
+    T('only brand fonts are offered', Object.keys(A.BD_TEXT_FONTS).join() === 'sans,serif' && Object.keys(A.BD_LETTER_FONTS).join() === 'sans,serif');
+    T('a junk font size or font never reaches the style', A._bdTypeStyle({ fontSize: '9;background:url(x)', font: 'x' }) === '' && !/url/.test(A._bdTypeStyle({ fontSize: 500, font: 'serif' })));
+    tEl.blur(); // commits the edit (legacy text becomes rich): its own undo step
+    await A._bdUndo(); await A._bdUndo();
+    T('undo puts the serif back', ty().content.font === 'serif' && ty().content.fontSize === 48 && /Instrument Serif/.test(document.querySelector('.bd-item[data-id="ty1"] .bd-text-content').style.fontFamily));
+    A.state._bdTypeDefaults = {};
+  }
   // Copy / cut / paste: the copy lands under the cursor as a new item with the same content
   {
     const n1 = __arkives.state._bdItems.find(i => i.id === 'n1');
