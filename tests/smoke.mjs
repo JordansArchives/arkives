@@ -237,11 +237,11 @@ for (const state of ['populated', 'empty']) {
       await page.waitForTimeout(250);
       const te = await page.evaluate(() => {
         const v = document.getElementById('view-timelines');
-        return { switches: v.querySelectorAll('.tl-switch').length, bars: v.querySelectorAll('#tlPreview .tl-g-bar').length, injected: !!v.querySelector('#tlPreview b, #tlPreview img[src="x"]'),
+        return { switches: v.querySelectorAll('.tl-switch').length, bars: new Set([...v.querySelectorAll('#tlPreview .tl-cal-seg')].map((e) => e.dataset.step)).size, injected: !!v.querySelector('#tlPreview b, #tlPreview img[src="x"]'),
                  scrollX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };
       });
       if (te.switches !== 8) flagged.push(`timeline editor: ${te.switches} step switches, expected 8`);
-      if (te.bars !== 7) flagged.push(`timeline editor: ${te.bars} bars in the preview, expected 7 (one step skipped)`);
+      if (te.bars !== 7) flagged.push(`timeline editor: ${te.bars} bars in the preview, expected 7 steps on the calendar (one step skipped)`);
       if (te.injected) flagged.push('timeline editor: step or title rendered as HTML');
       if (te.scrollX) flagged.push('timeline editor: horizontal page overflow');
       await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-timeline-editor.png`), animations: 'disabled', fullPage: true });
@@ -258,7 +258,7 @@ for (const state of ['populated', 'empty']) {
       await page.waitForTimeout(300);
       const tp = await page.evaluate(() => {
         const shown = (sel) => { const e = document.querySelector(sel); return !!e && getComputedStyle(e).display !== 'none'; };
-        return { card: !!document.querySelector('#view-timeline-public .tl-card'), today: !!document.querySelector('#view-timeline-public .tl-g-today'),
+        return { card: !!document.querySelector('#view-timeline-public .tl-card'), today: !!document.querySelector('#view-timeline-public .tl-cal-today'),
                  gcal: document.querySelectorAll('#view-timeline-public .tl-gcal').length, ics: !!document.querySelector('[data-action="tlPublicIcs"]'),
                  chrome: ['#sidebar', '.mobile-header', '#tabbar'].filter(shown),
                  scrollX: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1 };

@@ -90,6 +90,7 @@ function tlSchedule(t) {
 }
 
 const _MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const _MON_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const _DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function _tlShort(iso) { const d = _tlDate(iso); return d ? _MON[d.getMonth()] + ' ' + d.getDate() : ''; }
 function _tlDay(iso) { const d = _tlDate(iso); return d ? _DOW[d.getDay()] + ', ' + _MON[d.getMonth()] + ' ' + d.getDate() : ''; }
@@ -198,46 +199,55 @@ function renderTimelineCard(t, opts) {
         ${empty ? '' : `<p class="tl-span">${_esc(tlRange(sched.start, sched.end))} · ${_tlPlural(sched.bizDays, 'business day')} · about ${_tlPlural(Math.max(1, Math.round(sched.bizDays / 5)), 'week')}</p>`}
         ${statusLine}
       </header>
-      ${empty ? '<p class="tl-empty">No steps yet.</p>' : _tlGantt(t, sched, o.live ? today : null) + _tlPhaseCards(t, sched, status)}
+      ${empty ? '<p class="tl-empty">No steps yet.</p>' : _tlCalendar(t, sched, o.live ? today : null) + _tlPhaseCards(t, sched, status)}
       ${t.notes ? `<p class="tl-notes">${_esc(t.notes)}</p>` : ''}
       <p class="tl-foot">Dates count business days and skip weekends. They shift if the kickoff moves or feedback runs long.</p>
     </article>`;
 }
 
-// One row per step, one column per business day, grouped by week
-function _tlGantt(t, sched, todayIso) {
-  const n = sched.bizDays;
-  const start = _tlDate(sched.start);
-  // Week headers: a run of business days that share a Monday
-  const weeks = [];
-  let d = new Date(start);
-  for (let i = 0; i < n; i++) {
-    if (!weeks.length || d.getDay() === 1) weeks.push({ from: i, count: 0, label: _MON[d.getMonth()] + ' ' + d.getDate() });
-    weeks[weeks.length - 1].count++;
-    d = _tlAddBiz(d, 1);
+// A calendar, Monday to Sunday, every week the project touches. Steps are
+// sequential, so each week needs one lane: a step is a strip across its days
+// in that week (weekends are never work days, so a strip never crosses one).
+function _tlCalendar(t, sched, todayIso) {
+  const first = _tlDate(sched.start), last = _tlDate(sched.end);
+  const mon = new Date(first); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+  const dayIdx = (iso) => (_tlDate(iso).getDay() + 6) % 7; // Mon 0 .. Sun 6
+  let html = `<div class="tl-cal" role="img" aria-label="${_esc('Calendar: ' + tlRange(sched.start, sched.end))}">`;
+  html += '<div class="tl-cal-dows">' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, k) => `<span${k > 4 ? ' class="tl-cal-we"' : ''}>${d}</span>`).join('') + '</div>';
+  let month = -1;
+  for (let wk = new Date(mon); wk <= last; wk.setDate(wk.getDate() + 7)) {
+    const days = [];
+    for (let k = 0; k < 7; k++) { const d = new Date(wk); d.setDate(d.getDate() + k); days.push(d); }
+    // A week belongs to the month its work days fall in (its Monday, or the
+    // kickoff in the first week); a heading wherever that month changes
+    const owner = days[0] < first ? first : days[0];
+    if (owner.getMonth() !== month) {
+      month = owner.getMonth();
+      html += `<div class="tl-cal-month">${_MON_LONG[month]} ${owner.getFullYear()}</div>`;
+    }
+    const wkStart = _localISODate(days[0]), wkFri = _localISODate(days[4]);
+    html += '<div class="tl-cal-week">';
+    days.forEach((d, k) => {
+      const iso = _localISODate(d);
+      const cls = ['tl-cal-day'];
+      if (k > 4) cls.push('tl-cal-we');
+      if (iso < sched.start || iso > sched.end) cls.push('tl-cal-out');
+      if (iso === todayIso) cls.push('tl-cal-today');
+      // The 1st names its month, except in a narrow weekend column
+      const label = d.getDate() === 1 && k < 5 ? _MON[d.getMonth()] + ' 1' : String(d.getDate());
+      html += `<div class="${cls.join(' ')}" style="grid-column:${k + 1}"><span>${label}</span></div>`;
+    });
+    sched.steps.forEach((s) => {
+      const a = s.start > wkStart ? s.start : wkStart, b = s.end < wkFri ? s.end : wkFri;
+      if (a > b) return;
+      const cont = a > s.start; // carried over from last week
+      const from = dayIdx(a), span = dayIdx(b) - from + 1;
+      html += `<div class="tl-cal-seg tl-ph-${s.phase}${s.owner === 'brand' ? ' tl-g-brand' : ''}${cont ? ' tl-cal-cont' : ''}" data-step="${_esc(s.id)}" style="grid-column:${from + 1} / span ${span}" title="${_esc(s.name + ': ' + tlRange(s.start, s.end))}"><span>${_esc(s.name)}</span></div>`;
+    });
+    html += '</div>';
   }
-  let todayCol = -1;
-  if (todayIso && todayIso >= sched.start && todayIso <= sched.end) {
-    const td = _tlBizStart(_tlDate(todayIso));
-    const s = sched.steps.find(x => _localISODate(td) >= x.start && _localISODate(td) <= x.end);
-    if (s) { let c = s.startIdx, x = _tlDate(s.start); while (_localISODate(x) < _localISODate(td)) { x = _tlAddBiz(x, 1); c++; } todayCol = c; }
-  }
-  const rows = sched.steps.length + 1;
-  let html = `<div class="tl-gantt-wrap"><div class="tl-gantt" style="--tl-cols:${n}" role="img" aria-label="${_esc('Schedule: ' + tlRange(sched.start, sched.end))}">`;
-  html += '<div class="tl-g-corner"></div>';
-  // A one-day stub week (a schedule ending on a Monday) has no room for a label
-  weeks.forEach(w => { html += `<div class="tl-g-week" style="grid-column:${w.from + 2} / span ${w.count}">${w.count > 1 ? _esc(w.label) : ''}</div>`; });
-  sched.steps.forEach((s, i) => {
-    const row = i + 2;
-    html += `<div class="tl-g-label" style="grid-row:${row}"><span class="tl-dot tl-ph-${s.phase}"></span>${_esc(s.name)}</div>`;
-    // Short bars carry their date beside them: after the bar, or before it near the right edge
-    const short = s.days <= 2 ? (s.startIdx > n / 2 ? ' tl-g-short tl-g-left' : ' tl-g-short') : '';
-    const label = s.days === 1 ? _tlShort(s.start) : tlRange(s.start, s.end);
-    html += `<div class="tl-g-bar tl-ph-${s.phase}${s.owner === 'brand' ? ' tl-g-brand' : ''}${short}" style="grid-row:${row};grid-column:${s.startIdx + 2} / span ${s.days}" title="${_esc(s.name + ': ' + tlRange(s.start, s.end))}"><span>${_esc(label)}</span></div>`;
-  });
-  if (todayCol >= 0) html += `<div class="tl-g-today" style="grid-row:1 / span ${rows};grid-column:${todayCol + 2}"><span>Today</span></div>`;
-  html += '</div></div>';
-  html += `<div class="tl-legend">${sched.phases.map(p => `<span><i class="tl-dot tl-ph-${p.key}"></i>${_esc(p.label)}</span>`).join('')}<span><i class="tl-dot tl-dot-brand"></i>Your review</span></div>`;
+  html += '</div>';
+  html += `<div class="tl-legend">${sched.phases.map(p => `<span><i class="tl-dot tl-ph-${p.key}"></i>${_esc(p.label)}</span>`).join('')}<span><i class="tl-dot tl-dot-brand"></i>Your review</span>${todayIso && todayIso >= sched.start && todayIso <= sched.end ? '<span><i class="tl-dot tl-dot-today"></i>Today</span>' : ''}</div>`;
   return html;
 }
 
