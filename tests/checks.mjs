@@ -678,31 +678,11 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   T('dblclick on a media item edits its caption', __arkives._bdEditItem('i1') === true && document.querySelector('.bd-item[data-id="i1"] .bd-caption').getAttribute('contenteditable') === 'true' && !document.querySelector('.bd-item[data-id="i1"] .bd-caption').classList.contains('empty'));
   document.querySelector('.bd-item[data-id="i1"] .bd-caption').blur();
   T('pen strokes have nothing to edit', __arkives._bdEditItem('nope') === false);
-  // Big letters: SVG text fills the box, placed from the letter strip, scales evenly
-  {
-    const xEl = __arkives._bdItemEl({ id: 'L0', kind: 'letter', x: 0, y: 0, w: 100, h: 100, z: 1, content: { text: '<img src=x onerror=window.__x=1>', color: '"><b', font: 'nope' } });
-    T('letter text, color and font are escaped or allowlisted', !xEl.querySelector('img') && xEl.querySelector('text').getAttribute('fill') === __arkives.BD_PEN_COLORS.ink && xEl.querySelector('text').getAttribute('font-weight') === '700');
-    __arkives._bdSetTool('letter');
-    T('letter tool shows its strip', getComputedStyle(document.getElementById('bdLetterOptions')).display !== 'none');
-    __arkives.state._bdLetterText = '7'; __arkives.state._bdLetterColor = 'red';
-    await __arkives._bdAddLetterAt(400, 400);
-    const L = __arkives.state._bdItems[__arkives.state._bdItems.length - 1];
-    const svg = document.querySelector('.bd-item[data-id="' + L.id + '"] svg');
-    T('placing a letter makes a 240px-tall red 7, selected, back on the select tool',
-      L.kind === 'letter' && L.content.text === '7' && L.content.color === 'red' && L.h === 240 && L.w > 16 && L.w < 240 &&
-      __arkives.state._bdSelectedId === L.id && __arkives.state._bdTool === 'select' && svg.getAttribute('preserveAspectRatio') === 'none' && svg.querySelector('text').textContent === '7', JSON.stringify(L));
-    T('the strip stays up for a selected letter', getComputedStyle(document.getElementById('bdLetterOptions')).display !== 'none');
-    const w7 = L.w;
-    await __arkives._bdUpdateLetter(L, { text: '77' });
-    T('changing the text keeps the height and widens to fit', L.h === 240 && L.w > w7 * 1.6 && L.content.text === '77', L.w + ' vs ' + w7);
-    await __arkives._bdUndo();
-    T('undo restores the text and width', L.content.text === '7' && Math.abs(L.w - w7) < 0.01);
-    __arkives._bdSelect(null);
-    T('the strip hides when nothing letter-ish is selected', getComputedStyle(document.getElementById('bdLetterOptions')).display === 'none');
-  }
   // Typeface + size dropdowns: picking a size never changes the font
   {
     const A = __arkives;
+    await new Promise((r) => setTimeout(r, 30)); // let the quick sticky from the dblclick check finish opening
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); // and commit it
     A.state._bdItems.push({ id: 'ty1', board_id: 'B1', kind: 'text', x: 600, y: 600, w: 260, h: 40, z: 9, content: { text: 'Big title', size: 'title' } });
     document.getElementById('bdPlane').appendChild(A._bdItemEl(A.state._bdItems[A.state._bdItems.length - 1]));
     const ty = () => A.state._bdItems.find(i => i.id === 'ty1');
@@ -719,12 +699,46 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     bar.querySelector('[data-font="sans"]').click();
     T('switching to General Sans keeps 48', ty().content.font === 'sans' && ty().content.fontSize === 48 && /General Sans/.test(tEl.style.fontFamily));
     T('the pick becomes the default for the next text box', A.state._bdTypeDefaults.text.font === 'sans' && A.state._bdTypeDefaults.text.fontSize === 48);
-    T('only brand fonts are offered', Object.keys(A.BD_TEXT_FONTS).join() === 'sans,serif' && Object.keys(A.BD_LETTER_FONTS).join() === 'sans,serif');
+    T('only brand fonts are offered', Object.keys(A.BD_TEXT_FONTS).join() === 'sans,serif');
     T('a junk font size or font never reaches the style', A._bdTypeStyle({ fontSize: '9;background:url(x)', font: 'x' }) === '' && !/url/.test(A._bdTypeStyle({ fontSize: 500, font: 'serif' })));
     tEl.blur(); // commits the edit (legacy text becomes rich): its own undo step
     await A._bdUndo(); await A._bdUndo();
-    T('undo puts the serif back', ty().content.font === 'serif' && ty().content.fontSize === 48 && /Instrument Serif/.test(document.querySelector('.bd-item[data-id="ty1"] .bd-text-content').style.fontFamily));
+    T('undo puts the serif back', ty().content.font === 'serif' && ty().content.fontSize === 48 && /Instrument Serif/.test(document.querySelector('.bd-item[data-id="ty1"] .bd-text-content').style.fontFamily), JSON.stringify(ty().content));
     A.state._bdTypeDefaults = {};
+  }
+  // Straight lines: drag with the line tool, Shift snaps to 45°, ends drag on their own
+  {
+    const A = __arkives;
+    A.state._bdView = { x: 0, y: 0, z: 1 }; A._bdApplyView();
+    const r = vp.getBoundingClientRect();
+    const mp = (type, x, y, shift) => vp.dispatchEvent(new PointerEvent(type, { pointerId: 21, pointerType: 'mouse', button: 0, clientX: r.left + x, clientY: r.top + y, shiftKey: !!shift, bubbles: true, isPrimary: true }));
+    A._bdSetTool('line');
+    T('line tool shows colors + widths but not stabilization', getComputedStyle(document.getElementById('bdPenOptions')).display !== 'none' && getComputedStyle(document.querySelector('#bdPenOptions .bd-stab-group')).display === 'none');
+    const n0 = A.state._bdItems.length;
+    mp('pointerdown', 700, 100); mp('pointermove', 900, 130); mp('pointermove', 1000, 140); mp('pointerup', 1000, 140);
+    await new Promise((res) => setTimeout(res, 30));
+    const ln = A.state._bdItems[A.state._bdItems.length - 1];
+    const ends = ln && A._bdLineEnds(ln);
+    T('dragging makes one straight two-point line from press to release', A.state._bdItems.length === n0 + 1 && ln.kind === 'draw' && ln.content.line === true && ln.content.points.length === 2 &&
+      Math.abs(ends[0][0] - 700) < 0.2 && Math.abs(ends[0][1] - 100) < 0.2 && Math.abs(ends[1][0] - 1000) < 0.2 && Math.abs(ends[1][1] - 140) < 0.2, JSON.stringify(ln));
+    const n1c = A.state._bdItems.length;
+    mp('pointerdown', 300, 600); mp('pointermove', 301, 601); mp('pointerup', 301, 601);
+    await new Promise((res) => setTimeout(res, 30));
+    T('a click without a drag makes no line', A.state._bdItems.length === n1c);
+    T('Shift snaps to the nearest 45°', A._bdSnapLine([0, 0], [100, 8], true)[1] === 0 && A._bdSnapLine([0, 0], [100, 8], false)[1] === 8 && Math.abs(A._bdSnapLine([0, 0], [100, 90], true)[0] - A._bdSnapLine([0, 0], [100, 90], true)[1]) < 0.2);
+    A._bdSetTool('select');
+    A._bdSelect(ln.id);
+    const endEl = document.querySelector('.bd-item[data-id="' + ln.id + '"] .bd-line-end[data-end="1"]');
+    T('a selected line shows a handle on each end', document.querySelectorAll('.bd-item[data-id="' + ln.id + '"] .bd-line-end').length === 2 && getComputedStyle(endEl).display !== 'none');
+    endEl.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 22, pointerType: 'mouse', button: 0, clientX: r.left + 1000, clientY: r.top + 140, bubbles: true, isPrimary: true }));
+    vp.dispatchEvent(new PointerEvent('pointermove', { pointerId: 22, pointerType: 'mouse', clientX: r.left + 700, clientY: r.top + 400, bubbles: true }));
+    vp.dispatchEvent(new PointerEvent('pointerup', { pointerId: 22, pointerType: 'mouse', clientX: r.left + 700, clientY: r.top + 400, bubbles: true }));
+    const e2 = A._bdLineEnds(ln);
+    T('dragging an end moves only that end', Math.abs(e2[0][0] - 700) < 0.2 && Math.abs(e2[0][1] - 100) < 0.2 && Math.abs(e2[1][0] - 700) < 0.2 && Math.abs(e2[1][1] - 400) < 0.2 && ln.w === 2, JSON.stringify(e2));
+    await A._bdUndo();
+    const e3 = A._bdLineEnds(A.state._bdItems.find(i => i.id === ln.id));
+    T('undo puts the end back', Math.abs(e3[1][0] - 1000) < 0.2 && Math.abs(e3[1][1] - 140) < 0.2, JSON.stringify(e3));
+    A._bdSelect(null);
   }
   // Copy / cut / paste: the copy lands under the cursor as a new item with the same content
   {

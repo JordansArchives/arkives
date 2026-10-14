@@ -4724,7 +4724,8 @@ button.sc-tag { appearance: none; }
 }
 .board-viewport:active { cursor: grabbing; }
 .board-viewport[data-tool="pen"] { cursor: crosshair; }
-.board-viewport[data-tool="note"], .board-viewport[data-tool="text"], .board-viewport[data-tool="letter"] { cursor: copy; }
+.board-viewport[data-tool="note"], .board-viewport[data-tool="text"] { cursor: copy; }
+.board-viewport[data-tool="line"] { cursor: crosshair; }
 .board-plane, .bd-pen-live {
   position: absolute;
   top: 0; left: 0;
@@ -4955,20 +4956,6 @@ button.sc-tag { appearance: none; }
 }
 .bd-stab:hover { background: var(--bg-2); }
 .bd-stab.active { color: var(--accent); background: var(--accent-dim); }
-/* Letter tool strip: what to place, color, font */
-.bd-letter-input {
-  width: 46px;
-  padding: 4px 2px;
-  border: 1.5px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-2);
-  color: var(--text-primary);
-  font: 700 15px var(--font-body);
-  text-align: center;
-}
-.bd-letter-input:focus { outline: none; border-color: var(--accent); }
-.bd-kind-letter text { white-space: pre; }
-.bd-kind-letter text.bd-ink { fill: var(--text-primary); }
 
 /* ---- Video popover & drop hint ---- */
 .bd-video-popover {
@@ -5037,6 +5024,24 @@ button.sc-tag { appearance: none; }
 .bd-kind-draw { pointer-events: none; }
 .bd-kind-draw svg path { pointer-events: stroke; cursor: move; }
 .bd-kind-draw .bd-item-actions { pointer-events: auto; }
+/* Straight lines: a wide invisible stroke makes thin lines easy to grab;
+   a selected line shows a handle on each end */
+.bd-kind-draw svg path.bd-line-hit { pointer-events: stroke; cursor: move; }
+.bd-line-end {
+  position: absolute;
+  width: 12px; height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  background: var(--bg-1);
+  cursor: crosshair;
+  pointer-events: auto;
+  display: none;
+  z-index: 2;
+}
+.bd-item.selected .bd-line-end { display: block; }
+.bd-opts-line .bd-stab-group { display: none; }
+.bd-stab-group { display: contents; }
 
 /* ============================================================
    BOARDS v2 — formatting, undo-era tweaks, sharing, shared view
@@ -5111,15 +5116,6 @@ button.sc-tag { appearance: none; }
 .bd-format-bar .bd-fmt-menu button { text-align: left; font-weight: 500; white-space: nowrap; }
 .bd-format-bar .bd-fmt-menu [data-font] { font-size: 15px; }
 .bd-fmt-menu-size { min-width: 64px; }
-.bd-letter-font-select {
-  width: 58px;
-  padding: 3px 2px;
-  border: 1.5px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg-2);
-  color: var(--text-primary);
-  font: 500 12px var(--font-body);
-}
 .bd-fmt-hilite { background: #F7E9A9; color: #1A1714; padding: 0 4px; border-radius: 2px; }
 
 /* Share button + popover */
