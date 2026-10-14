@@ -678,6 +678,34 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   T('dblclick on a media item edits its caption', __arkives._bdEditItem('i1') === true && document.querySelector('.bd-item[data-id="i1"] .bd-caption').getAttribute('contenteditable') === 'true' && !document.querySelector('.bd-item[data-id="i1"] .bd-caption').classList.contains('empty'));
   document.querySelector('.bd-item[data-id="i1"] .bd-caption').blur();
   T('pen strokes have nothing to edit', __arkives._bdEditItem('nope') === false);
+  // Copy / cut / paste: the copy lands under the cursor as a new item with the same content
+  {
+    const n1 = __arkives.state._bdItems.find(i => i.id === 'n1');
+    n1.content = { text: 'Hook <b>idea</b><br>line two', rich: true, color: 'pink' };
+    T('copied note text is plain', __arkives._bdPlainText(n1.content) === 'Hook idea\nline two');
+    __arkives._bdSelect('n1');
+    await __arkives._bdCopySelected(false);
+    vp.dispatchEvent(new PointerEvent('pointermove', { pointerId: 12, pointerType: 'mouse', clientX: rect.left + 300, clientY: rect.top + 200, bubbles: true }));
+    const before = __arkives.state._bdItems.length;
+    await __arkives._bdPasteItem();
+    const pasted = __arkives.state._bdItems[__arkives.state._bdItems.length - 1];
+    const at = __arkives._bdScreenToBoard(rect.left + 300, rect.top + 200);
+    T('paste adds a new note with the same content, centered under the cursor, and selects it',
+      __arkives.state._bdItems.length === before + 1 && pasted.id !== 'n1' && pasted.kind === 'note' && pasted.content.color === 'pink' && pasted.content.text === n1.content.text &&
+      Math.abs(pasted.x + pasted.w / 2 - at.x) <= 1 && __arkives.state._bdSelectedId === pasted.id, JSON.stringify(pasted));
+    pasted.content.text = 'changed';
+    T('the copy is independent of the clipboard', __arkives.state._bdClipboard.content.text !== 'changed');
+    await __arkives._bdPasteItem();
+    const second = __arkives.state._bdItems[__arkives.state._bdItems.length - 1];
+    T('pasting again at the same spot steps the copy over', second.x === pasted.x + 24 && second.y === pasted.y + 24);
+    await __arkives._bdUndo(); await __arkives._bdUndo();
+    __arkives._bdSelect('n1');
+    await __arkives._bdCopySelected(true);
+    T('cut removes the item and keeps it to paste', !__arkives.state._bdItems.some(i => i.id === 'n1') && __arkives.state._bdClipboard.kind === 'note');
+    await __arkives._bdUndo();
+    T('undoing a cut brings the item back', __arkives.state._bdItems.some(i => i.id === 'n1'));
+    __arkives.state._bdClipboard = null;
+  }
   // Touch: two still taps on the same item inside the window
   const n1El = document.querySelector('.bd-item[data-id="n1"]');
   const n1Body = n1El.querySelector('.bd-text-content'); n1Body.setAttribute('contenteditable', 'false');

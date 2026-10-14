@@ -1064,6 +1064,102 @@ async function _bdDeleteItem(id) {
   await _bdRemoveItemLocal(id);
 }
 
+/* ---- EDITOR: COPY / CUT / PASTE ---- */
+/* Cmd+C keeps the selected item in memory and puts its text (or a marker)
+   on the system clipboard. The paste handler matches that text to know the
+   clipboard still holds the item; copying anything else elsewhere wins.
+   Pasted images get their own copy of the file, so deleting one never
+   breaks the other. */
+
+function _bdPlainText(c) {
+  if (!c || !c.text) return '';
+  if (!c.rich) return c.text;
+  const tmpl = document.createElement('template');
+  tmpl.innerHTML = c.text.replace(/<br\s*\/?>/gi, '\n');
+  return tmpl.content.textContent || '';
+}
+
+async function _bdCopySelected(cut) {
+  const it = state._bdItems.find(i => i.id === state._bdSelectedId);
+  if (!it) return false;
+  const c = it.content || {};
+  const text = (it.kind === 'note' || it.kind === 'text') ? _bdPlainText(c).trim()
+    : (it.kind === 'video' ? (c.url || '') : (c.caption || ''));
+  const marker = text || 'Arkives board item';
+  state._bdClipboard = { kind: it.kind, w: it.w, h: it.h, content: _bdClone(c), marker: marker, pastes: 0 };
+  // Grab the image bytes now: after a cut, the file is purged when the board is left
+  if (it.kind === 'image' && c.path) state._bdClipboard.blob = _bdFetchImageBlob(c.path);
+  try { await navigator.clipboard.writeText(marker); }
+  catch (_) { state._bdClipboard.marker = null; } // no clipboard access: paste uses the in-memory copy
+  if (cut) {
+    // A cut image keeps its file until the board is left, like a delete, so the paste can copy it
+    await _bdDeleteItem(it.id);
+  }
+  return true;
+}
+
+// Where a paste lands: under the cursor when it's over the board, else the view center
+function _bdPastePoint() {
+  const vpEl = document.getElementById('bdViewport');
+  if (!vpEl) return { x: 0, y: 0 };
+  const rect = vpEl.getBoundingClientRect();
+  const lp = state._bdLastPtr;
+  if (lp && lp.x >= rect.left && lp.x <= rect.right && lp.y >= rect.top && lp.y <= rect.bottom) {
+    return _bdScreenToBoard(lp.x, lp.y);
+  }
+  return _bdScreenToBoard(rect.left + rect.width / 2, rect.top + rect.height / 2);
+}
+
+async function _bdPasteItem() {
+  const clip = state._bdClipboard;
+  if (!clip || !state._bdBoard) return;
+  const content = _bdClone(clip.content);
+  if (clip.kind === 'image' && content.path) {
+    _bdSetSaveState('saving');
+    const newPath = await _bdDuplicateImageFile(clip.blob, content.path.split('.').pop());
+    if (!newPath) { _showSaveError('Could not copy the image'); return; }
+    content.path = newPath;
+  }
+  // Repeated pastes at the same spot step down-right so copies don't stack exactly
+  const pt = _bdPastePoint();
+  const key = Math.round(pt.x) + ',' + Math.round(pt.y);
+  clip.pastes = clip.lastKey === key ? clip.pastes + 1 : 0;
+  clip.lastKey = key;
+  const off = clip.pastes * 24;
+  const h = clip.kind === 'text' ? 40 : clip.h;
+  const row = await _bdCreateItem(clip.kind, pt.x - clip.w / 2 + off, pt.y - h / 2 + off, clip.w, clip.h, content);
+  if (!row) return;
+  if (row.kind === 'image') { _bdSetSaveState('saved'); _bdResolveSignedUrls(); }
+  _bdSelect(row.id);
+}
+
+async function _bdFetchImageBlob(path) {
+  try {
+    const url = state._bdSignedUrls[path] || await _bdUrlForPath(path);
+    return url ? await (await fetch(url)).blob() : null;
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+
+// New storage file with the same bytes, under this board's folder
+async function _bdDuplicateImageFile(blobPromise, ext) {
+  if (!state._sb || !blobPromise) return null;
+  try {
+    const blob = await blobPromise;
+    if (!blob) return null;
+    const ownerId = state._bdSharedOwnerId || state.CREATOR._sbId;
+    const newPath = ownerId + '/' + state._bdBoard.id + '/' + crypto.randomUUID() + '.' + (ext || 'webp');
+    const up = await state._sb.storage.from('board-media').upload(newPath, blob, { contentType: blob.type || undefined });
+    if (up.error) { console.error(up.error); return null; }
+    return newPath;
+  } catch (e) {
+    console.error(e);
+    return null;
+  }
+}
+
 function _bdSetTool(tool) {
   state._bdTool = tool;
   document.querySelectorAll('#bdToolbar .bd-tool[data-tool]').forEach(function(b) {
@@ -1256,6 +1352,7 @@ function _bdBindEditor() {
   });
 
   vp.addEventListener('pointermove', function(e) {
+    state._bdLastPtr = { x: e.clientX, y: e.clientY };
     if (!state._bdPtr) return;
     if (state._bdPtr.mode === 'pan') {
       state._bdView.x = state._bdPtr.vx + (e.clientX - state._bdPtr.sx);
@@ -1514,6 +1611,12 @@ function _bdBindEditor() {
         if (e.shiftKey) _bdRedo(); else _bdUndo();
         return;
       }
+      if ((e.metaKey || e.ctrlKey) && /^[cx]$/i.test(e.key) && state._bdSelectedId &&
+          !(window.getSelection && String(window.getSelection()).length)) {
+        e.preventDefault();
+        _bdCopySelected(e.key.toLowerCase() === 'x');
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         _bdRedo();
@@ -1541,7 +1644,10 @@ function _bdBindEditor() {
       const center = _bdScreenToBoard(rect.left + rect.width / 2, rect.top + rect.height / 2);
       const files = Array.from(e.clipboardData.files || []).filter(f => f.type.indexOf('image/') === 0);
       if (files.length) { e.preventDefault(); await _bdAddImageFiles(files, center.x, center.y); return; }
-      const text = e.clipboardData.getData('text/plain').trim();
+      const raw = e.clipboardData.getData('text/plain');
+      const clip = state._bdClipboard;
+      if (clip && (clip.marker === null ? true : raw === clip.marker)) { e.preventDefault(); await _bdPasteItem(); return; }
+      const text = raw.trim();
       if (/^https?:\/\/\S+$/.test(text)) { e.preventDefault(); await _bdAddVideoAt(text, center.x, center.y); }
       else if (text) { e.preventDefault(); await _bdCreateItem('text', center.x - 130, center.y - 14, 260, 40, { text: text, size: 'body' }); }
     });
@@ -1727,4 +1833,4 @@ export function __init() {
 
 act({ _bdAddVideoFromPopover, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard });
 
-export { BD_HILITE, BD_HILITE_RGB, BD_MAX_ZOOM, BD_MIN_ZOOM, BD_PEN_COLORS, BD_PEN_STAB, BD_STICKY_COLORS, BD_TEXT_ALIGNS, BD_TEXT_SIZES, _bdAlignOf, _bdEditEl, _bdEditItem, _bdHitTarget, _bdPenStep, _bdStabIconPath, _bdAddImageFiles, _bdAddNoteAt, _bdAddTextAt, _bdAddVideoAt, _bdAddVideoFromPopover, _bdApplyOp, _bdApplyRemoteOp, _bdApplyView, _bdBindEditor, _bdBindPinch, _bdBindShared, _bdCaptionHtml, _bdCapture, _bdClone, _bdCommitActiveText, _bdCommitTextEdit, _bdCreateItem, _bdDeleteItem, _bdEditorActive, _bdEditorShellHtml, _bdEmbedSrc, _bdFlushOrphans, _bdFlushPendingSaves, _bdHandlesHtml, _bdHideFormatBar, _bdItemEl, _bdLiveJoin, _bdLiveLeave, _bdLiveSend, _bdNum, _bdParseVideoUrl, _bdPathD, _bdPositionFormatBar, _bdPrepareImage, _bdPushUndo, _bdQueueItemSave, _bdQueueViewSave, _bdRedo, _bdRefreshItem, _bdRemoveItemLocal, _bdResolveSharedImages, _bdResolveSignedUrls, _bdRestoreItem, _bdRotFor, _bdSafeUrl, _bdSanitizeHtml, _bdScreenToBoard, _bdSelect, _bdSerializeRich, _bdSetBoardShare, _bdSetSaveState, _bdSetTool, _bdShareLink, _bdShowFormatBar, _bdStartTextEdit, _bdSyncSharePopover, _bdSyncUndoButtons, _bdTextHtml, _bdUndo, _bdUrlForPath, _bdValidVid, _bdVideoInnerHtml, _bdZoomAt, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard, renderBoardEditor, renderBoards, renderSharedBoard };
+export { BD_HILITE, BD_HILITE_RGB, BD_MAX_ZOOM, BD_MIN_ZOOM, BD_PEN_COLORS, BD_PEN_STAB, BD_STICKY_COLORS, BD_TEXT_ALIGNS, BD_TEXT_SIZES, _bdAlignOf, _bdEditEl, _bdEditItem, _bdHitTarget, _bdPenStep, _bdStabIconPath, _bdAddImageFiles, _bdAddNoteAt, _bdAddTextAt, _bdAddVideoAt, _bdAddVideoFromPopover, _bdApplyOp, _bdApplyRemoteOp, _bdApplyView, _bdBindEditor, _bdBindPinch, _bdBindShared, _bdCaptionHtml, _bdCapture, _bdClone, _bdCommitActiveText, _bdCommitTextEdit, _bdCopySelected, _bdCreateItem, _bdDeleteItem, _bdEditorActive, _bdEditorShellHtml, _bdEmbedSrc, _bdFlushOrphans, _bdFlushPendingSaves, _bdHandlesHtml, _bdHideFormatBar, _bdItemEl, _bdLiveJoin, _bdLiveLeave, _bdLiveSend, _bdNum, _bdParseVideoUrl, _bdPasteItem, _bdPathD, _bdPlainText, _bdPositionFormatBar, _bdPrepareImage, _bdPushUndo, _bdQueueItemSave, _bdQueueViewSave, _bdRedo, _bdRefreshItem, _bdRemoveItemLocal, _bdResolveSharedImages, _bdResolveSignedUrls, _bdRestoreItem, _bdRotFor, _bdSafeUrl, _bdSanitizeHtml, _bdScreenToBoard, _bdSelect, _bdSerializeRich, _bdSetBoardShare, _bdSetSaveState, _bdSetTool, _bdShareLink, _bdShowFormatBar, _bdStartTextEdit, _bdSyncSharePopover, _bdSyncUndoButtons, _bdTextHtml, _bdUndo, _bdUrlForPath, _bdValidVid, _bdVideoInnerHtml, _bdZoomAt, _bdZoomBtn, _bdZoomFit, _createNewBoard, _deleteBoard, renderBoardEditor, renderBoards, renderSharedBoard };
