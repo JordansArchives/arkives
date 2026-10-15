@@ -16,6 +16,7 @@ const ERRORS = {
   scope: 'Arkives needs the calendar box ticked on Google\'s screen. Try Connect again and leave it ticked.',
   not_configured: 'Google connection is not set up on the server yet.',
   expired: 'That connection took too long. Try Connect again.',
+  forbidden: 'Google Calendar is not enabled for this account.',
 };
 
 function inboxAddress() {
