@@ -8,11 +8,14 @@ import { formatDate } from '../lib/format.js';
 import { db } from '../lib/sb.js';
 import { moneySummary, quoteSummary, revenueByMonth, taskSummary } from '../lib/metrics.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
+import { isPrivate, privacyButtonHtml, pv } from '../lib/privacy.js';
 import { followerTrend, lastScanText, loadSocialStats, onSocialUpdate, scanButtonHtml, scanNoteHtml } from './social.js';
 import { _localISODate } from './tasks.js';
 
 const RECENT_TTL_MS = 60 * 1000;
 const _money = (n) => '$' + Math.round(Number(n) || 0).toLocaleString('en-US');
+// Money as shown on the dashboard: masked in privacy mode (lib/privacy.js)
+const _pmoney = (n) => pv(_money(n));
 const _plural = (n, one, many) => `${n} ${n === 1 ? one : (many || one + 's')}`;
 
 /* ---- DASHBOARD ---- */
@@ -27,9 +30,9 @@ function renderDashboard() {
   const hasInvoices = (state.INVOICE_DATA || []).some((i) => i.status !== 'draft');
 
   const statusRows = [
-    { href: 'invoices', tone: 'orange', label: 'Outstanding', num: _money(money.outstanding),
-      sub: money.outstandingCount ? `${_plural(money.outstandingCount, 'unpaid invoice')}${money.overdueCount ? `, <span class="dash-warn">${_money(money.overdue)} overdue</span>` : ''}` : 'Nothing owed right now' },
-    { href: 'quotes', tone: 'teal', label: 'Open quotes', num: _money(quotes.openValue),
+    { href: 'invoices', tone: 'orange', label: 'Outstanding', num: _pmoney(money.outstanding),
+      sub: money.outstandingCount ? `${_plural(money.outstandingCount, 'unpaid invoice')}${money.overdueCount ? `, <span class="dash-warn">${_pmoney(money.overdue)} overdue</span>` : ''}` : 'Nothing owed right now' },
+    { href: 'quotes', tone: 'teal', label: 'Open quotes', num: _pmoney(quotes.openValue),
       sub: `${_plural(quotes.openCount, 'quote')} waiting on a reply${quotes.winRate != null ? `, ${quotes.winRate}% won` : ''}${quotes.unseen ? `<span class="dash-pill">${_plural(quotes.unseen, 'new reply', 'new replies')}</span>` : ''}` },
     { href: 'tasks', tone: 'blue', label: 'Open tasks', num: String(tasks.openCount),
       sub: tasks.dueToday || tasks.overdue ? `${tasks.dueToday} due today${tasks.overdue ? `, <span class="dash-warn">${tasks.overdue} overdue</span>` : ''}` : 'Nothing due today' },
@@ -41,7 +44,10 @@ function renderDashboard() {
         <h1 class="view-title">Dashboard</h1>
         <p class="view-subtitle">${formatDate(new Date())}</p>
       </div>
-      <div class="dash-scan" id="dashScan">${_scanHtml()}</div>
+      <div class="dash-header-actions">
+        <span id="dashPrivacy">${privacyButtonHtml()}</span>
+        <div class="dash-scan" id="dashScan">${_scanHtml()}</div>
+      </div>
     </div>
 
     <section class="dash-tiles" id="dashTiles" aria-label="Your tools">${_tilesHtml(today)}</section>
@@ -51,8 +57,8 @@ function renderDashboard() {
         <div class="dash-ledger-head">
           <a href="#revenue" class="dash-ledger-total">
             <span class="dash-label">Paid this month</span>
-            <span class="dash-hero-num">${_money(money.paidMonth)}</span>
-            <span class="dash-sub">${_money(money.paidYear)} so far this year</span>
+            <span class="dash-hero-num">${_pmoney(money.paidMonth)}</span>
+            <span class="dash-sub">${_pmoney(money.paidYear)} so far this year</span>
           </a>
           ${hasInvoices ? '<div class="dash-legend"><span class="dash-key dash-key-paid"></span>Paid<span class="dash-key dash-key-inv"></span>Invoiced</div>' : ''}
         </div>
@@ -121,7 +127,7 @@ function _recentList(items, hrefPrefix, emptyText) {
   if (!items.length) return `<div class="dash-tile-empty">${emptyText}</div>`;
   return items.slice(0, 3).map((x) => `
     <a class="dash-tile-row" href="#${hrefPrefix}/${encodeURIComponent(x.id)}">
-      <span class="dash-tile-name">${_esc(x.title || 'Untitled')}</span>
+      <span class="dash-tile-name">${pv(_esc(x.title || 'Untitled'))}</span>
       <span class="dash-tile-meta">${_ago(x.updated_at)}</span>
     </a>`).join('');
 }
@@ -159,15 +165,15 @@ function _tilesHtml(today) {
       ${_tileHead('contracts', 'Contracts', '<a href="#contracts" class="dash-tile-new" aria-label="New contract">+ New</a>')}
       ${accepted.length ? `<div class="dash-tile-hint">Accepted quotes, ready for a contract</div>` + accepted.map((q) => `
         <a class="dash-tile-row" href="#quotes/${encodeURIComponent(q._sbId)}">
-          <span class="dash-tile-name">${_esc(q.title || q.quoteNumber)}</span>
-          <span class="dash-tile-meta">${_esc(q.clientCompany || q.clientName || '')}</span>
+          <span class="dash-tile-name">${pv(_esc(q.title || q.quoteNumber))}</span>
+          <span class="dash-tile-meta">${pv(_esc(q.clientCompany || q.clientName || ''))}</span>
         </a>`).join('') : '<div class="dash-tile-empty">When a client accepts a quote, it lands here ready to turn into a contract.</div>'}
     </div>
     <div class="dash-tile tile-calendar">
       ${_tileHead('calendar', 'Calendar', '<a href="#calendar" class="dash-tile-new" aria-label="Add event">+ Add</a>')}
       ${upcoming.length ? upcoming.map((e) => `
         <a class="dash-tile-row" href="#calendar">
-          <span class="dash-tile-name"><span class="dash-tile-date">${_shortMonth(e.date)} ${_shortDay(e.date)}</span>${_esc(e.brand || 'Event')}</span>
+          <span class="dash-tile-name"><span class="dash-tile-date">${_shortMonth(e.date)} ${_shortDay(e.date)}</span>${pv(_esc(e.brand || 'Event'))}</span>
           <span class="dash-tile-meta">${_esc(e.type || '')}</span>
         </a>`).join('') : '<div class="dash-tile-empty">Nothing scheduled. Add a shoot or a posting date.</div>'}
     </div>`;
@@ -266,23 +272,27 @@ function renderDashboardRevChart(today) {
   const ink = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#C73539';
   const gridColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
   const textColor = isDark ? '#B8B4AC' : '#5C5852';
+  // Privacy mode: the real numbers never reach the canvas (no values, no
+  // tooltips, no axis amounts); placeholder bars sit under a blur
+  const hide = isPrivate();
+  const val = (n, i) => (hide ? 40 + ((i * 37) % 50) : n);
 
   canvas._chartInstance = new Chart(canvas, {
     type: 'bar',
     data: {
       labels: months.map((m) => m.label),
       datasets: [
-        { label: 'Paid', data: months.map((m) => m.paid), backgroundColor: ink, borderRadius: 1, barPercentage: 0.7, categoryPercentage: 0.7 },
-        { label: 'Invoiced', data: months.map((m) => m.invoiced), backgroundColor: ink + '1F', borderColor: ink + '99', borderWidth: 1.5, borderRadius: 1, barPercentage: 0.7, categoryPercentage: 0.7 },
+        { label: 'Paid', data: months.map((m, i) => val(m.paid, i)), backgroundColor: ink, borderRadius: 1, barPercentage: 0.7, categoryPercentage: 0.7 },
+        { label: 'Invoiced', data: months.map((m, i) => val(m.invoiced, i + 3)), backgroundColor: ink + '1F', borderColor: ink + '99', borderWidth: 1.5, borderRadius: 1, barPercentage: 0.7, categoryPercentage: 0.7 },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + _money(ctx.parsed.y) } } },
+      plugins: { legend: { display: false }, tooltip: { enabled: !hide, callbacks: { label: (ctx) => ctx.dataset.label + ': ' + _money(ctx.parsed.y) } } },
       scales: {
         x: { grid: { display: false }, ticks: { color: textColor, font: { size: 11 }, maxRotation: 0, autoSkipPadding: 10 } },
-        y: { grid: { color: gridColor }, beginAtZero: true, ticks: { color: textColor, font: { size: 11 }, callback: (v) => (v >= 1000 ? '$' + (v / 1000).toFixed(0) + 'K' : '$' + v) } },
+        y: { grid: { color: gridColor }, beginAtZero: true, ticks: { color: textColor, font: { size: 11 }, callback: (v) => (hide ? '' : v >= 1000 ? '$' + (v / 1000).toFixed(0) + 'K' : '$' + v) } },
       },
     },
   });
@@ -304,6 +314,9 @@ function _slug(s) {
 }
 
 export function __init() {
+  window.addEventListener('arkives:privacy', () => {
+    if ((location.hash || '#dashboard').slice(1) === 'dashboard') renderDashboard();
+  });
   onSocialUpdate(() => {
     if ((location.hash || '#dashboard').slice(1) !== 'dashboard') return;
     _repaintPart('dashAudience', _audienceHtml);

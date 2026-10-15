@@ -104,6 +104,10 @@ state._currentScriptId = null;
 state._currentScriptRow = null; // full script row from renderScriptEditor (share popover needs share_token/mode)
 state._currentScenes = [];
 state._scriptAutoSaveTimer = null;
+state._scUndo = []; // script editor history: snapshots (views/scripts.js UNDO / REDO)
+state._scRedo = [];
+state._scTypeKey = null; state._scTypeAt = 0; // current typing burst (one undo step per burst)
+state._scApplying = false;
 state._scriptLoadToken = 0; // guards against a slow script painting into another's route
 state._sceneDirty = {}; // sceneId -> { field: value } typed but not yet saved
 state._titleDirty = null; // pending title, or null

@@ -5,7 +5,7 @@ import { _args, act } from '../lib/actions.js';
 import { _esc, _escHtml, _safeThumb } from '../lib/esc.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
 import { _shareLinkRowsHtml } from '../lib/share.js';
-import { _showSaveError } from '../lib/toast.js';
+import { _showSaveError, _showUndoToast } from '../lib/toast.js';
 
 /* ---- SCENE BLOCKS (025) ----
    The SCENE cell is an ordered list of blocks: a shot (size, angle,
@@ -158,6 +158,7 @@ async function renderScriptEditor(scriptId) {
   state._sharedScriptToken = null;
   state._currentScriptId = scriptId;
   state._currentScriptRow = null;
+  _scResetHistory();
   var container = document.getElementById('view-script-editor');
   container.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:300px;border-radius:12px"></div></div>';
 
@@ -195,6 +196,10 @@ function _renderEditorUI(container, script, scenes, readOnly) {
     } else {
       html += '<span class="script-readonly-badge">Shared — can edit</span>';
     }
+    html += '<span class="sc-history" role="group" aria-label="History">' +
+      '<button class="btn-icon sc-hist-btn" id="scUndoBtn" data-action="_scUndo" title="Undo (⌘Z)" aria-label="Undo"' + (state._scUndo.length ? '' : ' disabled') + '>' + SC_UNDO_ICON + '</button>' +
+      '<button class="btn-icon sc-hist-btn" id="scRedoBtn" data-action="_scRedo" title="Redo (⇧⌘Z)" aria-label="Redo"' + (state._scRedo.length ? '' : ' disabled') + '>' + SC_REDO_ICON + '</button>' +
+      '</span>';
     html += '<span class="script-save-indicator" id="scriptSaveIndicator">Saved</span>';
     html += '</div>';
   } else {
@@ -246,6 +251,7 @@ function _renderEditorUI(container, script, scenes, readOnly) {
   if (!readOnly) {
     var titleInput = document.getElementById('scriptTitleInput');
     if (titleInput) {
+      titleInput.addEventListener('beforeinput', _scBeforeInput);
       titleInput.addEventListener('input', function() {
         state._titleDirty = titleInput.value;
         if (state._currentScriptRow) state._currentScriptRow.title = titleInput.value;
@@ -421,6 +427,7 @@ function _scAddBlock(sceneId, kind) {
   var scene = _sceneById(sceneId); if (!scene) return;
   var blocks = _sceneBlocks(scene);
   if (blocks.length >= SCENE_BLOCKS_MAX) return;
+  _scRecord();
   blocks.push({ kind: kind === 'transition' ? 'transition' : 'shot', text: '' });
   _sceneSetBlocks(scene, blocks);
   _scriptRerender().then(function() {
@@ -432,7 +439,8 @@ function _scAddBlock(sceneId, kind) {
 function _scDeleteBlock(sceneId, bi) {
   var scene = _sceneById(sceneId); if (!scene) return;
   var blocks = _sceneBlocks(scene);
-  if (blocks[bi] && blocks[bi].text && !confirm('Remove this block and its text?')) return;
+  if (!blocks[bi]) return;
+  _scRecord();
   blocks.splice(bi, 1);
   if (!blocks.length) blocks.push({ kind: 'shot', text: '' });
   _sceneSetBlocks(scene, blocks);
@@ -444,6 +452,7 @@ function _scMoveBlock(sceneId, bi, dir) {
   var blocks = _sceneBlocks(scene);
   var j = bi + dir;
   if (bi < 0 || j < 0 || j >= blocks.length) return;
+  _scRecord();
   var moved = blocks.splice(bi, 1)[0];
   blocks.splice(j, 0, moved);
   _sceneSetBlocks(scene, blocks);
@@ -456,6 +465,7 @@ function _scSetTag(sceneId, bi, kind, value) {
   var b = blocks[bi]; if (!b) return;
   var key = _blockTagKey(kind);
   value = (value || '').trim().slice(0, SCENE_TAG_MAX);
+  if ((b[key] || '') !== ((!value || b[key] === value) ? '' : value)) _scRecord();
   if (!value || b[key] === value) delete b[key]; else b[key] = value;
   _sceneSetBlocks(scene, blocks);
   _scCloseTagPicker();
@@ -542,6 +552,7 @@ function _scPickBackdrop(ev, el) { if (ev.target === el) _scCloseTagPicker(); }
 /* ---- SCENE EVENTS ---- */
 function _bindSceneEvents() {
   document.querySelectorAll('.script-cell-textarea').forEach(function(ta) {
+    ta.addEventListener('beforeinput', _scBeforeInput);
     ta.addEventListener('input', function() {
       // State is the source of truth; the DOM is a view of it
       var sceneId = ta.getAttribute('data-scene-id');
@@ -616,6 +627,7 @@ function _flushScriptSaves() {
 
 /* ---- ADD / DELETE SCENES ---- */
 async function _addScene() {
+  var before = _scSnap();
   var newOrder = state._currentScenes.length;
   var res;
   if (state._sharedScriptToken) {
@@ -625,6 +637,7 @@ async function _addScene() {
     res = await state._sb.from('script_scenes').insert({ script_id: state._currentScriptId, sort_order: newOrder, script_text: '', scene_description: '', thumbnail_data: '' }).select().single();
   }
   if (res.data) {
+    _scPush(before);
     state._currentScenes.push(res.data);
     _scriptRerender();
   } else if (res.error) {
@@ -639,6 +652,7 @@ async function _moveScene(sceneId, dir) {
   var j = i + dir;
   if (i < 0 || j < 0 || j >= state._currentScenes.length) return;
   await _flushScriptSaves();
+  _scRecord();
   var moved = state._currentScenes.splice(i, 1)[0];
   state._currentScenes.splice(j, 0, moved);
   await db.sbReorderScenes(state._currentScenes);
@@ -646,8 +660,12 @@ async function _moveScene(sceneId, dir) {
 }
 
 async function _deleteSceneRow(sceneId) {
+  await _flushScriptSaves();
+  var before = _scSnap();
   var ok = await db.sbDeleteScene(sceneId);
   if (!ok) return;
+  _scPush(before);
+  _showUndoToast('Scene deleted', _scUndo);
   delete state._sceneDirty[sceneId];
   state._currentScenes = state._currentScenes.filter(function(s) { return s.id !== sceneId; });
   /* Reorder remaining */
@@ -700,6 +718,7 @@ async function _addThumbFiles(sceneId, files) {
   var scene = _sceneById(sceneId); if (!scene) return;
   files = files.filter(function(f) { return f && /^image\//.test(f.type); });
   if (!files.length) return;
+  var before = _scSnap();
   var thumbs = _sceneThumbs(scene);
   var room = SCENE_THUMBS_MAX - thumbs.length;
   if (files.length > room) _showSaveError('Up to ' + SCENE_THUMBS_MAX + ' images per scene');
@@ -707,14 +726,15 @@ async function _addThumbFiles(sceneId, files) {
     var t = await _readThumbFile(files[i]);
     if (t) thumbs.push(t);
   }
-  if (await _saveThumbs(sceneId, thumbs)) _scriptRerender();
+  if (await _saveThumbs(sceneId, thumbs)) { _scPush(before); _scriptRerender(); }
 }
 
 async function _removeThumb(sceneId, ti) {
   var scene = _sceneById(sceneId); if (!scene) return;
+  var before = _scSnap();
   var thumbs = _sceneThumbs(scene);
   thumbs.splice(typeof ti === 'number' ? ti : 0, 1);
-  if (await _saveThumbs(sceneId, thumbs)) _scriptRerender();
+  if (await _saveThumbs(sceneId, thumbs)) { _scPush(before); _scriptRerender(); }
 }
 
 // Arrow buttons and drag both land here; works on touch
@@ -722,8 +742,9 @@ async function _moveThumb(sceneId, from, to) {
   var scene = _sceneById(sceneId); if (!scene) return;
   var thumbs = _sceneThumbs(scene);
   if (from < 0 || from >= thumbs.length || to < 0 || to >= thumbs.length || from === to) return;
+  var before = _scSnap();
   thumbs.splice(to, 0, thumbs.splice(from, 1)[0]);
-  if (await _saveThumbs(sceneId, thumbs)) _scriptRerender();
+  if (await _saveThumbs(sceneId, thumbs)) { _scPush(before); _scriptRerender(); }
 }
 function _moveThumbBy(sceneId, ti, dir) { return _moveThumb(sceneId, ti, ti + dir); }
 
@@ -857,6 +878,7 @@ function _bindDragDrop() {
       row.classList.remove('script-row-dragover');
       var targetIdx = parseInt(row.getAttribute('data-idx'));
       if (state._dragSrcIdx === null || state._dragSrcIdx === targetIdx) return;
+      _scRecord();
       /* Reorder array */
       var moved = state._currentScenes.splice(state._dragSrcIdx, 1)[0];
       state._currentScenes.splice(targetIdx, 0, moved);
@@ -876,6 +898,7 @@ function _bindDragDrop() {
 /* ---- SHARED SCRIPT VIEWER ---- */
 async function renderSharedScript(token, mode) {
   var loadToken = ++state._scriptLoadToken;
+  _scResetHistory();
   var container = document.getElementById('view-shared-script');
   container.innerHTML = '<div style="padding:48px;text-align:center;color:var(--text-secondary)"><div class="skeleton" style="height:300px;border-radius:12px"></div></div>';
 
@@ -918,9 +941,209 @@ function _paintSharedEditor() {
   }
 }
 
+/* ---- UNDO / REDO ---- One history for the whole script: typing (one
+   step per burst), title, blocks, tags, images, and adding / moving /
+   deleting scenes. A step is a snapshot of the script taken just before
+   the change; undo swaps the current state for it and saves the
+   difference, so it survives reloads like any other edit. */
+var SC_HISTORY_MAX = 100;
+var SC_TYPING_GAP_MS = 1200;
+var SC_UNDO_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
+var SC_REDO_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>';
+
+function _scResetHistory() {
+  state._scUndo = []; state._scRedo = [];
+  state._scTypeKey = null; state._scTypeAt = 0;
+}
+
+// Which field has focus (so undo can put the caret back where it was)
+function _scFocusKey() {
+  var el = document.activeElement;
+  if (!el) return null;
+  if (el.id === 'scriptTitleInput') return { key: 'title', start: el.selectionStart, end: el.selectionEnd };
+  if (el.classList && el.classList.contains('script-cell-textarea')) {
+    return { key: el.getAttribute('data-scene-id') + '|' + el.getAttribute('data-field') + '|' + (el.getAttribute('data-bi') || ''), start: el.selectionStart, end: el.selectionEnd };
+  }
+  return null;
+}
+
+function _scSnap() {
+  return {
+    title: state._currentScriptRow ? (state._currentScriptRow.title || '') : '',
+    scenes: state._currentScenes.map(function(s) {
+      return {
+        id: s.id,
+        script_text: s.script_text || '',
+        scene_description: s.scene_description || '',
+        blocks: Array.isArray(s.blocks) ? s.blocks.map(function(b) { return Object.assign({}, b); }) : (s.blocks === undefined ? undefined : null),
+        thumbnails: Array.isArray(s.thumbnails) ? s.thumbnails.slice() : (s.thumbnails === undefined ? undefined : null),
+        thumbnail_data: s.thumbnail_data || '',
+      };
+    }),
+    focus: _scFocusKey(),
+  };
+}
+
+function _scPush(snap) {
+  state._scUndo.push(snap);
+  if (state._scUndo.length > SC_HISTORY_MAX) state._scUndo.shift();
+  state._scRedo = [];
+  _scSyncHistoryButtons();
+}
+
+// Call just before a change. Ends any typing burst.
+function _scRecord() {
+  if (state._scApplying) return;
+  state._scTypeKey = null;
+  _scPush(_scSnap());
+}
+
+// Typing: one step per field per burst (a pause of ~1s starts a new one).
+// Also routes the browser's own Edit > Undo into this history.
+function _scBeforeInput(e) {
+  if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
+    e.preventDefault();
+    if (e.inputType === 'historyUndo') _scUndo(); else _scRedo();
+    return;
+  }
+  if (state._scApplying) { e.preventDefault(); return; }
+  var f = _scFocusKey();
+  var key = f ? f.key : 'x';
+  var now = Date.now();
+  if (key !== state._scTypeKey || now - state._scTypeAt > SC_TYPING_GAP_MS) {
+    _scPush(_scSnap());
+    state._scTypeKey = key;
+  }
+  state._scTypeAt = now;
+}
+
+function _scSyncHistoryButtons() {
+  var u = document.getElementById('scUndoBtn'); if (u) u.disabled = !state._scUndo.length;
+  var r = document.getElementById('scRedoBtn'); if (r) r.disabled = !state._scRedo.length;
+}
+
+var SC_FIELDS = ['script_text', 'scene_description', 'blocks', 'thumbnails', 'thumbnail_data'];
+function _scSame(a, b) { return JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b); }
+
+// A scene restored by undo gets a new row id: rewrite it everywhere
+function _scRemapId(oldId, newId) {
+  state._scUndo.concat(state._scRedo).forEach(function(snap) {
+    snap.scenes.forEach(function(s) { if (s.id === oldId) s.id = newId; });
+    if (snap.focus && snap.focus.key.indexOf(oldId + '|') === 0) snap.focus.key = newId + snap.focus.key.slice(oldId.length);
+  });
+}
+
+async function _scRestoreScene(t, order) {
+  var fields = {};
+  SC_FIELDS.forEach(function(f) { if (t[f] !== undefined) fields[f] = t[f]; });
+  var row = null;
+  if (state._sharedScriptToken) {
+    var r = await state._sb.rpc('add_shared_scene', { p_token: state._sharedScriptToken, p_sort_order: order });
+    row = !r.error && r.data && r.data[0];
+    if (row) { try { await db.sbSaveSceneFields(row.id, fields); } catch (e) { row = null; } }
+  } else {
+    var ins = await state._sb.from('script_scenes').insert(Object.assign({ script_id: state._currentScriptId, sort_order: order }, fields)).select().single();
+    row = !ins.error && ins.data;
+  }
+  if (!row) return null;
+  Object.assign(row, fields);
+  return row;
+}
+
+async function _scApply(target) {
+  state._scApplying = true;
+  try {
+    await _flushScriptSaves();
+    var row = state._currentScriptRow;
+    if (row && (row.title || '') !== target.title) { row.title = target.title; state._titleDirty = target.title; }
+    var byId = {};
+    state._currentScenes.forEach(function(s) { byId[s.id] = s; });
+    var beforeOrder = state._currentScenes.map(function(s) { return s.id; }).join(',');
+    var next = [];
+    for (var i = 0; i < target.scenes.length; i++) {
+      var t = target.scenes[i];
+      var cur = byId[t.id];
+      if (cur) {
+        delete byId[t.id];
+        SC_FIELDS.forEach(function(f) {
+          if (t[f] === undefined || _scSame(cur[f], t[f])) return;
+          cur[f] = Array.isArray(t[f]) ? JSON.parse(JSON.stringify(t[f])) : t[f];
+          if (!state._sceneDirty[cur.id]) state._sceneDirty[cur.id] = {};
+          state._sceneDirty[cur.id][f] = cur[f];
+        });
+        next.push(cur);
+      } else {
+        // Deleted since this snapshot: bring it back as a new row
+        var restored = await _scRestoreScene(t, i);
+        if (!restored) { _showSaveError('Could not restore a deleted scene'); continue; }
+        _scRemapId(t.id, restored.id);
+        if (target.focus && target.focus.key.indexOf(t.id + '|') === 0) target.focus.key = restored.id + target.focus.key.slice(t.id.length);
+        next.push(restored);
+      }
+    }
+    // Scenes added since this snapshot go away
+    var gone = Object.keys(byId);
+    for (var g = 0; g < gone.length; g++) {
+      delete state._sceneDirty[gone[g]];
+      await db.sbDeleteScene(gone[g]);
+    }
+    state._currentScenes = next;
+    if (next.map(function(s) { return s.id; }).join(',') !== beforeOrder && next.length) await db.sbReorderScenes(next);
+    await _scriptRerender();
+    _scRestoreFocus(target.focus);
+  } finally {
+    state._scApplying = false;
+    state._scTypeKey = null;
+    _scSyncHistoryButtons();
+  }
+}
+
+function _scRestoreFocus(f) {
+  if (!f) return;
+  var el;
+  if (f.key === 'title') el = document.getElementById('scriptTitleInput');
+  else {
+    var p = f.key.split('|');
+    el = document.querySelector('.script-cell-textarea[data-scene-id="' + p[0] + '"][data-field="' + p[1] + '"]' + (p[2] ? '[data-bi="' + p[2] + '"]' : ''));
+  }
+  if (!el) return;
+  el.focus({ preventScroll: false });
+  try { el.setSelectionRange(f.start, f.end); } catch (e) { /* not a text field */ }
+}
+
+async function _scUndo() {
+  if (state._scApplying || !state._scUndo.length) return;
+  var target = state._scUndo.pop();
+  state._scRedo.push(_scSnap());
+  await _scApply(target);
+}
+
+async function _scRedo() {
+  if (state._scApplying || !state._scRedo.length) return;
+  var target = state._scRedo.pop();
+  state._scUndo.push(_scSnap());
+  await _scApply(target);
+}
+
+// The editor is the active surface and editable (owner or an edit link)
+function _scEditorActive() {
+  if (!state._currentScriptRow) return false;
+  var h = window.location.hash;
+  if (/^#script\//.test(h)) return true;
+  return /^#shared\//.test(h) && state._sharedScriptMode === 'edit';
+}
+
+function _scOnKeydown(e) {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey || !_scEditorActive()) return;
+  var k = (e.key || '').toLowerCase();
+  if (k === 'z') { e.preventDefault(); if (e.shiftKey) _scRedo(); else _scUndo(); }
+  else if (k === 'y' && e.ctrlKey && !e.metaKey) { e.preventDefault(); _scRedo(); }
+}
+
 /* ---- SIDE EFFECTS ---- Registered from main.js in a fixed order, not at import time. */
 export function __init() {
   document.addEventListener('keydown', function(e) { if (e.key === 'Escape') _scCloseTagPicker(); });
+  document.addEventListener('keydown', _scOnKeydown);
   document.addEventListener('paste', _onScriptPaste);
   // Leaving the page or backgrounding the tab (phones do this constantly)
   document.addEventListener('visibilitychange', function() { if (document.visibilityState === 'hidden') _flushScriptSaves(); });
@@ -928,6 +1151,6 @@ export function __init() {
 }
 
 act({ _addScene, _createNewScript, _deleteSceneRow, _deleteScript, _handleThumbUpload, _moveScene, _moveThumbBy, _removeThumb,
-  _scAddBlock, _scClearTag, _scCloseTagPicker, _scCustomAdd, _scCustomKeydown, _scDeleteBlock, _scMoveBlock, _scPickBackdrop, _scPickTag, _scSetTag });
+  _scAddBlock, _scClearTag, _scCloseTagPicker, _scCustomAdd, _scCustomKeydown, _scDeleteBlock, _scMoveBlock, _scPickBackdrop, _scPickTag, _scRedo, _scSetTag, _scUndo });
 
-export { SCENE_TAG_PRESETS, _addThumbFiles, _onScriptPaste, _pasteTargetScene, _blocksMirror, _sceneBlocks, _sceneThumbs, _scCloseTagPicker, _scPickTag, _scSetTag, _tagOptions, _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _moveThumb, _moveThumbBy, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };
+export { _scDeleteBlock, _scRecord, _scRedo, _scSnap, _scUndo, SCENE_TAG_PRESETS, _addThumbFiles, _onScriptPaste, _pasteTargetScene, _blocksMirror, _sceneBlocks, _sceneThumbs, _scCloseTagPicker, _scPickTag, _scSetTag, _tagOptions, _addScene, _bindDragDrop, _bindSceneEvents, _createNewScript, _deleteSceneRow, _deleteScript, _flushScriptSaves, _handleThumbUpload, _moveScene, _moveThumb, _moveThumbBy, _paintSharedEditor, _removeThumb, _renderEditorUI, _renderSceneRow, _scSetShareMode, _scShareLink, _scSyncSharePopover, _scheduleAutoSave, _scriptRerender, renderScriptEditor, renderScripts, renderSharedScript };

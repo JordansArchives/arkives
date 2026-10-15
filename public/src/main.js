@@ -33,6 +33,7 @@ import * as scripts from './views/scripts.js';
 import * as settings from './views/settings.js';
 import * as social from './views/social.js';
 import * as metrics from './lib/metrics.js';
+import * as privacy from './lib/privacy.js';
 import * as tasks from './views/tasks.js';
 import * as timelines from './views/timelines.js';
 
@@ -96,6 +97,7 @@ async function boot() {
 
 // Side effects (listeners, the Supabase client) run here, in this order.
 actions.__init();
+privacy.__init();
 sb.__init();
 auth.__init();
 router.__init();
@@ -111,7 +113,7 @@ analytics.__init();
 // window.__arkives: every export of every module, plus state and db. The
 // tests drive the app through it; it is also handy in the console.
 const __arkives = { state, db, stores };
-for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, connections, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, quotes, revenue, scripts, settings, social, metrics, tasks, timelines]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
+for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, connections, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, quotes, revenue, scripts, settings, social, metrics, privacy, tasks, timelines]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
 window.__arkives = __arkives;
 
 boot();

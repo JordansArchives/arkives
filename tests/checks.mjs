@@ -289,6 +289,74 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   const out = [];
   const T = (name, cond, detail) => out.push({ name, pass: !!cond, detail: detail === undefined ? '' : String(detail) });
 
+  // Privacy mode: real amounts and names never reach the DOM
+  {
+    const st = __arkives.state;
+    const keep = { inv: st.INVOICE_DATA, q: st.QUOTES, cal: st.CALENDAR_EVENTS, priv: st._privacy };
+    const d = new Date().toISOString().slice(0, 10);
+    st.INVOICE_DATA = [{ _sbId: 'pi', invoiceNumber: 'X-1', brand: 'Acme', date: d, status: 'paid', paidAt: new Date().toISOString(), lineItems: [{ type: 'flat', desc: 'Edit', qty: 1, rate: 0, fee: 8517 }], amount: 8517, amountPaid: 8517, tax: 0 }];
+    st.QUOTES = [{ _sbId: 'pq', title: 'Secret Launch', quoteNumber: 'Q-9', clientCompany: 'Zentrix Media', status: 'accepted', respondedAt: '2026-10-01', lineItems: [], total: 0 }];
+    st.CALENDAR_EVENTS = [{ _sbId: 'pc', date: '2099-01-01', brand: 'Hushbrand', type: 'Shoot' }];
+    __arkives.setPrivacy(true); __arkives.renderDashboard();
+    const on = document.getElementById('view-dashboard').innerHTML;
+    __arkives.setPrivacy(false); __arkives.renderDashboard();
+    const off = document.getElementById('view-dashboard').innerHTML;
+    T('privacy: amounts, quote titles, clients and calendar names are absent when on', !/8,517|Secret Launch|Zentrix|Hushbrand/.test(on) && /pv-mask/.test(on) && /aria-pressed="true"/.test(on), on.match(/8,517|Secret Launch|Zentrix|Hushbrand/g));
+    T('privacy: everything is back when off', /8,517/.test(off) && /Secret Launch/.test(off) && /Zentrix/.test(off) && /Hushbrand/.test(off) && !/pv-mask/.test(off));
+    T('privacy: pv masks shape only', __arkives.pv('$1,250') === '$1,250' && (() => { __arkives.setPrivacy(true); const m = __arkives.pv('$1,250 &amp; Co'); __arkives.setPrivacy(false); return /\$8,888 x xx/.test(m); })());
+    Object.assign(st, { INVOICE_DATA: keep.inv, QUOTES: keep.q, CALENDAR_EVENTS: keep.cal }); __arkives.setPrivacy(keep.priv);
+  }
+
+  // Scripts undo/redo: typing bursts, blocks, deleted scenes come back
+  {
+    const st = __arkives.state;
+    const saves = []; let deleted = []; let inserted = 0;
+    __arkives.db.sbSaveSceneFields = async (id, f) => { saves.push({ id, f: JSON.parse(JSON.stringify(f)) }); };
+    __arkives.db.sbUpdateScript = async () => true;
+    __arkives.db.sbReorderScenes = async () => {};
+    __arkives.db.sbDeleteScene = async (id) => { deleted.push(id); return true; };
+    const realSb = st._sb;
+    st._sb = { from: () => ({ insert: (row) => ({ select: () => ({ single: async () => ({ data: Object.assign({ id: 'restored' + (++inserted) }, row), error: null }) }) }) }) };
+    st._sharedScriptToken = null; st._currentScriptId = 'S9';
+    st._currentScriptRow = { id: 'S9', title: 'T', share_mode: 'none' };
+    st._currentScenes = [
+      { id: 'a', script_text: 'hello', scene_description: '', blocks: [{ kind: 'shot', text: 'wide' }, { kind: 'shot', text: 'close' }], thumbnails: ['data:image/jpeg;base64,AAAA'] },
+      { id: 'b', script_text: 'second', scene_description: '', blocks: [{ kind: 'shot', text: 'b-shot' }], thumbnails: [] }];
+    __arkives.state._scUndo = []; __arkives.state._scRedo = [];
+    const prevHash = location.hash; history.replaceState(null, '', '#script/S9');
+    const cont = document.getElementById('view-script-editor');
+    __arkives._renderEditorUI(cont, st._currentScriptRow, st._currentScenes, false);
+    const ta = cont.querySelector('.script-cell-textarea[data-scene-id="a"][data-field="script_text"]');
+    ta.focus();
+    ta.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: '!', cancelable: true }));
+    ta.value = 'hello!'; ta.dispatchEvent(new Event('input'));
+    ta.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: '!', cancelable: true }));
+    ta.value = 'hello!!'; ta.dispatchEvent(new Event('input'));
+    T('undo: one typing burst = one step', st._scUndo.length === 1 && st._currentScenes[0].script_text === 'hello!!');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 80));
+    T('undo: Cmd+Z restores the text and saves it', st._currentScenes[0].script_text === 'hello' && saves.some((x) => x.id === 'a' && x.f.script_text === 'hello') && st._scRedo.length === 1);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    await new Promise((r) => setTimeout(r, 80));
+    T('undo: Cmd+Shift+Z redoes it', st._currentScenes[0].script_text === 'hello!!');
+    __arkives._scDeleteBlock('a', 0);
+    await new Promise((r) => setTimeout(r, 50));
+    T('undo: deleting a block needs no confirm', st._currentScenes[0].blocks.length === 1 && st._currentScenes[0].blocks[0].text === 'close');
+    await __arkives._scUndo();
+    T('undo: the deleted block comes back in place', st._currentScenes[0].blocks.length === 2 && st._currentScenes[0].blocks[0].text === 'wide');
+    await __arkives._deleteSceneRow('a');
+    T('undo: scene delete removes it', deleted.includes('a') && st._currentScenes.length === 1);
+    await __arkives._scUndo();
+    const back = st._currentScenes[0];
+    T('undo: a deleted scene is restored with its text, blocks, images and position', st._currentScenes.length === 2 && back.id === 'restored1' && back.script_text === 'hello!!' && back.blocks.length === 2 && back.thumbnails.length === 1 && st._currentScenes[1].id === 'b');
+    await __arkives._scRedo();
+    T('undo: redo deletes the restored scene again', deleted.includes('restored1') && st._currentScenes.length === 1);
+    T('undo: no undo shortcut outside the editor', (() => { history.replaceState(null, '', '#dashboard'); const n = st._scUndo.length; const ev = new KeyboardEvent('keydown', { key: 'z', metaKey: true, bubbles: true, cancelable: true }); document.dispatchEvent(ev); return !ev.defaultPrevented && st._scUndo.length === n; })());
+    history.replaceState(null, '', prevHash || '#dashboard');
+    st._sb = realSb; st._currentScriptRow = null; st._currentScenes = []; st._currentScriptId = null; st._scUndo = []; st._scRedo = [];
+    cont.innerHTML = '';
+  }
+
   // Settings > Connections renders every state, escaped
   {
     const st = __arkives.state;
