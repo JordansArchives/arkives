@@ -56,6 +56,16 @@ state.analyticsLoading = false;
 state.analyticsLastFetch = null;
 /* ---- INBOX ---- */
 state.INBOX_ITEMS = [];
+state._inboxFilter = 'open'; // open | new | needs_reply | waiting | done
+state._inboxSelected = null; // inbox_items id
+// Google + inbox connections (worker/google.js, worker/inbox.js). Not a
+// store: fetched by Settings > Connections and the Calendar view.
+state.GOOGLE = undefined; // { email, scopes, status, connected_at } | null; undefined = not loaded
+state._googleMissing = false; // migration 029 not run yet
+state.INBOX_ADDRESS = '';
+state._settingsTabNext = null; // tab Settings opens on its next render
+state.GCAL_EVENTS = {}; // 'YYYY-MM' -> [{ id, title, start, end, allDay, link, meet, arkives }]
+state._gcalError = '';
 /* ---- CONTENT CALENDAR ---- */
 state._calendarMonth = new Date().getMonth();
 state._calendarYear = new Date().getFullYear();

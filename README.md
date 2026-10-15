@@ -332,3 +332,20 @@ Cloudflare dashboard → Workers → arkives → Settings → Variables and Secr
 - `APIFY_TOKEN` (secret, required): Apify API token. A scan costs about $0.04.
 - `SCAN_ALLOWED_EMAILS` (optional): comma-separated logins allowed to scan.
 
+## Connections: Google Calendar + brand-deal inbox (worker/google.js, worker/inbox.js, migration 029)
+
+Every account connects its own Google account and gets its own inbox address from **Settings → Connections**. Nothing is shared between accounts.
+
+- **Calendar:** OAuth handled entirely by the Worker. Scopes: `calendar.events.owned` + `calendar.freebusy` (no Gmail). The refresh token is AES-256-GCM sealed in the Worker, bound to the user id, and stored as ciphertext only; the browser never sees a Google token. Google events are fetched live per month and never stored. Arkives events can be pushed as all-day "free" events; Arkives can only delete events it created.
+- **Inbox:** no Gmail access at all. Gmail forwards brand emails (via a filter) to `deals-<token>@arkives.xyz`; Cloudflare Email Routing hands them to the Worker's `email()` handler, which files sender, subject, the first 2,000 characters and the Message-ID. "Open in Gmail" jumps back to the original.
+- **No Supabase service key.** All DB access runs as the user through SECURITY DEFINER RPCs; the token and ingest RPCs also require `ARKIVES_DB_KEY` (its SHA-256 lives in `private.worker_keys`).
+
+**One-time setup**
+1. Run `migrations/029_google_and_inbox.sql`, then register the DB key (snippet at the top of that file).
+2. Google Cloud console: create a project, enable the **Google Calendar API**, configure the OAuth consent screen (External; app name Arkives; scopes above; publishing status **In production**), create an **OAuth client (Web application)** with redirect URI `https://arkives.xyz/api/google/callback`.
+3. Cloudflare → Workers → arkives → Variables and Secrets (all secrets): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ARKIVES_MASTER_KEY` (`openssl rand -base64 32`), `ARKIVES_DB_KEY` (`openssl rand -hex 32`, same value as step 1).
+4. Cloudflare → arkives.xyz → Email → Email Routing: enable (adds MX/SPF records), then Routing rules → **Catch-all → Send to a Worker → arkives**.
+5. Before opening Connections to other users: submit the app for Google verification (needs a public homepage + privacy policy on arkives.xyz). Unverified, up to 100 Google accounts can connect after an "unverified app" warning.
+
+Never rotate `ARKIVES_MASTER_KEY` casually: it invalidates every stored Google connection (users just reconnect).
+

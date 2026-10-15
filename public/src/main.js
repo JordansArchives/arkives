@@ -19,6 +19,7 @@ import * as analytics from './views/analytics.js';
 import * as auth from './views/auth.js';
 import * as boards from './views/boards.js';
 import * as calendar from './views/calendar.js';
+import * as connections from './views/connections.js';
 import * as contracts from './views/contracts.js';
 import * as dashboard from './views/dashboard.js';
 import * as ideas from './views/ideas.js';
@@ -59,7 +60,10 @@ async function boot() {
         await Promise.race([loadP, new Promise(function(r) { setTimeout(r, 20000); })]);
         if (!loaded) _showSaveError('Still loading your data. The view will refresh when it arrives.');
         updateSidebarUser();
-        navigate(hash);
+        // Back from Google's consent screen (/?google=...#settings):
+        // finish the connection, then show Settings > Connections
+        if (/[?&]google=/.test(window.location.search)) state._settingsTabNext = 'connections';
+        Promise.resolve(navigate(hash)).then(function() { return connections.handleGoogleReturn(); });
         quotes.refreshQuoteBadge();
       } else {
         // No session — show login screen
@@ -107,7 +111,7 @@ analytics.__init();
 // window.__arkives: every export of every module, plus state and db. The
 // tests drive the app through it; it is also handy in the console.
 const __arkives = { state, db, stores };
-for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, quotes, revenue, scripts, settings, social, metrics, tasks, timelines]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
+for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, connections, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, quotes, revenue, scripts, settings, social, metrics, tasks, timelines]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
 window.__arkives = __arkives;
 
 boot();

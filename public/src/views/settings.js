@@ -1,5 +1,6 @@
 // Arkives — Settings view (profile, platforms, rate card, contract defaults, audience, account).
 import { state } from '../state.js';
+import { loadConnections, renderConnectionsSettings } from './connections.js';
 import { loadAll } from '../stores/index.js';
 import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
@@ -22,6 +23,7 @@ function renderSettings() {
 
     <div class="settings-tabs">
       <button class="settings-tab active" data-tab="profile" data-action="switchSettingsTab" data-args="[&quot;profile&quot;]">Profile</button>
+      <button class="settings-tab" data-tab="connections" data-action="switchSettingsTab" data-args="[&quot;connections&quot;]">Connections</button>
       <button class="settings-tab" data-tab="platforms" data-action="switchSettingsTab" data-args="[&quot;platforms&quot;]">Platforms</button>
       <button class="settings-tab" data-tab="ratecard" data-action="switchSettingsTab" data-args="[&quot;ratecard&quot;]">Rate Card</button>
       <button class="settings-tab" data-tab="contract" data-action="switchSettingsTab" data-args="[&quot;contract&quot;]">Contract Defaults</button>
@@ -32,6 +34,9 @@ function renderSettings() {
 
     <div class="settings-panel" id="settings-panel-profile">
       ${renderProfileSettings()}
+    </div>
+    <div class="settings-panel" id="settings-panel-connections" style="display:none;">
+      ${renderConnectionsSettings()}
     </div>
     <div class="settings-panel" id="settings-panel-platforms" style="display:none;">
       ${renderPlatformsSettings()}
@@ -52,14 +57,17 @@ function renderSettings() {
       ${renderDangerZone()}
     </div>
   `;
+  // Another view (Calendar, the Google return) asked for a specific tab
+  if (state._settingsTabNext) { const t = state._settingsTabNext; state._settingsTabNext = null; switchSettingsTab(t); }
 }
 
 function switchSettingsTab(tab) {
   document.querySelectorAll('.settings-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
-  ['profile','platforms','ratecard','contract','invoicing','audience','danger'].forEach(t => {
+  ['profile','connections','platforms','ratecard','contract','invoicing','audience','danger'].forEach(t => {
     const el = document.getElementById('settings-panel-' + t);
     if (el) el.style.display = (t === tab) ? '' : 'none';
   });
+  if (tab === 'connections') loadConnections();
 }
 
 /* ---- SETTINGS: Profile tab ---- */

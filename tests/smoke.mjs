@@ -45,7 +45,17 @@ const POPULATED = () => {
   __arkives.state.CREATOR.platforms.tiktok.likes = '3.8M';
   __arkives.state.CREATOR.platforms.tiktok.handle = 'test'; __arkives.state.CREATOR.platforms.tiktok.followers = '32.1K'; __arkives.state.CREATOR.platforms.tiktok.followersNum = 32100;
   __arkives.state.analyticsLastFetch = new Date().toISOString();
-  __arkives.state.INBOX_ITEMS = [{ _sbId: 'm1', id: 1, brand: '<img src=x onerror="window.__xss=1">', contact: 'Eve', email: 'e@x.com', subject: '<b>Hi</b>', time: 'today', snippet: 's', status: 'needs_reply', priority: 'medium', suggestedAction: 'reply', context: 'body' }];
+  __arkives.state.INBOX_ITEMS = [
+    { id: 'm1', brand: '<img src=x onerror="window.__xss=1">', fromName: 'Eve', fromEmail: 'e@x.com', subject: '<b>Hi</b>', preview: 'Hello Jordan,\n\nWe would love to partner on a spring campaign. <script>window.__xss=1</script>', status: 'new', messageId: 'abc@mail.x.com', receivedAt: new Date().toISOString() },
+    { id: 'm2', brand: 'Nike', fromName: 'Partnerships', fromEmail: 'partners@nike.com', subject: 'Holiday campaign brief', preview: 'Attached is the brief.', status: 'waiting', messageId: '', receivedAt: new Date(Date.now() - 3 * 864e5).toISOString() }];
+  __arkives.state._inboxSelected = 'm1';
+  // Google connected, this month's events already fetched (no network)
+  __arkives.state.GOOGLE = { email: 't@gmail.com', scopes: '', status: 'active', connected_at: '2026-10-01T00:00:00Z' };
+  { const n = new Date(); const k = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0'); const d = (x) => k + '-' + String(x).padStart(2, '0');
+    __arkives.state._calendarYear = n.getFullYear(); __arkives.state._calendarMonth = n.getMonth();
+    __arkives.state.GCAL_EVENTS = { [k]: [
+      { id: 'g1', title: 'Call with <b>Acme</b>', start: new Date(n.getFullYear(), n.getMonth(), n.getDate(), 14, 30).toISOString(), end: new Date(n.getFullYear(), n.getMonth(), n.getDate(), 15).toISOString(), allDay: false, link: 'https://www.google.com/calendar/event?eid=x', meet: 'https://meet.google.com/abc-defg-hij', arkives: false },
+      { id: 'g2', title: 'Shoot (2 days)', start: d(Math.min(27, n.getDate() + 1)), end: d(Math.min(28, n.getDate() + 3)), allDay: true, link: '', meet: '', arkives: false }] }; }
   __arkives.state.MONTHLY_REVENUE = [{ _sbId: 'm', month: 'Aug 2026', earned: 5000 }];
   __arkives.state.CAMPAIGN_RESULTS = [{ _sbId: 'cr', brand: '<i>Acme</i>', views: 100000, ctr: 1.2, conversion: null, revenue: 12000 }];
   __arkives.state.OUTREACH_TARGETS = []; __arkives.state.OUTREACH_LISTS = [];
@@ -64,6 +74,7 @@ const EMPTY = () => {
   __arkives.state.OUTREACH_TARGETS = []; __arkives.state.OUTREACH_LISTS = [];
   __arkives.state.QUOTES = []; __arkives.state.QUOTE_SERVICES = []; __arkives.state.TIMELINES = [];
   __arkives.state._dashRecent = { at: Date.now(), boards: [], scripts: [] }; __arkives.state.analyticsData = null; __arkives.state.analyticsLastFetch = null;
+  __arkives.state.GOOGLE = null; __arkives.state.GCAL_EVENTS = {}; __arkives.state._inboxSelected = null;
 };
 
 

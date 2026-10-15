@@ -213,6 +213,8 @@ function resetAllState() {
   state.AUDIENCE_DATA.gender = { male: 0, female: 0 };
   state.AUDIENCE_DATA.topCountries = []; state.AUDIENCE_DATA.topCities = {}; state.AUDIENCE_DATA.interests = [];
   state.DEALS = []; state.INBOX_ITEMS = []; state.CALENDAR_EVENTS = []; state.INVOICE_DATA = [];
+  state.GOOGLE = undefined; state._googleMissing = false; state.INBOX_ADDRESS = ''; state.GCAL_EVENTS = {}; state._gcalError = '';
+  state._inboxSelected = null; state._inboxFilter = 'open';
   state.MONTHLY_REVENUE = []; state.CAMPAIGN_RESULTS = [];
   state.TASKS = []; state._tasksTableMissing = false;
   state._taskComposerOpen = false; state._tasksCompletedOpen = false; state._editingTaskId = null;

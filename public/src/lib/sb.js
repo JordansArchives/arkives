@@ -165,7 +165,8 @@ async function sbFetchCalendarEvents() {
     if (ceRes.error) { console.error('calendar_events fetch error:', ceRes.error); state.CALENDAR_EVENTS = []; return true; }
     state.CALENDAR_EVENTS = ceRes.data.map(e => ({
       _sbId: e.id, date: e.date || '', brand: e.brand || '',
-      type: e.type || '', platform: e.platform || '', status: e.status || 'draft'
+      type: e.type || '', platform: e.platform || '', status: e.status || 'draft',
+      googleEventId: e.google_event_id || ''
     }));
     return true;
   } catch (err) { return _loadFailed('calendar', err); }
@@ -213,19 +214,39 @@ async function sbFetchAudienceData() {
   } catch (err) { return _loadFailed('audience data', err); }
 }
 
+// Inbox = brand-deal emails forwarded to the user's deals-<token> address
+// (worker/inbox.js). Triage status: new | needs_reply | waiting | done.
+// Legacy rows (pre-029) keep working: unknown statuses read as "new".
+const INBOX_STATUSES = ['new', 'needs_reply', 'waiting', 'done'];
 async function sbFetchInboxItems() {
   try {
-    const ibRes = await state._sb.from('inbox_items').select('id, brand, from_name, from_email, subject, date, time, preview, status, suggested_action').eq('user_id', state.CREATOR._sbId).order('created_at', { ascending: false });
+    let ibRes = await state._sb.from('inbox_items').select('id, brand, from_name, from_email, subject, date, time, preview, status, message_id, received_at, created_at').eq('user_id', state.CREATOR._sbId).order('created_at', { ascending: false }).limit(500);
+    // Before migration 029 the new columns do not exist: read the old shape
+    if (ibRes.error) ibRes = await state._sb.from('inbox_items').select('id, brand, from_name, from_email, subject, date, time, preview, status, created_at').eq('user_id', state.CREATOR._sbId).order('created_at', { ascending: false }).limit(500);
     if (ibRes.error) { console.error('inbox_items fetch error:', ibRes.error); state.INBOX_ITEMS = []; return true; }
-    state.INBOX_ITEMS = ibRes.data.map((item, idx) => ({
-      _sbId: item.id, id: idx + 1, brand: item.brand || '', contact: item.from_name || '',
-      email: item.from_email || '', subject: item.subject || '', time: (item.date || '') + (item.time ? ', ' + item.time : ''),
-      snippet: item.preview || '', status: item.status === 'new' ? 'needs_reply' : (item.status || 'read'),
-      priority: 'medium', suggestedAction: item.suggested_action || 'reply',
-      context: item.preview || ''
+    state.INBOX_ITEMS = ibRes.data.map(item => ({
+      id: item.id, brand: item.brand || '', fromName: item.from_name || '', fromEmail: item.from_email || '',
+      subject: item.subject || '', preview: item.preview || '',
+      status: INBOX_STATUSES.includes(item.status) ? item.status : 'new',
+      messageId: item.message_id || '',
+      receivedAt: item.received_at || item.created_at || (item.date ? item.date + 'T12:00:00' : ''),
     }));
     return true;
   } catch (err) { return _loadFailed('inbox', err); }
+}
+
+async function sbUpdateInboxStatus(id, status) {
+  if (!state._sb || !INBOX_STATUSES.includes(status)) return false;
+  const { error } = await state._sb.from('inbox_items').update({ status }).eq('id', id);
+  if (error) { console.error('inbox status update error:', error); return false; }
+  return true;
+}
+
+async function sbDeleteInboxItem(id) {
+  if (!state._sb) return false;
+  const { error } = await state._sb.from('inbox_items').delete().eq('id', id);
+  if (error) { console.error('inbox delete error:', error); return false; }
+  return true;
 }
 
 // Tasks — table added in migration 010; tolerate a missing table so the
@@ -1018,7 +1039,78 @@ async function sbScanSocials(localDate) {
   }
 }
 
+/* ---- GOOGLE CALENDAR + INBOX ADDRESS (worker/google.js, migration 029) ---- */
+// Worker calls carry the Supabase session; they resolve to the Worker's
+// JSON ({ ok, ... } or { ok:false, error }) and never throw.
+async function _worker(path, opts = {}) {
+  try {
+    if (!state._sb) return { ok: false, error: 'signin' };
+    const { data: { session } } = await state._sb.auth.getSession();
+    if (!session) return { ok: false, error: 'signin' };
+    const res = await fetch(path, {
+      method: opts.method || 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+    });
+    const out = await res.json().catch(() => null);
+    if (!out) return { ok: false, error: res.status === 404 ? 'not_deployed' : 'network' };
+    return out;
+  } catch (e) {
+    return { ok: false, error: 'network' };
+  }
+}
+
+// Status only (never a token). Sets state.GOOGLE: object | null.
+async function sbGoogleStatus() {
+  if (!state._sb || typeof state._sb.rpc !== 'function') { state.GOOGLE = null; return null; }
+  let data = null, error = null;
+  try { ({ data, error } = await state._sb.rpc('google_conn_status')); } catch (e) { error = e; }
+  if (error) {
+    state._googleMissing = /google_conn_status|function|schema cache/i.test((error && error.message) || '');
+    state.GOOGLE = null;
+    return null;
+  }
+  state._googleMissing = false;
+  state.GOOGLE = data || null;
+  return state.GOOGLE;
+}
+
+const sbGoogleConnect = () => _worker('/api/google/connect');
+const sbGoogleFinish = () => _worker('/api/google/finish');
+const sbGoogleDisconnect = () => _worker('/api/google/disconnect');
+const sbGoogleEvents = (from, to) => _worker('/api/google/events?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to), { method: 'GET' });
+const sbGooglePush = (ev) => _worker('/api/google/push', { body: ev });
+const sbGoogleRemove = (id) => _worker('/api/google/remove', { body: { id } });
+
+async function sbSetCalendarGoogleId(sbId, googleEventId) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('calendar_events').update({ google_event_id: googleEventId || null }).eq('id', sbId);
+  return !error;
+}
+
+// The caller's private forwarding token (created on first use); rotate = new one
+async function sbInboxAddress(rotate) {
+  if (!state._sb || typeof state._sb.rpc !== 'function') return '';
+  let data = null, error = null;
+  try { ({ data, error } = await state._sb.rpc(rotate ? 'inbox_address_rotate' : 'inbox_address')); } catch (e) { error = e; }
+  if (error) { console.error('inbox address error:', error); return ''; }
+  state.INBOX_ADDRESS = /^[0-9a-f]{32}$/.test(data || '') ? data : '';
+  return state.INBOX_ADDRESS;
+}
+
 export const db = {
+  sbDeleteInboxItem,
+  sbGoogleConnect,
+  sbGoogleDisconnect,
+  sbGoogleEvents,
+  sbGoogleFinish,
+  sbGooglePush,
+  sbGoogleRemove,
+  sbGoogleStatus,
+  sbInboxAddress,
+  sbSetCalendarGoogleId,
+  sbUpdateInboxStatus,
   sbAddBoardItem,
   sbAddClient,
   sbAddIdea,

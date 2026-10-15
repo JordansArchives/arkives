@@ -146,6 +146,126 @@ S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr[
   S('wrangler: worker runs first only for /api/*', /"run_worker_first":\s*\["\/api\/\*"\]/.test(wsrc) && /"main":\s*"worker\/index\.js"/.test(wsrc) && /"binding":\s*"ASSETS"/.test(wsrc));
 }
 
+// ---- Google connection + inbox Workers (worker/google.js, worker/inbox.js, worker/crypto.js) ----
+{
+  const C = await import('../worker/crypto.js');
+  const G = await import('../worker/google.js');
+  const I = await import('../worker/inbox.js');
+  const MASTER = Buffer.alloc(32, 7).toString('base64');
+  const OTHER = Buffer.alloc(32, 9).toString('base64');
+  const sealed = await C.seal(MASTER, 'google-token', 'user-a', 'refresh-123');
+  S('crypto: seal/open round-trips for the same user', await C.open(MASTER, 'google-token', 'user-a', sealed) === 'refresh-123' && /^v1\.[\w-]+\.[\w-]+$/.test(sealed));
+  S('crypto: a token sealed for one user does not open for another', await C.open(MASTER, 'google-token', 'user-b', sealed) === null);
+  S('crypto: wrong purpose or wrong master key fails closed', await C.open(MASTER, 'google-pending', 'user-a', sealed) === null && await C.open(OTHER, 'google-token', 'user-a', sealed) === null);
+  const flipped = sealed.slice(0, -2) + (sealed.slice(-2) === 'AA' ? 'AB' : 'AA');
+  S('crypto: tampered ciphertext fails closed', await C.open(MASTER, 'google-token', 'user-a', flipped) === null && await C.open(MASTER, 'google-token', 'user-a', 'garbage') === null);
+  S('crypto: a short master key is refused', await C.seal('c2hvcnQ=', 'x', 'u', 't').then(() => false, () => true));
+
+  const st = await G.makeState(MASTER, 'user-a', 'nonce-1');
+  S('oauth state: valid with the matching nonce cookie', (await G.readState(MASTER, st, 'nonce-1'))?.u === 'user-a');
+  S('oauth state: rejected without or with a different nonce cookie (login CSRF)', await G.readState(MASTER, st, '') === null && await G.readState(MASTER, st, 'nonce-2') === null);
+  S('oauth state: rejected when expired or signed with another key', await G.readState(MASTER, st, 'nonce-1', Date.now() + 11 * 60 * 1000) === null && await G.readState(OTHER, st, 'nonce-1') === null);
+  const [pl, sig] = st.split('.');
+  const forged = Buffer.from(JSON.stringify({ u: 'victim', n: 'nonce-1', e: Date.now() + 60000 })).toString('base64url') + '.' + sig;
+  S('oauth state: a swapped user id breaks the signature', await G.readState(MASTER, forged, 'nonce-1') === null && !!pl);
+  S('oauth scopes: calendar only, no Gmail', G.GOOGLE_SCOPES.some((x) => x.endsWith('calendar.events.owned')) && !G.GOOGLE_SCOPES.some((x) => /gmail|mail\.google|drive/.test(x)));
+  S('events: only Google https links survive', G.slimEvent({ id: 'a', htmlLink: 'javascript:alert(1)', hangoutLink: 'https://evil.com/x', start: { date: '2026-10-01' }, end: { date: '2026-10-02' } }).link === '' && G.slimEvent({ id: 'a', htmlLink: 'https://www.google.com/calendar/event?eid=1', hangoutLink: 'https://meet.google.com/abc', start: { dateTime: '2026-10-01T10:00:00Z' } }).meet === 'https://meet.google.com/abc');
+  S('events: all-day flag and Arkives marker', G.slimEvent({ start: { date: '2026-10-01' }, extendedProperties: { private: { arkives: '1' } } }).allDay === true && G.slimEvent({ start: { date: '2026-10-01' }, extendedProperties: { private: { arkives: '1' } } }).arkives === true && G.nextDay('2026-12-31') === '2027-01-01');
+
+  // handleGoogle end to end against fake Supabase + Google
+  const ENV = { GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'csec', ARKIVES_MASTER_KEY: MASTER, ARKIVES_DB_KEY: 'k'.repeat(40) };
+  const gcalls = [];
+  const gfake = (o = {}) => async (url, init = {}) => {
+    url = String(url); gcalls.push({ url, method: init.method || 'GET', body: init.body ? String(init.body) : '' });
+    const J = (b, status = 200) => new Response(JSON.stringify(b), { status });
+    if (url.includes('/auth/v1/user')) return J({ id: 'user-a', email: 'me@x.com' });
+    if (url.endsWith('/rpc/google_conn_token')) return J(o.token === undefined ? null : o.token);
+    if (url.includes('/rpc/')) return J(true);
+    if (url === 'https://oauth2.googleapis.com/token') return o.invalidGrant ? J({ error: 'invalid_grant' }, 400) : J({ access_token: 'AT', refresh_token: 'RT', scope: o.scope || 'openid email https://www.googleapis.com/auth/calendar.events.owned', id_token: 'x.' + Buffer.from(JSON.stringify({ email: 'me@gmail.com', email_verified: true })).toString('base64url') + '.y' });
+    if (url.includes('/calendar/v3/') && (init.method || 'GET') === 'GET' && url.includes('fields=extendedProperties')) return J(o.ownEvent ? { extendedProperties: { private: { arkives: '1' } } } : {});
+    if (url.includes('/calendar/v3/') && (init.method || 'GET') === 'GET') return J({ items: [{ id: 'e1', summary: 'Call', start: { dateTime: '2026-10-15T10:00:00Z' }, end: { dateTime: '2026-10-15T11:00:00Z' } }, { id: 'e2', status: 'cancelled', start: { date: '2026-10-16' } }] });
+    if (url.includes('/calendar/v3/') && init.method === 'POST') return J({ id: 'newevt' });
+    if (url.includes('/calendar/v3/') && init.method === 'DELETE') return new Response(null, { status: 204 });
+    if (url.includes('/revoke')) return J({});
+    return J({}, 404);
+  };
+  const req = (path, init = {}) => new Request('https://arkives.xyz' + path, init);
+  const authH = { Authorization: 'Bearer jwt', 'Content-Type': 'application/json' };
+  let r = await G.handleGoogle(req('/api/google/connect', { method: 'POST', headers: authH }), {}, gfake());
+  S('google: 503 when secrets are missing', r.status === 503);
+  r = await G.handleGoogle(req('/api/google/events?from=2026-10-01&to=2026-11-01'), ENV, gfake());
+  S('google: signed-out calls are refused', r.status === 401);
+  r = await G.handleGoogle(req('/api/google/connect', { method: 'POST', headers: authH }), ENV, gfake());
+  const cj = await r.json(); const setC = r.headers.get('Set-Cookie') || '';
+  const authUrl = new URL(cj.url);
+  S('google connect: consent URL with offline access, our scopes, state, and an HttpOnly nonce cookie', authUrl.origin === 'https://accounts.google.com' && authUrl.searchParams.get('access_type') === 'offline' && authUrl.searchParams.get('prompt') === 'consent' && authUrl.searchParams.get('redirect_uri') === 'https://arkives.xyz/api/google/callback' && /calendar\.events\.owned/.test(authUrl.searchParams.get('scope')) && /^ark_g_nonce=[\w-]+; Path=\/api\/google; Max-Age=600; HttpOnly; Secure; SameSite=Lax$/.test(setC));
+  const nonce = setC.split(';')[0].split('=')[1];
+  const cb = (q, cookieHdr, o) => G.handleGoogle(req('/api/google/callback?' + q, { headers: { Cookie: cookieHdr } }), ENV, gfake(o));
+  r = await cb('code=c&state=' + encodeURIComponent(authUrl.searchParams.get('state')), 'ark_g_nonce=wrong');
+  S('google callback: a mismatched nonce is refused (no token exchange)', r.status === 303 && /google=error&reason=state/.test(r.headers.get('Location')) && !gcalls.some((c) => c.url === 'https://oauth2.googleapis.com/token' && /authorization_code/.test(c.body)));
+  r = await cb('code=c&state=' + encodeURIComponent(authUrl.searchParams.get('state')), 'ark_g_nonce=' + nonce, { scope: 'openid email' });
+  S('google callback: calendar box unticked -> revoke and explain', /reason=scope/.test(r.headers.get('Location')) && gcalls.some((c) => c.url.includes('/revoke')));
+  r = await cb('code=c&state=' + encodeURIComponent(authUrl.searchParams.get('state')), 'ark_g_nonce=' + nonce);
+  const pendingCookie = (r.headers.get('Set-Cookie') || '').split(/,\s*(?=ark_g_)/).find((x) => x.startsWith('ark_g_pending=')) || '';
+  const pendingVal = pendingCookie.split(';')[0].slice('ark_g_pending='.length);
+  const parked = JSON.parse(await C.open(MASTER, 'google-pending', 'user-a', pendingVal) || '{}');
+  S('google callback: parks a sealed token in an HttpOnly cookie, never the raw token', r.status === 303 && /\/\?google=finish#settings$/.test(r.headers.get('Location')) && /HttpOnly; Secure/.test(pendingCookie) && parked.token !== 'RT' && await C.open(MASTER, 'google-token', 'user-a', parked.token) === 'RT' && await C.open(MASTER, 'google-pending', 'user-b', pendingVal) === null);
+  gcalls.length = 0;
+  r = await G.handleGoogle(req('/api/google/finish', { method: 'POST', headers: { ...authH, Cookie: 'ark_g_pending=' + pendingVal } }), ENV, gfake());
+  const put = gcalls.find((c) => c.url.endsWith('/rpc/google_conn_put'));
+  const putBody = put ? JSON.parse(put.body) : {};
+  S('google finish: stores ciphertext bound to the user, with the DB key, as the user', r.status === 200 && putBody.p_key === ENV.ARKIVES_DB_KEY && putBody.p_email === 'me@gmail.com' && putBody.p_token !== 'RT' && await C.open(MASTER, 'google-token', 'user-a', putBody.p_token) === 'RT');
+  const otherUser = async (url, init) => String(url).includes('/auth/v1/user') ? new Response(JSON.stringify({ id: 'user-b' })) : gfake()(url, init);
+  r = await G.handleGoogle(req('/api/google/finish', { method: 'POST', headers: { ...authH, Cookie: 'ark_g_pending=' + pendingVal } }), ENV, otherUser);
+  S('google finish: a parked token cannot be claimed by a different account', r.status === 400);
+  const tok = await C.seal(MASTER, 'google-token', 'user-a', 'RT');
+  r = await G.handleGoogle(req('/api/google/events?from=2026-10-01T00:00:00Z&to=2026-11-01T00:00:00Z', { headers: authH }), ENV, gfake({ token: tok }));
+  const ev = await r.json();
+  S('google events: refreshes, lists, drops cancelled', ev.ok && ev.events.length === 1 && ev.events[0].title === 'Call');
+  r = await G.handleGoogle(req('/api/google/events?from=2026-01-01&to=2026-12-31', { headers: authH }), ENV, gfake({ token: tok }));
+  S('google events: windows over 70 days are refused', r.status === 400);
+  r = await G.handleGoogle(req('/api/google/events?from=2026-10-01&to=2026-11-01', { headers: authH }), ENV, gfake({ token: tok, invalidGrant: true }));
+  S('google events: a revoked grant marks the connection and asks to reconnect', r.status === 409 && (await r.json()).error === 'reconnect');
+  r = await G.handleGoogle(req('/api/google/events?from=2026-10-01&to=2026-11-01', { headers: authH }), ENV, gfake({ token: await C.seal(MASTER, 'google-token', 'user-b', 'RT') }));
+  S('google events: another user\'s ciphertext is useless', r.status === 409 && (await r.json()).error === 'not_connected');
+  r = await G.handleGoogle(req('/api/google/remove', { method: 'POST', headers: authH, body: JSON.stringify({ id: 'abc123def' }) }), ENV, gfake({ token: tok }));
+  S('google remove: refuses to delete events Arkives did not create', r.status === 403);
+  gcalls.length = 0;
+  r = await G.handleGoogle(req('/api/google/remove', { method: 'POST', headers: authH, body: JSON.stringify({ id: 'abc123def' }) }), ENV, gfake({ token: tok, ownEvent: true }));
+  S('google remove: deletes its own events', r.status === 200 && gcalls.some((c) => c.method === 'DELETE'));
+  r = await G.handleGoogle(req('/api/google/push', { method: 'POST', headers: authH, body: JSON.stringify({ date: '2026-10-20', title: 'Reel due' }) }), ENV, gfake({ token: tok }));
+  const pushed = gcalls.filter((c) => c.method === 'POST' && c.url.includes('/calendar/v3/')).pop();
+  S('google push: all-day, marked as Arkives, does not block free/busy', (await r.json()).id === 'newevt' && /"arkives":"1"/.test(pushed.body) && /"transparency":"transparent"/.test(pushed.body) && /"end":\{"date":"2026-10-21"\}/.test(pushed.body));
+
+  // Inbox email handler
+  S('inbox: address token parsing', I.addressToken('deals-0123456789abcdef0123456789abcdef@arkives.xyz') === '0123456789abcdef0123456789abcdef' && I.addressToken('hello@arkives.xyz') === null && I.addressToken('deals-x@arkives.xyz') === null);
+  S('inbox: brand guess from sender domain', I.brandGuess('Partnerships', 'partners@nike.com') === 'Nike' && I.brandGuess('Jane', 'jane@gmail.com') === 'Jane' && I.brandGuess('', 'a@mail.brand.co.uk') === 'Brand');
+  const rawMail = 'From: "Acme Partnerships" <partners@acme.com>\r\nTo: deals-0123456789abcdef0123456789abcdef@arkives.xyz\r\nSubject: =?UTF-8?B?Q29sbGFiIOKcqA==?=\r\nMessage-ID: <abc.123@acme.com>\r\nDate: Wed, 14 Oct 2026 10:00:00 +0000\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<html><style>p{}</style><p>Hi Jordan,</p><p>Spring campaign &amp; rates?</p><script>x()</script></html>\r\n';
+  const sum = await I.summarize(new TextEncoder().encode(rawMail).buffer);
+  S('inbox: parses sender, encoded subject, Message-ID; HTML becomes plain text', sum.p_from_email === 'partners@acme.com' && sum.p_brand === 'Acme' && sum.p_subject === 'Collab ✨' && sum.p_message_id === 'abc.123@acme.com' && /Hi Jordan,\s+Spring campaign & rates\?/.test(sum.p_preview) && !/<|script|x\(\)/.test(sum.p_preview), JSON.stringify(sum));
+  const mkMsg = (to, size = 100) => { const m = { to, rawSize: size, raw: new Blob([rawMail]).stream(), rejected: '' }; m.setReject = (why) => { m.rejected = why; }; return m; };
+  const icalls = [];
+  const ifake = (res) => async (url, init) => { icalls.push({ url: String(url), body: JSON.parse(init.body), auth: init.headers.Authorization }); return new Response(JSON.stringify(res)); };
+  let m = mkMsg('someone@arkives.xyz'); await I.handleEmail(m, ENV, ifake('ok'));
+  S('inbox: mail to a non-deals address is rejected without touching the DB', m.rejected === 'Unknown address' && icalls.length === 0);
+  m = mkMsg('deals-0123456789abcdef0123456789abcdef@arkives.xyz', 50 * 1024 * 1024); await I.handleEmail(m, ENV, ifake('ok'));
+  S('inbox: oversized mail is rejected', m.rejected === 'Message too large' && icalls.length === 0);
+  m = mkMsg('deals-0123456789abcdef0123456789abcdef@arkives.xyz'); await I.handleEmail(m, ENV, ifake('ok'));
+  S('inbox: files through inbox_ingest with the DB key and no user session', !m.rejected && icalls[0].url.endsWith('/rpc/inbox_ingest') && icalls[0].body.p_key === ENV.ARKIVES_DB_KEY && icalls[0].body.p_token === '0123456789abcdef0123456789abcdef' && icalls[0].auth === undefined);
+  m = mkMsg('deals-ffffffffffffffffffffffffffffffff@arkives.xyz'); await I.handleEmail(m, ENV, ifake('unknown'));
+  S('inbox: a token the DB does not know is rejected', m.rejected === 'Unknown address');
+
+  // Migration 029: no direct table access, every token/ingest function gated by the worker key
+  const m29 = fs.readFileSync(new URL('../migrations/029_google_and_inbox.sql', import.meta.url), 'utf8');
+  S('029: token and address tables have RLS on and no grants or policies', /ALTER TABLE google_connections ENABLE ROW LEVEL SECURITY/.test(m29) && /REVOKE ALL ON google_connections FROM PUBLIC, anon, authenticated/.test(m29) && /REVOKE ALL ON inbox_addresses FROM PUBLIC, anon, authenticated/.test(m29) && !/CREATE POLICY[^;]*(google_connections|inbox_addresses)/.test(m29) && !/GRANT[^;]*ON (TABLE )?(google_connections|inbox_addresses)/.test(m29));
+  const fnBody = (n) => (m29.match(new RegExp('FUNCTION public\\.' + n + '\\([\\s\\S]*?\\$\\$;')) || [''])[0];
+  S('029: put/token/mark/delete/ingest all require the worker key', ['google_conn_put', 'google_conn_token', 'google_conn_mark', 'google_conn_delete', 'inbox_ingest'].every((n) => /private\.worker_key_ok\(p_key\)/.test(fnBody(n))), ['google_conn_put', 'google_conn_token', 'google_conn_mark', 'google_conn_delete', 'inbox_ingest'].filter((n) => !/worker_key_ok/.test(fnBody(n))).join(','));
+  S('029: status never returns the token', !/refresh_token/.test(fnBody('google_conn_status').split('FROM')[0]));
+  S('029: only inbox_ingest is callable by anon', (m29.match(/GRANT EXECUTE[^;]*TO anon/g) || []).length === 1 && /GRANT EXECUTE ON FUNCTION public\.inbox_ingest[^;]*TO anon, authenticated/.test(m29));
+  const wr = fs.readFileSync(new URL('../worker/google.js', import.meta.url), 'utf8') + fs.readFileSync(new URL('../worker/inbox.js', import.meta.url), 'utf8');
+  S('workers never use a Supabase service key', !/service_role|sb_secret|SUPABASE_SERVICE/i.test(wr));
+}
+
 const PORT = 8742;
 const server = await startServer(PORT);
 const browser = await chromium.launch(launchOptions());
@@ -168,6 +288,24 @@ for (const f of SRC.filter((x) => x.startsWith('src/views/'))) {
 const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
   const out = [];
   const T = (name, cond, detail) => out.push({ name, pass: !!cond, detail: detail === undefined ? '' : String(detail) });
+
+  // Settings > Connections renders every state, escaped
+  {
+    const st = __arkives.state;
+    const keep = [st.GOOGLE, st._googleMissing, st.INBOX_ADDRESS];
+    st._googleMissing = false; st.GOOGLE = null; st.INBOX_ADDRESS = '0123456789abcdef0123456789abcdef';
+    const off = __arkives.renderConnectionsSettings();
+    st.GOOGLE = { email: '<img src=x onerror=1>@x.com', status: 'active', connected_at: '2026-10-01T00:00:00Z' };
+    const on = __arkives.renderConnectionsSettings();
+    st.GOOGLE = { email: 'a@b.com', status: 'revoked' };
+    const rev = __arkives.renderConnectionsSettings();
+    st._googleMissing = true;
+    const miss = __arkives.renderConnectionsSettings();
+    T('connections: connect / connected / reconnect / missing-migration states', /data-action="connectGoogle"[^>]*>Connect Google Calendar/.test(off) && /data-action="disconnectGoogle"/.test(on) && /Reconnect Google Calendar/.test(rev) && /029_google_and_inbox\.sql/.test(miss));
+    T('connections: Google email is escaped, address shown', !/<img src=x/.test(on) && /&lt;img/.test(on) && /deals-0123456789abcdef0123456789abcdef@arkives\.xyz/.test(off));
+    [st.GOOGLE, st._googleMissing, st.INBOX_ADDRESS] = keep;
+    T('calendar: all-day Google events span their days, end exclusive', __arkives._gcalDates({ allDay: true, start: '2026-10-30', end: '2026-11-02' }).join(',') === '2026-10-30,2026-10-31,2026-11-01' && __arkives._gcalDates({ allDay: true, start: '2026-10-30', end: '2026-10-31' }).length === 1);
+  }
 
   // Escaping
   T('_esc escapes quotes and angle brackets', __arkives._esc('a"b<c>&') === 'a&quot;b&lt;c&gt;&amp;');
@@ -1245,7 +1383,7 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     await S.loadFor('outreach');
     T('outreach loader maps lists and targets', st.OUTREACH_LISTS[0].name === 'Brands' && st.OUTREACH_TARGETS[0].name === 'Nike' && st._outreachMigrationMissing === false);
     await Promise.all([S.audience.load(), S.inbox.load(), S.campaigns.load()]);
-    T('audience, inbox and campaign loaders map rows', st.AUDIENCE_DATA.gender.female === 60 && /25-34/.test(st.AUDIENCE_DATA.topAge) && st.AUDIENCE_DATA.interests[0] === 'film' && st.INBOX_ITEMS[0].status === 'needs_reply' && st.CAMPAIGN_RESULTS[0].views === 1000, JSON.stringify(st.AUDIENCE_DATA));
+    T('audience, inbox and campaign loaders map rows', st.AUDIENCE_DATA.gender.female === 60 && /25-34/.test(st.AUDIENCE_DATA.topAge) && st.AUDIENCE_DATA.interests[0] === 'film' && st.INBOX_ITEMS[0].status === 'new' && st.INBOX_ITEMS[0].id === 'ib1' && st.CAMPAIGN_RESULTS[0].views === 1000, JSON.stringify(st.AUDIENCE_DATA));
     // Signed in, first visit to a view: skeleton, load, render
     S.calendar.reset(); st.CALENDAR_EVENTS = [];
     const navP = __arkives.navigate('calendar');
