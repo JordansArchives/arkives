@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS private.worker_keys (
   key_hash TEXT NOT NULL CHECK (key_hash ~ '^[0-9a-f]{64}$')
 );
 REVOKE ALL ON private.worker_keys FROM PUBLIC, anon, authenticated;
+ALTER TABLE private.worker_keys ENABLE ROW LEVEL SECURITY; -- belt and braces: owner-run functions bypass it
 
 CREATE OR REPLACE FUNCTION private.worker_key_ok(p_key TEXT)
 RETURNS BOOLEAN
