@@ -17,11 +17,12 @@
 --     here and bound to the user's auth id; this table only ever holds
 --     ciphertext.
 --
--- AFTER RUNNING THIS FILE, register the Worker key ONCE (Settings > SQL):
---   insert into private.worker_keys (name, key_hash)
---   values ('worker', encode(extensions.digest('<ARKIVES_DB_KEY>', 'sha256'), 'hex'))
+-- AFTER RUNNING THIS FILE, register the Worker key ONCE (SQL editor).
+-- Paste only its SHA-256 (the key itself never enters SQL history):
+--   security find-generic-password -s vip.arkives-db-key -w | tr -d '\n' | shasum -a 256 | cut -d' ' -f1
+--   insert into private.worker_keys (name, key_hash) values ('worker', '<64-char hash>')
 --   on conflict (name) do update set key_hash = excluded.key_hash;
--- (same value you set as the ARKIVES_DB_KEY secret in Cloudflare)
+-- (hash of the same value set as the ARKIVES_DB_KEY secret in Cloudflare)
 --
 -- Also: inbox_items gains message_id/received_at (dedupe + ordering),
 -- calendar_events gains google_event_id (Arkives events mirrored to
