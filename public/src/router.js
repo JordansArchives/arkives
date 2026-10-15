@@ -245,6 +245,10 @@ function renderView(view, sub) {
 
 /* ---- SIDE EFFECTS ---- Registered from main.js in a fixed order, not at import time. */
 export function __init() {
+  // Privacy mode toggled: repaint the open view with values masked or shown
+  window.addEventListener('arkives:privacy', function() {
+    if (_current && _current.def && VIEWS[_current.key] === _current.def) _current.def.render();
+  });
   window.addEventListener("hashchange", function() {
     if (!state._booted) return; // init paints the first view itself
     // Only navigate if the app shell is visible (user is authenticated)

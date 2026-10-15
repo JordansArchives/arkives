@@ -7,6 +7,7 @@ import { db } from '../lib/sb.js';
 import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
 import { _showSaveError } from '../lib/toast.js';
+import { pv } from '../lib/privacy.js';
 import { inboxAddress } from './connections.js';
 
 const STATUS = [
@@ -51,17 +52,17 @@ function _detail(item) {
   const mailto = _mailto(item);
   return `
     <div class="inbox-detail-head">
-      <div class="inbox-detail-brand">${_esc(item.brand || item.fromName)}</div>
-      <h3 class="inbox-detail-subject">${_esc(item.subject)}</h3>
-      <div class="inbox-detail-from">${_esc(item.fromName)}${item.fromEmail ? ` &lt;${_esc(item.fromEmail)}&gt;` : ''} · ${_esc(_when(item.receivedAt))}</div>
+      <div class="inbox-detail-brand">${pv(_esc(item.brand || item.fromName))}</div>
+      <h3 class="inbox-detail-subject">${pv(_esc(item.subject))}</h3>
+      <div class="inbox-detail-from">${pv(_esc(item.fromName))}${item.fromEmail ? ` &lt;${pv(_esc(item.fromEmail))}&gt;` : ''} · ${_esc(_when(item.receivedAt))}</div>
     </div>
     <div class="inbox-triage" role="group" aria-label="Status">
       ${STATUS.map(([k, label]) => `<button class="inbox-triage-btn ${item.status === k ? 'active' : ''}" data-action="setInboxStatus" data-args="${_args(item.id, k)}">${label}</button>`).join('')}
     </div>
-    <div class="inbox-preview">${_esc(item.preview || '(No text)')}</div>
+    <div class="inbox-preview">${item.preview ? pv(_esc(item.preview)) : '(No text)'}</div>
     <div class="inbox-detail-actions">
       ${gmail ? `<a class="btn btn-primary" href="${_esc(gmail)}" target="_blank" rel="noopener">Open in Gmail</a>` : ''}
-      ${mailto ? `<a class="btn btn-secondary" href="${_esc(mailto)}">Reply</a>` : ''}
+      ${mailto ? `<button class="btn btn-secondary" data-action="replyInboxItem" data-args="${_args(item.id)}">Reply</button>` : ''}
       <button class="btn btn-secondary btn-danger-text" data-action="deleteInboxItem" data-args="${_args(item.id)}">Delete</button>
     </div>`;
 }
@@ -89,7 +90,7 @@ function renderInbox() {
     ${state.INBOX_ITEMS.length === 0 ? `
     <div class="card">
       <div class="dashboard-empty">
-        <p>No brand emails yet. Set up Gmail forwarding in <a href="#settings" data-action="openInboxSetup">Settings › Connections</a>${addr ? ` to <code>${_esc(addr)}</code>` : ''}, and new brand emails will land here.</p>
+        <p>No brand emails yet. Set up Gmail forwarding in <a href="#settings" data-action="openInboxSetup">Settings › Connections</a>${addr ? ` to <code>${pv(_esc(addr))}</code>` : ''}, and new brand emails will land here.</p>
       </div>
     </div>` : `
     <div class="inbox-layout ${selected ? 'has-selection' : ''}">
@@ -97,11 +98,11 @@ function renderInbox() {
         ${list.length === 0 ? `<div class="dashboard-empty"><p>Nothing here.</p></div>` : list.map(item => `
           <button class="inbox-item ${item.id === state._inboxSelected ? 'selected' : ''} ${item.status === 'new' ? 'is-new' : ''}" data-action="selectInboxItem" data-args="${_args(item.id)}">
             <span class="inbox-item-header">
-              <span class="inbox-brand">${_esc(item.brand || item.fromName)}</span>
+              <span class="inbox-brand">${pv(_esc(item.brand || item.fromName))}</span>
               <span class="inbox-time">${_esc(_when(item.receivedAt))}</span>
             </span>
-            <span class="inbox-subject">${_esc(item.subject)}</span>
-            <span class="inbox-snippet">${_esc((item.preview || '').slice(0, 140))}</span>
+            <span class="inbox-subject">${pv(_esc(item.subject))}</span>
+            <span class="inbox-snippet">${pv(_esc((item.preview || '').slice(0, 140)))}</span>
             <span class="inbox-status-badge status-${_esc(item.status)}">${_esc(LABEL[item.status] || item.status)}</span>
           </button>
         `).join('')}
@@ -146,10 +147,17 @@ async function deleteInboxItem(id) {
   renderInbox();
 }
 
+// Reply opens the mail app from state, so the sender's address is never in
+// an href (a hovered link prints it in the browser's status bar)
+function replyInboxItem(id) {
+  const href = _mailto(state.INBOX_ITEMS.find(i => i.id === id) || {});
+  if (href) window.location.href = href;
+}
+
 function openInboxSetup() {
   state._settingsTabNext = 'connections';
 }
 
-act({ deleteInboxItem, openInboxSetup, selectInboxItem, setInboxFilter, setInboxStatus });
+act({ deleteInboxItem, openInboxSetup, replyInboxItem, selectInboxItem, setInboxFilter, setInboxStatus });
 
-export { deleteInboxItem, openInboxSetup, renderInbox, selectInboxItem, setInboxFilter, setInboxStatus };
+export { deleteInboxItem, openInboxSetup, renderInbox, replyInboxItem, selectInboxItem, setInboxFilter, setInboxStatus };

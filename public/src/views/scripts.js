@@ -5,6 +5,7 @@ import { _args, act } from '../lib/actions.js';
 import { _esc, _escHtml, _safeThumb } from '../lib/esc.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
 import { _shareLinkRowsHtml } from '../lib/share.js';
+import { pv } from '../lib/privacy.js';
 import { _showSaveError, _showUndoToast } from '../lib/toast.js';
 
 /* ---- SCENE BLOCKS (025) ----
@@ -124,7 +125,7 @@ async function renderScripts() {
       var shareLabel = s.share_mode === 'none' ? 'Private' : (s.share_mode === 'view' ? 'View link' : 'Edit link');
       var shareDot = s.share_mode === 'none' ? 'var(--text-secondary)' : 'var(--teal)';
       html += '<div class="script-card" data-action="go" data-args="' + _args('script/' + s.id) + '">';
-      html += '<div class="script-card-title">' + _escHtml(s.title) + '</div>';
+      html += '<div class="script-card-title">' + pv(_escHtml(s.title)) + '</div>';
       html += '<div class="script-card-meta">';
       html += '<span>' + date + '</span>';
       html += '<span style="display:flex;align-items:center;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:' + shareDot + ';display:inline-block"></span>' + shareLabel + '</span>';

@@ -5,6 +5,7 @@ import { state } from '../state.js';
 import { db } from '../lib/sb.js';
 import { act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
+import { pv } from '../lib/privacy.js';
 import { _showSaveError, _showSaveSuccess } from '../lib/toast.js';
 
 export const INBOX_DOMAIN = 'arkives.xyz';
@@ -33,7 +34,7 @@ function _googleBody() {
     return `
       <div class="conn-row">
         <span class="conn-dot conn-on" aria-hidden="true"></span>
-        <div class="conn-text"><strong>Connected</strong>${g.email ? ' as ' + _esc(g.email) : ''}${since ? `<span class="conn-meta">since ${_esc(since)}</span>` : ''}</div>
+        <div class="conn-text"><strong>Connected</strong>${g.email ? ' as ' + pv(_esc(g.email)) : ''}${since ? `<span class="conn-meta">since ${_esc(since)}</span>` : ''}</div>
       </div>
       <p class="settings-help">Your Google events show on the Calendar. Arkives events can be added to your Google Calendar from the Add Event form.</p>
       <div class="settings-actions">
@@ -42,7 +43,7 @@ function _googleBody() {
   }
   const revoked = g && g.status === 'revoked';
   return `
-    ${revoked ? `<div class="conn-row"><span class="conn-dot conn-warn" aria-hidden="true"></span><div class="conn-text"><strong>Google access expired</strong>${g.email ? ' for ' + _esc(g.email) : ''}</div></div>` : ''}
+    ${revoked ? `<div class="conn-row"><span class="conn-dot conn-warn" aria-hidden="true"></span><div class="conn-text"><strong>Google access expired</strong>${g.email ? ' for ' + pv(_esc(g.email)) : ''}</div></div>` : ''}
     <p class="settings-help">See your Google events on the Arkives calendar and add Arkives deadlines to Google. Arkives can only see and change events on calendars you own. It never reads your email.</p>
     <div class="settings-actions">
       <button class="btn btn-primary" data-action="connectGoogle">${revoked ? 'Reconnect' : 'Connect'} Google Calendar</button>
@@ -56,7 +57,7 @@ function _inboxBody() {
   return `
     <p class="settings-help">Arkives never connects to your Gmail. Instead, Gmail forwards brand emails here, and they land in your Inbox for triage.</p>
     <div class="conn-address">
-      <code id="inboxAddress">${_esc(addr)}</code>
+      <code id="inboxAddress">${pv(_esc(addr))}</code>
       <button class="btn btn-secondary btn-sm" data-action="copyInboxAddress">Copy</button>
     </div>
     <ol class="conn-steps">
@@ -82,6 +83,7 @@ function renderConnectionsSettings() {
     </div>`;
 }
 
+// Also called by Settings when privacy mode flips (emails are masked)
 function _paint() {
   const g = document.getElementById('connGoogleBody');
   if (g) g.innerHTML = _googleBody();
@@ -151,4 +153,4 @@ async function handleGoogleReturn() {
 
 act({ connectGoogle, copyInboxAddress, disconnectGoogle, rotateInboxAddress });
 
-export { connectGoogle, copyInboxAddress, disconnectGoogle, handleGoogleReturn, inboxAddress, loadConnections, renderConnectionsSettings, rotateInboxAddress };
+export { _paint as repaintConnections, connectGoogle, copyInboxAddress, disconnectGoogle, handleGoogleReturn, inboxAddress, loadConnections, renderConnectionsSettings, rotateInboxAddress };

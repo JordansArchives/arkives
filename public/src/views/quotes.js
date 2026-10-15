@@ -6,6 +6,7 @@ import { quotes } from '../stores/quotes.js';
 import { clients, invoices } from '../stores/invoices.js';
 import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
+import { isPrivate, pv, pvText } from '../lib/privacy.js';
 import { _showSaveError, showToast } from '../lib/toast.js';
 import { _localISODate } from './tasks.js';
 import { fmtDocDate, fmtMoney, nextInvoiceNumber } from './invoices.js';
@@ -74,15 +75,18 @@ function _qLineSub(li) {
    THE DOCUMENT
    Shared by the editor preview, the PDF and the client page.
    Built on the contract document's styles: numbered sections,
-   accent numerals, a rule-topped closing block.
+   accent numerals, a rule-topped closing block. `masked` is the
+   editor preview in privacy mode; the PDF and the client's #q/ page
+   always get the real document.
    ============================================================ */
-function renderQuoteDoc(q, closing) {
+function renderQuoteDoc(q, closing, masked) {
+  const m = masked ? pv : (h) => h;
   const total = qTotal(q);
   const dep = qDeposit(q);
   const pct = Number(q.depositPct) || 0;
   const items = (q.lineItems || []).filter(li => (li.desc || '').trim() || Number(li.rate));
   const clientOrg = q.clientCompany || q.clientName;
-  const addr = s => String(s || '').split('\n').filter(Boolean).map(l => `<span>${_esc(l)}</span>`).join('');
+  const addr = s => String(s || '').split('\n').filter(Boolean).map(l => `<span>${m(_esc(l))}</span>`).join('');
   let n = 0;
   const section = (title, body) => body ? `
     <div class="contract-section">
@@ -90,31 +94,31 @@ function renderQuoteDoc(q, closing) {
       <div class="contract-section-body">${body}</div>
     </div>` : '';
 
-  const scopeBody = _qText(q.scope) + (q.timeline ? `<p><strong>Timeline:</strong> ${_esc(q.timeline)}</p>` : '');
+  const scopeBody = m(_qText(q.scope)) + (q.timeline ? `<p><strong>Timeline:</strong> ${m(_esc(q.timeline))}</p>` : '');
   const rows = items.length ? items.map(li => `
         <div class="quote-row">
-          <div class="quote-row-desc"><strong>${_esc(li.desc || 'Item')}</strong>${li.detail ? `<small>${_esc(li.detail)}</small>` : ''}</div>
-          <div class="quote-row-calc">${_esc(_qLineSub(li))}</div>
-          <div class="quote-row-amt">${qLineAmount(li) ? fmtMoney(qLineAmount(li)) : 'TBD'}</div>
+          <div class="quote-row-desc"><strong>${m(_esc(li.desc || 'Item'))}</strong>${li.detail ? `<small>${m(_esc(li.detail))}</small>` : ''}</div>
+          <div class="quote-row-calc">${m(_esc(_qLineSub(li)))}</div>
+          <div class="quote-row-amt">${qLineAmount(li) ? m(fmtMoney(qLineAmount(li))) : 'TBD'}</div>
         </div>`).join('') : '<div class="quote-row"><div class="quote-row-desc">No line items yet</div><div></div><div></div></div>';
   const investment = `
       <div class="quote-table">${rows}
-        <div class="quote-row quote-total"><div>Total</div><div></div><div>${fmtMoney(total)}</div></div>
+        <div class="quote-row quote-total"><div>Total</div><div></div><div>${m(fmtMoney(total))}</div></div>
       </div>`;
   const payment = total ? (pct > 0
-    ? `<p><strong>Deposit:</strong> ${pct}% (${fmtMoney(dep)}) is due on acceptance and books the project dates.${pct < 100 ? ` <strong>Balance:</strong> ${fmtMoney(total - dep)} is due ${Q_BALANCE[q.balanceTerms] || Q_BALANCE.delivery}.` : ''}</p>`
-    : `<p>The full amount (${fmtMoney(total)}) is due ${Q_BALANCE[q.balanceTerms] || Q_BALANCE.delivery}.</p>`) : '';
+    ? `<p><strong>Deposit:</strong> ${pct}% (${m(fmtMoney(dep))}) is due on acceptance and books the project dates.${pct < 100 ? ` <strong>Balance:</strong> ${m(fmtMoney(total - dep))} is due ${Q_BALANCE[q.balanceTerms] || Q_BALANCE.delivery}.` : ''}</p>`
+    : `<p>The full amount (${m(fmtMoney(total))}) is due ${Q_BALANCE[q.balanceTerms] || Q_BALANCE.delivery}.</p>`) : '';
   const rounds = Number(q.revisionRounds) || 0;
   const revisions = `<p>${rounds ? `Includes <strong>${rounds} round${rounds === 1 ? '' : 's'} of revisions</strong> per deliverable. A round is one consolidated set of notes on a cut. Further rounds are quoted separately.` : 'No revision rounds are included; any revisions are quoted separately.'}</p>` +
-    (q.usageRights ? `<p><strong>Usage:</strong> ${_esc(q.usageRights).replace(/\n/g, '<br>')}</p>` : '');
+    (q.usageRights ? `<p><strong>Usage:</strong> ${m(_esc(q.usageRights).replace(/\n/g, '<br>'))}</p>` : '');
 
   return `
   <div class="contract-document quote-doc">
     <div class="quote-doc-head">
       <div class="quote-doc-from">
-        <strong>${_esc(q.fromName || '')}</strong>
+        <strong>${m(_esc(q.fromName || ''))}</strong>
         ${addr(q.fromAddress)}
-        ${q.fromEmail ? `<span>${_esc(q.fromEmail)}</span>` : ''}
+        ${q.fromEmail ? `<span>${m(_esc(q.fromEmail))}</span>` : ''}
       </div>
       <div class="quote-doc-meta">
         <div><span>Quote</span><span>${_esc(q.quoteNumber || '—')}</span></div>
@@ -123,25 +127,26 @@ function renderQuoteDoc(q, closing) {
       </div>
     </div>
     <h2 class="contract-doc-title">Project Quote</h2>
-    ${q.title ? `<p class="quote-doc-title">${_esc(q.title)}</p>` : ''}
+    ${q.title ? `<p class="quote-doc-title">${m(_esc(q.title))}</p>` : ''}
     <div class="contract-section-body quote-doc-for">
-      <p>Prepared for <strong>${_esc(clientOrg || 'Client')}</strong>${q.clientCompany && q.clientName ? `, attention ${_esc(q.clientName)}` : ''}${q.clientEmail ? ` (${_esc(q.clientEmail)})` : ''}</p>
+      <p>Prepared for <strong>${m(_esc(clientOrg || 'Client'))}</strong>${q.clientCompany && q.clientName ? `, attention ${m(_esc(q.clientName))}` : ''}${q.clientEmail ? ` (${m(_esc(q.clientEmail))})` : ''}</p>
       ${q.clientAddress ? `<p class="quote-doc-addr">${addr(q.clientAddress)}</p>` : ''}
     </div>
     ${section('SCOPE &amp; DELIVERABLES', scopeBody)}
     ${section('INVESTMENT', investment)}
     ${section('PAYMENT', payment)}
     ${section('REVISIONS &amp; USAGE', revisions)}
-    ${section('NOT INCLUDED', _qText(q.exclusions))}
-    ${section('NOTES', _qText(q.notes))}
+    ${section('NOT INCLUDED', q.exclusions ? m(_qText(q.exclusions)) : '')}
+    ${section('NOTES', q.notes ? m(_qText(q.notes)) : '')}
     ${closing || ''}
   </div>`;
 }
 
 // The closing block as it prints / previews (the live page swaps in the form)
-function _qClosingStatic(q) {
+function _qClosingStatic(q, masked) {
+  const m = masked ? pv : (h) => h;
   let line;
-  if (q.status === 'accepted') line = `Accepted by <strong>${_esc(q.acceptedName)}</strong>${q.respondedAt ? ' on ' + _esc(fmtDocDate(String(q.respondedAt).slice(0, 10))) : ''}.`;
+  if (q.status === 'accepted') line = `Accepted by <strong>${m(_esc(q.acceptedName))}</strong>${q.respondedAt ? ' on ' + _esc(fmtDocDate(String(q.respondedAt).slice(0, 10))) : ''}.`;
   else if (q.status === 'declined') line = `Declined${q.respondedAt ? ' on ' + _esc(fmtDocDate(String(q.respondedAt).slice(0, 10))) : ''}.`;
   else line = `To accept, open the quote link and confirm with your full name${q.validUntil ? ` by <strong>${_esc(fmtDocDate(q.validUntil))}</strong>` : ''}.`;
   return `<div class="contract-sig-block quote-closing"><p class="quote-closing-title">Acceptance</p><p>${line}</p></div>`;
@@ -173,10 +178,10 @@ function renderQuotes(sub) {
     <div class="card quote-link-banner">
       <div>
         <strong>${_esc(linkQ.quoteNumber)} is live.</strong>
-        <span>Send this link to ${_esc(linkQ.clientName || linkQ.clientCompany || 'your client')}. They can read it, download a PDF, and accept or decline.</span>
+        <span>Send this link to ${pv(_esc(linkQ.clientName || linkQ.clientCompany || 'your client'))}. They can read it, download a PDF, and accept or decline.</span>
       </div>
       <div class="bd-share-linkrow">
-        <input type="text" readonly value="${_esc(qShareUrl(linkQ))}">
+        <input type="text" class="pv-field" readonly value="${_esc(qShareUrl(linkQ))}">
         <button class="btn btn-primary" data-action="qCopyLink" data-args="${_args(linkQ._sbId)}">Copy</button>
         <button class="btn" data-action="qDismissLink" aria-label="Dismiss">Done</button>
       </div>
@@ -199,12 +204,12 @@ function renderQuotes(sub) {
     <div class="kpi-grid">
       <div class="kpi-card">
         <span class="kpi-label">Open</span>
-        <span class="kpi-value">${fmtMoney(open.reduce((s, q) => s + qTotal(q), 0))}</span>
+        <span class="kpi-value">${pv(fmtMoney(open.reduce((s, q) => s + qTotal(q), 0)))}</span>
         <span class="kpi-delta">${open.length} awaiting a reply</span>
       </div>
       <div class="kpi-card">
         <span class="kpi-label">Accepted</span>
-        <span class="kpi-value">${fmtMoney(won.reduce((s, q) => s + qTotal(q), 0))}</span>
+        <span class="kpi-value">${pv(fmtMoney(won.reduce((s, q) => s + qTotal(q), 0)))}</span>
         <span class="kpi-delta up">${won.length} won</span>
       </div>
       <div class="kpi-card">
@@ -313,9 +318,9 @@ function _renderQuoteRows() {
     return `
       <tr class="inv-row" data-action="qOpen" data-args="${_args(q._sbId)}">
         <td style="font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap">${_esc(q.quoteNumber)}</td>
-        <td>${_esc(q.clientCompany || q.clientName || '—')}</td>
-        <td>${_esc(q.title || '—')}</td>
-        <td style="font-variant-numeric:tabular-nums">${fmtMoney(qTotal(q))}</td>
+        <td>${pv(_esc(q.clientCompany || q.clientName || '—'))}</td>
+        <td>${pv(_esc(q.title || '—'))}</td>
+        <td style="font-variant-numeric:tabular-nums">${pv(fmtMoney(qTotal(q)))}</td>
         <td style="white-space:nowrap">${_esc(q.validUntil || '—')}</td>
         <td><span class="invoice-status quote-status-${st}">${Q_STATUS_LABEL[st]}</span>${q.responseSeen ? '' : ' <span class="quote-new">New</span>'}</td>
         <td class="inv-row-actions" data-action="stop" data-args="[&quot;$event&quot;]">
@@ -353,7 +358,7 @@ function _qSyncRowMenu() {
   host.innerHTML = `
     <div class="inv-sheet-overlay quote-sheet-overlay" data-action="qCloseRowMenuBackdrop" data-args="[&quot;$event&quot;,&quot;$el&quot;]">
       <div class="inv-sheet" role="dialog" aria-modal="true" aria-label="Quote actions">
-        <div class="inv-sheet-title">${_esc(q.quoteNumber)} · ${_esc(q.clientCompany || q.clientName)}</div>
+        <div class="inv-sheet-title">${_esc(q.quoteNumber)} · ${pv(_esc(q.clientCompany || q.clientName))}</div>
         <button class="inv-sheet-btn" data-action="qRowAction" data-args="${_args('open', q._sbId)}">Open</button>
         ${_qRowActions(q).map(([k, label]) => `<button class="inv-sheet-btn${k === 'delete' ? ' inv-sheet-danger' : ''}" data-action="qRowAction" data-args="${_args(k, q._sbId)}">${label}</button>`).join('')}
         <button class="inv-sheet-btn inv-sheet-cancel" data-action="qCloseRowMenu">Cancel</button>
@@ -410,7 +415,7 @@ function renderServiceMenuCard() {
         </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label>Rate ($)</label><input type="number" id="qsRate" step="0.01" min="0" value="${svc && svc.rate != null ? svc.rate : ''}" placeholder="leave blank to price per quote"></div>
+        <div class="form-group"><label>Rate ($)</label><input type="number" class="pv-field" id="qsRate" step="0.01" min="0" value="${svc && svc.rate != null ? svc.rate : ''}" placeholder="leave blank to price per quote"></div>
         <div class="form-group"><label>Description</label><input type="text" id="qsDesc" value="${_esc(svc ? svc.description : '')}" placeholder="Shows under the line on the quote"></div>
       </div>
       <div class="gap-row">
@@ -438,7 +443,7 @@ function renderServiceMenuCard() {
               <tr>
                 <td style="font-weight:600">${_esc(s.name)}</td>
                 <td>${Q_UNITS[s.unit] || s.unit}</td>
-                <td style="font-variant-numeric:tabular-nums">${s.rate != null ? fmtMoney(s.rate) : '<span class="quote-unpriced">Set a rate</span>'}</td>
+                <td style="font-variant-numeric:tabular-nums">${s.rate != null ? pv(fmtMoney(s.rate)) : '<span class="quote-unpriced">Set a rate</span>'}</td>
                 <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-muted)">${_esc(s.description || '—')}</td>
                 <td class="inv-row-actions">
                   <button class="btn btn-sm" data-action="qEditService" data-args="${_args(s._sbId)}">Edit</button>
@@ -509,15 +514,15 @@ function renderQuoteEditor() {
 
   const clientOptions = [
     `<option value="">— Select a client —</option>`,
-    ...state.CLIENTS.map(c => `<option value="${_esc(c._sbId)}" ${q.clientId === c._sbId ? 'selected' : ''}>${_esc(c.name)}${c.company ? ' · ' + _esc(c.company) : ''}</option>`),
+    ...state.CLIENTS.map(c => `<option value="${_esc(c._sbId)}" ${q.clientId === c._sbId ? 'selected' : ''}>${pvText(_esc(c.name) + (c.company ? ' · ' + _esc(c.company) : ''))}</option>`),
     `<option value="__new">+ New client…</option>`
   ].join('');
   const newClientForm = state._qNewClientOpen ? `
     <div class="inv-client-form">
-      <div class="form-group"><label>Contact Name</label><input type="text" id="qNcName" placeholder="Jane Smith"></div>
-      <div class="form-group"><label>Company</label><input type="text" id="qNcCompany" placeholder="Acme Media LLC"></div>
-      <div class="form-group"><label>Email</label><input type="email" id="qNcEmail" placeholder="jane@acme.com"></div>
-      <div class="form-group"><label>Billing Address</label><textarea id="qNcAddress" rows="3" placeholder="Company&#10;Street&#10;City, ST ZIP"></textarea></div>
+      <div class="form-group"><label>Contact Name</label><input class="pv-field" type="text" id="qNcName" placeholder="Jane Smith"></div>
+      <div class="form-group"><label>Company</label><input class="pv-field" type="text" id="qNcCompany" placeholder="Acme Media LLC"></div>
+      <div class="form-group"><label>Email</label><input class="pv-field" type="email" id="qNcEmail" placeholder="jane@acme.com"></div>
+      <div class="form-group"><label>Billing Address</label><textarea class="pv-field" id="qNcAddress" rows="3" placeholder="Company&#10;Street&#10;City, ST ZIP"></textarea></div>
       <div class="gap-row">
         <button class="btn btn-primary btn-sm" data-action="qSaveNewClient">Save Client</button>
         <button class="btn btn-sm" data-action="qCancelNewClient">Cancel</button>
@@ -526,19 +531,19 @@ function renderQuoteEditor() {
 
   const services = state.QUOTE_SERVICES;
   const menuSelect = services.length ? `
-    <select class="quote-menu-pick" data-change="qAddService" data-change-args="[&quot;$value&quot;]" ${dis}>
+    <select class="quote-menu-pick pv-field" data-change="qAddService" data-change-args="[&quot;$value&quot;]" ${dis}>
       <option value="">+ Add from service menu…</option>
-      ${services.map(s => `<option value="${_esc(s._sbId)}">${_esc(s.name)}${s.rate != null ? ' · ' + fmtMoney(s.rate) + (s.unit === 'day' ? '/day' : s.unit === 'hour' ? '/hr' : '') : ' · no rate yet'}</option>`).join('')}
+      ${services.map(s => `<option value="${_esc(s._sbId)}">${_esc(s.name)}${s.rate != null ? ' · ' + pvText(fmtMoney(s.rate)) + (s.unit === 'day' ? '/day' : s.unit === 'hour' ? '/hr' : '') : ' · no rate yet'}</option>`).join('')}
     </select>` : '<p class="inv-help">Add services to the menu on the Quotes page and they show up here.</p>';
 
   let banner = '';
-  if (q.status === 'accepted') banner = `<div class="quote-banner quote-banner-ok"><strong>Accepted by ${_esc(q.acceptedName)}</strong>${q.respondedAt ? ' on ' + _esc(fmtDocDate(String(q.respondedAt).slice(0, 10))) : ''}. The quote is locked as agreed; duplicate it to revise.</div>`;
-  else if (q.status === 'declined') banner = `<div class="quote-banner quote-banner-no"><strong>Declined</strong>${q.respondedAt ? ' on ' + _esc(fmtDocDate(String(q.respondedAt).slice(0, 10))) : ''}${q.declineReason ? `: "${_esc(q.declineReason)}"` : '.'} Duplicate it to send a revised quote.</div>`;
+  if (q.status === 'accepted') banner = `<div class="quote-banner quote-banner-ok"><strong>Accepted by ${pv(_esc(q.acceptedName))}</strong>${q.respondedAt ? ' on ' + _esc(fmtDocDate(String(q.respondedAt).slice(0, 10))) : ''}. The quote is locked as agreed; duplicate it to revise.</div>`;
+  else if (q.status === 'declined') banner = `<div class="quote-banner quote-banner-no"><strong>Declined</strong>${q.respondedAt ? ' on ' + _esc(fmtDocDate(String(q.respondedAt).slice(0, 10))) : ''}${q.declineReason ? `: "${pv(_esc(q.declineReason))}"` : '.'} Duplicate it to send a revised quote.</div>`;
   else if (q.status === 'sent') banner = `
     <div class="quote-banner">
       <div><strong>${st === 'expired' ? 'Expired' : st === 'viewed' ? 'Sent and viewed' : 'Sent'}.</strong> Edits you save show on the client's link right away.${st === 'expired' ? ' Move the valid-until date forward and save to reopen it.' : ''}</div>
       <div class="bd-share-linkrow">
-        <input type="text" readonly value="${_esc(qShareUrl(q))}">
+        <input type="text" class="pv-field" readonly value="${_esc(qShareUrl(q))}">
         <button class="btn btn-primary" data-action="qCopyLink" data-args="${_args(q._sbId)}">Copy</button>
         <button class="btn" data-action="qUnsend">Back to draft</button>
       </div>
@@ -569,21 +574,21 @@ function renderQuoteEditor() {
         <div class="inv-section-label">Client</div>
         <div class="form-group">
           <label>Client</label>
-          <select data-change="qPickClient" data-change-args="[&quot;$value&quot;]">${clientOptions}</select>
+          <select class="pv-field" data-change="qPickClient" data-change-args="[&quot;$value&quot;]">${clientOptions}</select>
         </div>
         ${newClientForm}
         <div class="form-row">
-          <div class="form-group"><label>Contact Name</label><input type="text" value="${_esc(q.clientName)}" placeholder="Jane Smith" data-input="qField" data-input-args="[&quot;clientName&quot;,&quot;$value&quot;]"></div>
-          <div class="form-group"><label>Company</label><input type="text" value="${_esc(q.clientCompany)}" placeholder="Acme Media" data-input="qField" data-input-args="[&quot;clientCompany&quot;,&quot;$value&quot;]"></div>
+          <div class="form-group"><label>Contact Name</label><input type="text" class="pv-field" value="${_esc(q.clientName)}" placeholder="Jane Smith" data-input="qField" data-input-args="[&quot;clientName&quot;,&quot;$value&quot;]"></div>
+          <div class="form-group"><label>Company</label><input type="text" class="pv-field" value="${_esc(q.clientCompany)}" placeholder="Acme Media" data-input="qField" data-input-args="[&quot;clientCompany&quot;,&quot;$value&quot;]"></div>
         </div>
-        <div class="form-group"><label>Email</label><input type="email" value="${_esc(q.clientEmail)}" placeholder="jane@acme.com" data-input="qField" data-input-args="[&quot;clientEmail&quot;,&quot;$value&quot;]"></div>
-        <div class="form-group"><label>Address</label><textarea rows="2" placeholder="Street&#10;City, ST ZIP" data-input="qField" data-input-args="[&quot;clientAddress&quot;,&quot;$value&quot;]">${_esc(q.clientAddress)}</textarea></div>
+        <div class="form-group"><label>Email</label><input type="email" class="pv-field" value="${_esc(q.clientEmail)}" placeholder="jane@acme.com" data-input="qField" data-input-args="[&quot;clientEmail&quot;,&quot;$value&quot;]"></div>
+        <div class="form-group"><label>Address</label><textarea class="pv-field" rows="2" placeholder="Street&#10;City, ST ZIP" data-input="qField" data-input-args="[&quot;clientAddress&quot;,&quot;$value&quot;]">${_esc(q.clientAddress)}</textarea></div>
         <p class="inv-help">Picking a client fills these. Editing here never changes the saved client.</p>
 
         <div class="inv-section-label">Project</div>
         <div class="form-row">
           <div class="form-group" style="max-width:130px"><label>Quote #</label><input type="text" value="${_esc(q.quoteNumber)}" data-input="qField" data-input-args="[&quot;quoteNumber&quot;,&quot;$value&quot;]"></div>
-          <div class="form-group"><label>Project Title</label><input type="text" value="${_esc(q.title)}" placeholder="Spring campaign hero film" data-input="qField" data-input-args="[&quot;title&quot;,&quot;$value&quot;]"></div>
+          <div class="form-group"><label>Project Title</label><input type="text" class="pv-field" value="${_esc(q.title)}" placeholder="Spring campaign hero film" data-input="qField" data-input-args="[&quot;title&quot;,&quot;$value&quot;]"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Date</label><input type="date" value="${_esc(q.issueDate)}" data-change="qField" data-change-args="[&quot;issueDate&quot;,&quot;$value&quot;]"></div>
@@ -591,9 +596,9 @@ function renderQuoteEditor() {
         </div>
 
         <div class="inv-section-label">Scope</div>
-        <div class="form-group"><label>Scope &amp; Deliverables</label><textarea rows="6" placeholder="What you'll make, how many, which formats.&#10;&#10;e.g. One 60s hero film plus eight 15-30s vertical cuts for Reels and TikTok, color-graded and captioned." data-input="qField" data-input-args="[&quot;scope&quot;,&quot;$value&quot;]">${_esc(q.scope)}</textarea></div>
-        <div class="form-group"><label>Timeline</label><input type="text" value="${_esc(q.timeline)}" placeholder="2-day shoot in May, first cuts within 10 business days" data-input="qField" data-input-args="[&quot;timeline&quot;,&quot;$value&quot;]"></div>
-        <div class="form-group"><label>Not Included</label><textarea rows="3" placeholder="Talent fees, travel, licensed music, paid media spend" data-input="qField" data-input-args="[&quot;exclusions&quot;,&quot;$value&quot;]">${_esc(q.exclusions)}</textarea></div>
+        <div class="form-group"><label>Scope &amp; Deliverables</label><textarea class="pv-field" rows="6" placeholder="What you'll make, how many, which formats.&#10;&#10;e.g. One 60s hero film plus eight 15-30s vertical cuts for Reels and TikTok, color-graded and captioned." data-input="qField" data-input-args="[&quot;scope&quot;,&quot;$value&quot;]">${_esc(q.scope)}</textarea></div>
+        <div class="form-group"><label>Timeline</label><input type="text" class="pv-field" value="${_esc(q.timeline)}" placeholder="2-day shoot in May, first cuts within 10 business days" data-input="qField" data-input-args="[&quot;timeline&quot;,&quot;$value&quot;]"></div>
+        <div class="form-group"><label>Not Included</label><textarea class="pv-field" rows="3" placeholder="Talent fees, travel, licensed music, paid media spend" data-input="qField" data-input-args="[&quot;exclusions&quot;,&quot;$value&quot;]">${_esc(q.exclusions)}</textarea></div>
 
         <div class="inv-section-label">Line Items</div>
         <div id="qLineItems">${_renderQuoteLines()}</div>
@@ -601,7 +606,7 @@ function renderQuoteEditor() {
           ${menuSelect}
           <button class="btn" data-action="qAddLine" ${dis}>+ Custom line</button>
         </div>
-        <div class="quote-editor-total">Total <strong id="qEdTotal">${fmtMoney(qTotal(q))}</strong></div>
+        <div class="quote-editor-total">Total <strong id="qEdTotal">${pv(fmtMoney(qTotal(q)))}</strong></div>
 
         <div class="inv-section-label">Terms</div>
         <div class="form-row">
@@ -616,17 +621,17 @@ function renderQuoteEditor() {
           </div>
         </div>
         <div class="form-group" style="max-width:160px"><label>Revision Rounds</label><input type="number" min="0" max="20" value="${q.revisionRounds}" data-input="qField" data-input-args="[&quot;revisionRounds&quot;,&quot;$value&quot;]"></div>
-        <div class="form-group"><label>Usage Rights</label><textarea rows="2" placeholder="e.g. Client owns the final deliverables on full payment; 6 months paid usage included" data-input="qField" data-input-args="[&quot;usageRights&quot;,&quot;$value&quot;]">${_esc(q.usageRights)}</textarea></div>
+        <div class="form-group"><label>Usage Rights</label><textarea class="pv-field" rows="2" placeholder="e.g. Client owns the final deliverables on full payment; 6 months paid usage included" data-input="qField" data-input-args="[&quot;usageRights&quot;,&quot;$value&quot;]">${_esc(q.usageRights)}</textarea></div>
 
         <div class="inv-section-label">Notes</div>
-        <div class="form-group"><textarea rows="3" placeholder="Optional note to the client" data-input="qField" data-input-args="[&quot;notes&quot;,&quot;$value&quot;]">${_esc(q.notes)}</textarea></div>
+        <div class="form-group"><textarea class="pv-field" rows="3" placeholder="Optional note to the client" data-input="qField" data-input-args="[&quot;notes&quot;,&quot;$value&quot;]">${_esc(q.notes)}</textarea></div>
         </fieldset>
 
         ${state._qEditingId ? `<button class="btn inv-delete-btn" data-action="qDeleteQuote" data-args="${_args(state._qEditingId)}">Delete Quote</button>` : ''}
       </div>
 
       <div class="inv-preview-pane">
-        <div id="qDocPreview">${renderQuoteDoc(_qPreviewModel(q), _qClosingStatic(q))}</div>
+        <div id="qDocPreview">${renderQuoteDoc(_qPreviewModel(q), _qClosingStatic(q, isPrivate()), isPrivate())}</div>
       </div>
     </div>`;
 }
@@ -651,15 +656,15 @@ function _renderQuoteLines() {
         </select>
         ${q.lineItems.length > 1 ? `<button class="inv-li-remove" data-action="qRemoveLine" data-args="${_args(i)}" title="Remove">×</button>` : ''}
       </div>
-      <div class="form-group"><input type="text" placeholder="Description" value="${_esc(li.desc)}" data-input="qLiField" data-input-args="${_args(i, 'desc', '$value')}"></div>
-      <div class="form-group"><input type="text" placeholder="Detail (optional)" value="${_esc(li.detail)}" data-input="qLiField" data-input-args="${_args(i, 'detail', '$value')}"></div>
+      <div class="form-group"><input type="text" class="pv-field" placeholder="Description" value="${_esc(li.desc)}" data-input="qLiField" data-input-args="${_args(i, 'desc', '$value')}"></div>
+      <div class="form-group"><input type="text" class="pv-field" placeholder="Detail (optional)" value="${_esc(li.detail)}" data-input="qLiField" data-input-args="${_args(i, 'detail', '$value')}"></div>
       ${unit === 'flat' ? `
-      <div class="form-group"><label>Price</label><input type="number" step="0.01" min="0" value="${li.rate || ''}" placeholder="0.00" data-input="qLiField" data-input-args="${_args(i, 'rate', '$value')}"></div>` : `
+      <div class="form-group"><label>Price</label><input type="number" class="pv-field" step="0.01" min="0" value="${li.rate || ''}" placeholder="0.00" data-input="qLiField" data-input-args="${_args(i, 'rate', '$value')}"></div>` : `
       <div class="form-row">
         <div class="form-group"><label>${unit === 'day' ? 'Days' : unit === 'hour' ? 'Hours' : 'Qty'}</label><input type="number" step="${unit === 'each' ? '1' : '0.5'}" min="0" value="${li.qty || ''}" placeholder="0" data-input="qLiField" data-input-args="${_args(i, 'qty', '$value')}"></div>
-        <div class="form-group"><label>${unit === 'day' ? 'Rate / day' : unit === 'hour' ? 'Rate / hr' : 'Price each'}</label><input type="number" step="0.01" min="0" value="${li.rate || ''}" placeholder="0.00" data-input="qLiField" data-input-args="${_args(i, 'rate', '$value')}"></div>
+        <div class="form-group"><label>${unit === 'day' ? 'Rate / day' : unit === 'hour' ? 'Rate / hr' : 'Price each'}</label><input type="number" class="pv-field" step="0.01" min="0" value="${li.rate || ''}" placeholder="0.00" data-input="qLiField" data-input-args="${_args(i, 'rate', '$value')}"></div>
       </div>`}
-      <div class="inv-li-amount">${unpriced ? '<span class="quote-unpriced">No price yet</span> ' : ''}= <span id="qLiAmt-${i}">${fmtMoney(qLineAmount(li))}</span></div>
+      <div class="inv-li-amount">${unpriced ? '<span class="quote-unpriced">No price yet</span> ' : ''}= <span id="qLiAmt-${i}">${pv(fmtMoney(qLineAmount(li)))}</span></div>
     </div>`;
   }).join('');
 }
@@ -683,7 +688,7 @@ function qLiField(i, key, val) {
     document.getElementById('qLineItems').innerHTML = _renderQuoteLines();
   } else {
     const amt = document.getElementById('qLiAmt-' + i);
-    if (amt) amt.textContent = fmtMoney(qLineAmount(li));
+    if (amt) amt.innerHTML = pv(fmtMoney(qLineAmount(li)));
   }
   _qUpdatePreview();
 }
@@ -714,9 +719,9 @@ function qRemoveLine(i) {
 
 function _qUpdatePreview() {
   const el = document.getElementById('qDocPreview');
-  if (el && state._q) el.innerHTML = renderQuoteDoc(_qPreviewModel(state._q), _qClosingStatic(state._q));
+  if (el && state._q) el.innerHTML = renderQuoteDoc(_qPreviewModel(state._q), _qClosingStatic(state._q, isPrivate()), isPrivate());
   const t = document.getElementById('qEdTotal');
-  if (t && state._q) t.textContent = fmtMoney(qTotal(state._q));
+  if (t && state._q) t.innerHTML = pv(fmtMoney(qTotal(state._q)));
 }
 
 /* ---- CLIENT PICKING ---- */

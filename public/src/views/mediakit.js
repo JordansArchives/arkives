@@ -4,6 +4,7 @@ import { act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
 import { formatCurrency } from '../lib/format.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
+import { isPrivate, pv } from '../lib/privacy.js';
 
 
 function renderMediaKit() {
@@ -151,7 +152,7 @@ function renderMediaKit() {
                   <span class="mk-camp-value">${c.conversion || "\u2014"}</span>
                   <span class="mk-camp-label">Conv.</span>
                 </div>
-                ${c.revenue ? `<div class="mk-camp-stat"><span class="mk-camp-value" style="color:var(--green)">${formatCurrency(c.revenue)}</span><span class="mk-camp-label">Revenue</span></div>` : ""}
+                ${c.revenue ? `<div class="mk-camp-stat"><span class="mk-camp-value" style="color:var(--green)">${pv(formatCurrency(c.revenue))}</span><span class="mk-camp-label">Revenue</span></div>` : ""}
               </div>
             </div>
           `).join("")}
@@ -162,7 +163,7 @@ function renderMediaKit() {
         <h3 class="mk-section-title">Rates</h3>
         ${mkRateItems.length ? `
         <div class="mk-rates">
-          ${mkRateItems.map(r => `<div class="mk-rate-card"><div class="mk-rate-name">${_esc(r.name)}</div><div class="mk-rate-price">${r.rate ? '$' + r.rate.toLocaleString('en-US') : (r.range ? _esc(r.range) : "Let's talk")}</div></div>`).join('')}
+          ${mkRateItems.map(r => `<div class="mk-rate-card"><div class="mk-rate-name">${_esc(r.name)}</div><div class="mk-rate-price">${r.rate ? pv('$' + r.rate.toLocaleString('en-US')) : (r.range ? pv(_esc(r.range)) : "Let's talk")}</div></div>`).join('')}
         </div>
         <p style="color:var(--text-muted);font-size:12px;margin-top:12px">All pricing is flat-rate. Licensing, exclusivity, and paid ad usage rights available as add-ons.</p>
         ` : '<p style="color:var(--text-muted);font-size:13px">No rates set yet. Build your rate card in Settings → Rate Card.</p>'}
@@ -170,7 +171,7 @@ function renderMediaKit() {
 
       ${mkContact ? `
       <div class="mk-footer">
-        <p>Contact: <a href="mailto:${_esc(mkContact)}" style="color:var(--accent)">${_esc(mkContact)}</a></p>
+        <p>Contact: ${isPrivate() ? pv(_esc(mkContact)) : `<a href="mailto:${_esc(mkContact)}" style="color:var(--accent)">${_esc(mkContact)}</a>`}</p>
       </div>` : ''}
     </div>
   `;

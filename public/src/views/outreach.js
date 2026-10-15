@@ -6,6 +6,7 @@ import { _esc } from '../lib/esc.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
 import { _mapOutreachRow } from '../lib/sb.js';
 import { _showSaveError } from '../lib/toast.js';
+import { isPrivate, pv } from '../lib/privacy.js';
 
 
 function resetOutreachViewState() {
@@ -106,7 +107,7 @@ function renderOutreach() {
       </div>
       <div class="kpi-card">
         <span class="kpi-label">Agreed Value</span>
-        <span class="kpi-value">${outMoney(agreedTotal)}</span>
+        <span class="kpi-value">${pv(outMoney(agreedTotal))}</span>
         <span class="kpi-delta">sum of agreed rates</span>
       </div>
     </div>
@@ -158,7 +159,7 @@ function _outRailHTML() {
     if (state._outListEditingId === l._sbId) {
       return `
         <div class="out-rail-item editing">
-          <input type="text" id="outListRename" maxlength="100" value="${_esc(l.name)}"
+          <input type="text" id="outListRename" class="pv-field" maxlength="100" value="${_esc(l.name)}"
             data-keydown="outRenameListKey" data-keydown-args="${_args('$event', l._sbId)}" data-action="stop" data-args="[&quot;$event&quot;]">
           <button class="btn btn-sm" data-action="outRenameList" data-args="${_args(l._sbId)}" data-stop>Save</button>
           <button class="btn btn-sm" data-action="outCancelListEdit" data-stop>&times;</button>
@@ -167,7 +168,7 @@ function _outRailHTML() {
     const count = state.OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(l._sbId)).length;
     return `
       <div class="out-rail-item ${state._outSelectedList === l._sbId ? 'active' : ''}" data-action="outSelectList" data-args="${_args(l._sbId)}">
-        <span class="out-rail-name">${_esc(l.name)}</span>
+        <span class="out-rail-name">${pv(_esc(l.name))}</span>
         <span class="out-rail-count">${count}</span>
         <span class="out-rail-actions" data-action="stop" data-args="[&quot;$event&quot;]">
           <button title="Rename list" data-action="outEditList" data-args="${_args(l._sbId)}">✎</button>
@@ -252,7 +253,7 @@ async function outDeleteList(id) {
   const l = state.OUTREACH_LISTS.find(x => x._sbId === id);
   if (!l) return;
   const count = state.OUTREACH_TARGETS.filter(t => (t.listIds || []).includes(id)).length;
-  if (!confirm('Delete list "' + l.name + '"? Its ' + count + ' target' + (count === 1 ? '' : 's') + ' stay in your book.')) return;
+  if (!confirm('Delete ' + (isPrivate() ? 'this list' : 'list "' + l.name + '"') + '? Its ' + count + ' target' + (count === 1 ? '' : 's') + ' stay in your book.')) return;
   const ok = await db.sbDeleteOutreachList(id);
   if (!ok) return;
   state.OUTREACH_LISTS = state.OUTREACH_LISTS.filter(x => x._sbId !== id);
@@ -319,14 +320,14 @@ function _outRowsHTML() {
     return `
       <tr class="out-row" data-action="outOpen" data-args="${_args(t._sbId)}">
         <td class="out-name-cell">
-          <span style="font-weight:600">${_esc(t.name)}</span>
-          ${href ? `<a class="out-link" href="${_esc(href)}" target="_blank" rel="noopener noreferrer" title="${_esc(href)}" data-action="stop" data-args="[&quot;$event&quot;]">${SKETCHY_ICONS.link}</a>` : ''}
+          <span style="font-weight:600">${pv(_esc(t.name))}</span>
+          ${href && !isPrivate() ? `<a class="out-link" href="${_esc(href)}" target="_blank" rel="noopener noreferrer" title="${_esc(href)}" data-action="stop" data-args="[&quot;$event&quot;]">${SKETCHY_ICONS.link}</a>` : ''}
         </td>
         <td>${OUT_TYPES[t.type] || t.type}</td>
         <td><span class="out-status ${t.status}">${OUT_STATUSES[t.status] || t.status}</span></td>
         <td>${OUT_INITIATED_SHORT[t.initiatedBy] || '—'}</td>
         <td>${(t.projects || []).length || '—'}</td>
-        <td style="font-variant-numeric:tabular-nums">${agreed ? outMoney(agreed) : '—'}</td>
+        <td style="font-variant-numeric:tabular-nums">${agreed ? pv(outMoney(agreed)) : '—'}</td>
         <td style="color:var(--text-muted)">${outFmtShortDate(t.updatedAt)}</td>
       </tr>`;
   }).join('');
@@ -417,7 +418,7 @@ function _outDrawerHTML() {
       <div class="out-drawer-body">
         <div class="form-group">
           <label>Name</label>
-          <input type="text" id="outFieldName" maxlength="200" placeholder="Nike" value="${_esc(d.name)}" data-input="outDraftField" data-input-args="[&quot;name&quot;,&quot;$value&quot;]">
+          <input type="text" id="outFieldName" class="pv-field" maxlength="200" placeholder="Nike" value="${_esc(d.name)}" data-input="outDraftField" data-input-args="[&quot;name&quot;,&quot;$value&quot;]">
         </div>
         <div class="out-field-row">
           <div class="form-group">
@@ -436,8 +437,8 @@ function _outDrawerHTML() {
         <div class="form-group">
           <label>Website</label>
           <div class="out-site-row">
-            <input type="text" maxlength="500" placeholder="nike.com" value="${_esc(d.website)}" data-input="outDraftField" data-input-args="[&quot;website&quot;,&quot;$value&quot;]">
-            ${href ? `<a class="btn btn-sm" href="${_esc(href)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}
+            <input type="text" class="pv-field" maxlength="500" placeholder="nike.com" value="${_esc(d.website)}" data-input="outDraftField" data-input-args="[&quot;website&quot;,&quot;$value&quot;]">
+            ${href && !isPrivate() ? `<a class="btn btn-sm" href="${_esc(href)}" target="_blank" rel="noopener noreferrer">Open</a>` : ''}
           </div>
         </div>
         <div class="form-group">
@@ -449,7 +450,7 @@ function _outDrawerHTML() {
         </div>
         <div class="form-group">
           <label>What I want to work on with them</label>
-          <textarea rows="3" maxlength="2000" placeholder="AI-animated launch spot for their spring campaign..." data-input="outDraftField" data-input-args="[&quot;pitch&quot;,&quot;$value&quot;]">${_esc(d.pitch)}</textarea>
+          <textarea class="pv-field" rows="3" maxlength="2000" placeholder="AI-animated launch spot for their spring campaign..." data-input="outDraftField" data-input-args="[&quot;pitch&quot;,&quot;$value&quot;]">${_esc(d.pitch)}</textarea>
         </div>
         <div class="form-group">
           <label>Lists</label>
@@ -458,7 +459,7 @@ function _outDrawerHTML() {
               ${state.OUTREACH_LISTS.map(l => `
                 <label class="out-check">
                   <input type="checkbox" ${d.listIds.includes(l._sbId) ? 'checked' : ''} data-change="outDraftListToggle" data-change-args="${_args(l._sbId, '$checked')}">
-                  <span>${_esc(l.name)}</span>
+                  <span>${pv(_esc(l.name))}</span>
                 </label>`).join('')}
             </div>` : `<p class="out-hint">No lists yet — create one from the rail on the left.</p>`}
         </div>
@@ -467,18 +468,18 @@ function _outDrawerHTML() {
           <div class="out-projects">
             ${d.projects.map((p, i) => `
               <div class="out-proj-row">
-                <input type="text" maxlength="200" placeholder="Project name" value="${_esc(p.name)}" data-input="outDraftProject" data-input-args="${_args(i, 'name', '$value')}">
-                <input type="number" step="any" min="0" placeholder="Budget" value="${_esc(p.budget)}" data-input="outDraftProject" data-input-args="${_args(i, 'budget', '$value')}">
-                <input type="number" step="any" min="0" placeholder="Agreed rate" value="${_esc(p.rate)}" data-input="outDraftProject" data-input-args="${_args(i, 'rate', '$value')}">
+                <input type="text" class="pv-field" maxlength="200" placeholder="Project name" value="${_esc(p.name)}" data-input="outDraftProject" data-input-args="${_args(i, 'name', '$value')}">
+                <input type="number" class="pv-field" step="any" min="0" placeholder="Budget" value="${_esc(p.budget)}" data-input="outDraftProject" data-input-args="${_args(i, 'budget', '$value')}">
+                <input type="number" class="pv-field" step="any" min="0" placeholder="Agreed rate" value="${_esc(p.rate)}" data-input="outDraftProject" data-input-args="${_args(i, 'rate', '$value')}">
                 <button class="out-proj-remove" title="Remove project" data-action="outRemoveProject" data-args="${_args(i)}">${SKETCHY_ICONS.trash}</button>
-                <input type="text" class="out-proj-notes" maxlength="500" placeholder="Notes (deliverables, timing...)" value="${_esc(p.notes)}" data-input="outDraftProject" data-input-args="${_args(i, 'notes', '$value')}">
+                <input type="text" class="out-proj-notes pv-field" maxlength="500" placeholder="Notes (deliverables, timing...)" value="${_esc(p.notes)}" data-input="outDraftProject" data-input-args="${_args(i, 'notes', '$value')}">
               </div>`).join('')}
             <button class="btn btn-sm" data-action="outAddProject">${SKETCHY_ICONS.plus} Add project</button>
           </div>
         </div>
         <div class="form-group">
           <label>Notes</label>
-          <textarea rows="3" maxlength="5000" placeholder="Contacts, context, anything else..." data-input="outDraftField" data-input-args="[&quot;notes&quot;,&quot;$value&quot;]">${_esc(d.notes)}</textarea>
+          <textarea class="pv-field" rows="3" maxlength="5000" placeholder="Contacts, context, anything else..." data-input="outDraftField" data-input-args="[&quot;notes&quot;,&quot;$value&quot;]">${_esc(d.notes)}</textarea>
         </div>
       </div>
       <div class="out-drawer-foot">
@@ -590,7 +591,7 @@ async function outDelete() {
   if (!state._outDrawerId || state._outDrawerId === '__new') return;
   const t = state.OUTREACH_TARGETS.find(x => x._sbId === state._outDrawerId);
   if (!t) return;
-  if (!confirm('Delete "' + t.name + '" from your outreach book? This can\'t be undone.')) return;
+  if (!confirm('Delete ' + (isPrivate() ? 'this target' : '"' + t.name + '"') + ' from your outreach book? This can\'t be undone.')) return;
   const ok = await db.sbDeleteOutreachTarget(t._sbId);
   if (!ok) return;
   state.OUTREACH_TARGETS = state.OUTREACH_TARGETS.filter(x => x._sbId !== t._sbId);

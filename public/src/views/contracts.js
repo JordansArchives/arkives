@@ -4,6 +4,7 @@ import { clients } from '../stores/invoices.js';
 import { act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
 import { showToast } from '../lib/toast.js';
+import { isPrivate, pvText } from '../lib/privacy.js';
 
 
 /* Load contract defaults from Supabase on init */
@@ -64,8 +65,50 @@ function toggleContractDefaults() {
   if (arrow) arrow.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
 }
 
+// Privacy mode (lib/privacy.js): every value here lives in a form field or
+// in the preview that Copy and PDF read back, so nothing is swapped for a
+// stand-in; sensitive fields and the preview carry .pv-field and CSS blurs
+// them. Toggling privacy repaints only the pickers, so typed work is kept.
+const CONTRACT_PLAIN_FIELDS = ['cAgreementType', 'cCompModel', 'cPayTerms', 'cDeliverable', 'cNumDeliverables', 'cDate', 'cSvcCount', 'cSvcDaysLow', 'cSvcDaysHigh', 'cSvcDeposit', 'cSvcBalance', 'cSvcDelivery', 'cSvcRevUnit', 'cSvcKill', 'cdCrossPost', 'cdNonDisp', 'cdMedDays', 'cdFMDays'];
+let _contractsPaintedPrivacy = null;
+function _markContractPrivateFields(container) {
+  container.querySelectorAll('.contract-form input:not([type=checkbox]), .contract-form select, .contract-form textarea').forEach(el => {
+    if (!CONTRACT_PLAIN_FIELDS.includes(el.id)) el.classList.add('pv-field');
+  });
+  const preview = container.querySelector('#contractPreviewContent');
+  if (preview) preview.classList.add('pv-field');
+}
+
+// Picker labels name brands and clients: masked text in privacy mode
+function _contractDealOpts() {
+  return (typeof state.DEALS !== 'undefined' && state.DEALS.length)
+    ? state.DEALS.map((d, i) => `<option value="${i}">${pvText(_esc(d.brand || 'Untitled') + ' — ' + _esc(d.campaign || d.scope || 'No campaign'))}</option>`).join('')
+    : '';
+}
+// Client picker: the same clients the invoices use, plus an inline "new client"
+function _contractClientOpts() {
+  return [
+    `<option value="">— Select a client —</option>`,
+    ...(state.CLIENTS || []).map(c => `<option value="${c._sbId}"${state._contractClientId === c._sbId ? ' selected' : ''}>${pvText(_esc(c.name) + (c.company ? ' · ' + _esc(c.company) : ''))}</option>`),
+    `<option value="__new">+ New client…</option>`
+  ].join('');
+}
+function _repaintContractPickers(container) {
+  const cs = container.querySelector('#cClientSel');
+  if (cs) { const v = cs.value; cs.innerHTML = _contractClientOpts(); cs.value = v; }
+  const ds = container.querySelector('#cLoadDeal');
+  if (ds) { const v = ds.value; ds.innerHTML = '<option value="">— Select a deal to pre-fill —</option>' + _contractDealOpts(); ds.value = v; }
+}
+
 function renderContracts() {
   const container = document.getElementById("view-contracts");
+  // Privacy toggled with the builder open: CSS already hides the fields
+  if (container.querySelector('.contract-builder') && _contractsPaintedPrivacy !== null && _contractsPaintedPrivacy !== isPrivate()) {
+    _contractsPaintedPrivacy = isPrivate();
+    _repaintContractPickers(container);
+    return;
+  }
+  _contractsPaintedPrivacy = isPrivate();
   const today = new Date().toISOString().split('T')[0];
 
   // Load defaults from Supabase (async, will be ready for next generate)
@@ -93,15 +136,8 @@ function renderContracts() {
   })();
 
   // Build deal options for pre-fill dropdown
-  const dealOpts = (typeof state.DEALS !== 'undefined' && state.DEALS.length)
-    ? state.DEALS.map((d, i) => `<option value="${i}">${_esc(d.brand || 'Untitled')} — ${_esc(d.campaign || d.scope || 'No campaign')}</option>`).join('')
-    : '';
-  // Client picker: the same clients the invoices use, plus an inline "new client"
-  const clientOpts = [
-    `<option value="">— Select a client —</option>`,
-    ...(state.CLIENTS || []).map(c => `<option value="${c._sbId}"${state._contractClientId === c._sbId ? ' selected' : ''}>${_esc(c.name)}${c.company ? ' · ' + _esc(c.company) : ''}</option>`),
-    `<option value="__new">+ New client…</option>`
-  ].join('');
+  const dealOpts = _contractDealOpts();
+  const clientOpts = _contractClientOpts();
 
   const platformCheckboxes = ['Instagram', 'TikTok', 'YouTube', 'X (Twitter)', 'LinkedIn'].map(p =>
     `<label class="contract-checkbox"><input type="checkbox" value="${p}" class="cPlatformCheck"${p === 'Instagram' ? ' checked' : ''}> ${p}</label>`
@@ -534,6 +570,7 @@ function renderContracts() {
 
 
   `;
+  _markContractPrivateFields(container);
   _applyContractPrefill();
 }
 

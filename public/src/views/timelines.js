@@ -6,6 +6,7 @@ import { db } from '../lib/sb.js';
 import { timelines } from '../stores/timelines.js';
 import { _args, act } from '../lib/actions.js';
 import { _esc, _safeThumb } from '../lib/esc.js';
+import { isPrivate, pv } from '../lib/privacy.js';
 import { _showSaveError, showToast } from '../lib/toast.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
 import { _localISODate } from './tasks.js';
@@ -165,15 +166,18 @@ function tlShareUrl(t) { return location.origin + location.pathname + '#t/' + t.
 /* ============================================================
    THE CARD: what the brand sees (editor preview, link, PDF)
    ============================================================ */
-// opts: { live: true } adds the today marker and status line (the link)
+// opts: { live: true } adds the today marker and status line (the link);
+// { masked: true } is the editor preview in privacy mode (the PDF and the
+// brand's #t/ link always get the real card)
 function renderTimelineCard(t, opts) {
   const o = opts || {};
+  const m = o.masked ? pv : (h) => h;
   const sched = tlSchedule(t);
   const fromLogo = _safeThumb(t.fromLogo), clientLogo = _safeThumb(t.clientLogo);
   const today = _localISODate();
   const status = o.live ? tlStatus(sched, today) : null;
 
-  const logo = (src, name) => src ? `<img class="tl-logo" src="${_esc(src)}" alt="${_esc(name)}">` : (name ? `<span class="tl-logo-name">${_esc(name)}</span>` : '');
+  const logo = (src, name) => (src && !o.masked) ? `<img class="tl-logo" src="${_esc(src)}" alt="${_esc(name)}">` : (name || src ? `<span class="tl-logo-name">${m(_esc(name || 'Logo'))}</span>` : '');
   const brands = (fromLogo || t.fromName || clientLogo || t.clientName) ? `
     <div class="tl-brands">
       ${logo(fromLogo, t.fromName)}
@@ -195,12 +199,12 @@ function renderTimelineCard(t, opts) {
       <header class="tl-head">
         ${brands}
         <p class="tl-eyebrow">Production timeline</p>
-        <h2 class="tl-title">${_esc(t.title || 'Untitled project')}</h2>
+        <h2 class="tl-title">${m(_esc(t.title || 'Untitled project'))}</h2>
         ${empty ? '' : `<p class="tl-span">${_esc(tlRange(sched.start, sched.end))} · ${_tlPlural(sched.bizDays, 'business day')} · about ${_tlPlural(Math.max(1, Math.round(sched.bizDays / 5)), 'week')}</p>`}
         ${statusLine}
       </header>
-      ${empty ? '<p class="tl-empty">No steps yet.</p>' : _tlCalendar(t, sched, o.live ? today : null) + _tlPhaseCards(t, sched, status)}
-      ${t.notes ? `<p class="tl-notes">${_esc(t.notes)}</p>` : ''}
+      ${empty ? '<p class="tl-empty">No steps yet.</p>' : _tlCalendar(t, sched, o.live ? today : null) + _tlPhaseCards(t, sched, status, o.masked)}
+      ${t.notes ? `<p class="tl-notes">${m(_esc(t.notes))}</p>` : ''}
       <p class="tl-foot">Dates count business days and skip weekends. They shift if the kickoff moves or feedback runs long.</p>
     </article>`;
 }
@@ -251,7 +255,7 @@ function _tlCalendar(t, sched, todayIso) {
   return html;
 }
 
-function _tlPhaseCards(t, sched, status) {
+function _tlPhaseCards(t, sched, status, masked) {
   const nowId = status && status.kind === 'during' ? status.step.id : null;
   return `<div class="tl-phases">${sched.phases.map((p) => `
     <section class="tl-phase tl-ph-${p.key}">
@@ -264,12 +268,12 @@ function _tlPhaseCards(t, sched, status) {
         <li class="tl-step${s.id === nowId ? ' tl-step-now' : ''}">
           <div class="tl-step-main">
             <strong>${_esc(s.name)}</strong>
-            ${s.detail ? `<p>${_esc(s.detail)}</p>` : ''}
+            ${s.detail ? `<p>${masked ? pv(_esc(s.detail)) : _esc(s.detail)}</p>` : ''}
           </div>
           <div class="tl-step-meta">
             <span class="tl-when">${_esc(tlRange(s.start, s.end))}</span>
-            <span class="tl-owner tl-owner-${_esc(s.owner)}">${_esc(_tlOwnerLabel(t, s.owner))}</span>
-            ${s.cal ? `<a class="tl-gcal" href="${_esc(tlGoogleUrl(t, s))}" target="_blank" rel="noopener" title="Add to Google Calendar">+ Google Calendar</a>` : ''}
+            <span class="tl-owner tl-owner-${_esc(s.owner)}">${masked && s.owner === 'brand' ? pv(_esc(_tlOwnerLabel(t, s.owner))) : _esc(_tlOwnerLabel(t, s.owner))}</span>
+            ${s.cal && !masked ? `<a class="tl-gcal" href="${_esc(tlGoogleUrl(t, s))}" target="_blank" rel="noopener" title="Add to Google Calendar">+ Google Calendar</a>` : ''}
           </div>
         </li>`).join('')}
       </ol>
@@ -295,11 +299,11 @@ function renderTimelines(sub) {
   const linkBanner = linkT && linkT.status === 'shared' ? `
     <div class="card quote-link-banner">
       <div>
-        <strong>${_esc(linkT.title || 'Your timeline')} is live.</strong>
-        <span>Send this link to ${_esc(linkT.clientName || 'the brand')}. They can follow the schedule, add dates to their calendar and download a PDF.</span>
+        <strong>${pv(_esc(linkT.title || 'Your timeline'))} is live.</strong>
+        <span>Send this link to ${pv(_esc(linkT.clientName || 'the brand'))}. They can follow the schedule, add dates to their calendar and download a PDF.</span>
       </div>
       <div class="bd-share-linkrow">
-        <input type="text" readonly value="${_esc(tlShareUrl(linkT))}">
+        <input type="text" class="pv-field" readonly value="${_esc(tlShareUrl(linkT))}">
         <button class="btn btn-primary" data-action="tlCopyLink" data-args="${_args(linkT._sbId)}">Copy</button>
         <button class="btn" data-action="tlDismissLink" aria-label="Dismiss">Done</button>
       </div>
@@ -311,8 +315,8 @@ function renderTimelines(sub) {
     const now = t.status !== 'shared' ? 'Draft' : st.kind === 'before' ? 'Upcoming' : st.kind === 'after' ? 'Wrapped' : TL_PHASE[st.step.phase].label;
     return `
       <tr>
-        <td><button class="quote-link-btn" data-action="tlOpen" data-args="${_args(t._sbId)}"><strong>${_esc(t.title || 'Untitled project')}</strong></button></td>
-        <td>${_esc(t.clientName || '—')}</td>
+        <td><button class="quote-link-btn" data-action="tlOpen" data-args="${_args(t._sbId)}"><strong>${pv(_esc(t.title || 'Untitled project'))}</strong></button></td>
+        <td>${pv(_esc(t.clientName || '—'))}</td>
         <td style="white-space:nowrap">${sched.steps.length ? _esc(tlRange(sched.start, sched.end)) : '—'}</td>
         <td><span class="tl-pill${t.status === 'shared' ? ' tl-pill-live' : ''}">${_esc(now)}</span></td>
         <td class="tl-row-actions">
@@ -438,7 +442,7 @@ function renderTimelineEditor() {
       <div class="form-group">
         <label>${label}</label>
         <div class="tl-logo-field">
-          ${src ? `<img class="tl-logo-thumb" src="${_esc(src)}" alt="">` : `<span class="tl-logo-thumb tl-logo-none">${hint}</span>`}
+          ${src ? `<img class="tl-logo-thumb pv-field" src="${_esc(src)}" alt="">` : `<span class="tl-logo-thumb tl-logo-none">${hint}</span>`}
           <label class="btn btn-sm" for="tlLogo_${key}">${src ? 'Replace' : 'Upload'}</label>
           <input type="file" id="tlLogo_${key}" accept="image/png,image/jpeg,image/webp" style="display:none" data-change="tlLogoUpload" data-change-args="${_args('$el', key)}">
           ${src ? `<button class="btn btn-sm" data-action="tlLogoClear" data-args="${_args(key)}">Remove</button>` : ''}
@@ -469,7 +473,7 @@ function renderTimelineEditor() {
                 </select>
                 <label class="tl-ed-cal" title="Include in the brand's calendar export"><input type="checkbox" ${s.cal ? 'checked' : ''} data-change="tlStepField" data-change-args="${_args(i, 'cal', '$checked')}"> Calendar</label>
               </div>
-              <input type="text" class="tl-ed-detail" value="${_esc(s.detail)}" maxlength="400" placeholder="What happens in this step (the brand sees this)" data-input="tlStepField" data-input-args="${_args(i, 'detail', '$value')}">
+              <input type="text" class="tl-ed-detail pv-field" value="${_esc(s.detail)}" maxlength="400" placeholder="What happens in this step (the brand sees this)" data-input="tlStepField" data-input-args="${_args(i, 'detail', '$value')}">
               <span class="tl-ed-when">${on && when ? _esc(tlRange(when.start, when.end)) : 'Skipped: not shown to the brand'}</span>
             </div>
             <div class="tl-ed-tools">
@@ -487,7 +491,7 @@ function renderTimelineEditor() {
     <div class="view-header">
       <div>
         <button class="btn btn-sm" data-action="tlBack">&larr; Timelines</button>
-        <h1 class="view-title" style="margin-top:8px">${_esc(t.title || (state._tlEditingId ? 'Untitled project' : 'New timeline'))} <span class="tl-pill${shared ? ' tl-pill-live' : ''}">${shared ? 'Shared' : 'Draft'}</span></h1>
+        <h1 class="view-title" style="margin-top:8px">${t.title ? pv(_esc(t.title)) : (state._tlEditingId ? 'Untitled project' : 'New timeline')} <span class="tl-pill${shared ? ' tl-pill-live' : ''}">${shared ? 'Shared' : 'Draft'}</span></h1>
       </div>
       <div class="gap-row">
         <button class="btn" data-action="tlDownloadPDF">PDF</button>
@@ -501,9 +505,9 @@ function renderTimelineEditor() {
     <div class="tl-editor">
       <div class="tl-editor-form">
         <div class="card">
-          <div class="form-group"><label>Project</label><input type="text" value="${_esc(t.title)}" maxlength="200" placeholder="Fall launch: 3 hero videos" data-input="tlField" data-input-args="${_args('title', '$value')}"></div>
+          <div class="form-group"><label>Project</label><input type="text" class="pv-field" value="${_esc(t.title)}" maxlength="200" placeholder="Fall launch: 3 hero videos" data-input="tlField" data-input-args="${_args('title', '$value')}"></div>
           <div class="tl-two">
-            <div class="form-group"><label>Brand</label><input type="text" value="${_esc(t.clientName)}" maxlength="200" placeholder="Brand name" data-input="tlField" data-input-args="${_args('clientName', '$value')}"></div>
+            <div class="form-group"><label>Brand</label><input type="text" class="pv-field" value="${_esc(t.clientName)}" maxlength="200" placeholder="Brand name" data-input="tlField" data-input-args="${_args('clientName', '$value')}"></div>
             <div class="form-group"><label>Kickoff</label><input type="date" value="${_esc(t.kickoffDate)}" data-change="tlKickoff" data-change-args="${_args('$value')}"></div>
           </div>
           <div class="tl-two">
@@ -511,7 +515,7 @@ function renderTimelineEditor() {
             ${logoField('fromLogo', 'Your logo', 'You')}
           </div>
           <div class="form-group"><label>Your name on the card</label><input type="text" value="${_esc(t.fromName)}" maxlength="200" data-input="tlField" data-input-args="${_args('fromName', '$value')}"></div>
-          <div class="form-group"><label>Note to the brand (optional)</label><textarea rows="2" maxlength="2000" placeholder="Anything that affects the dates: holidays, product shipping, usage approvals…" data-input="tlField" data-input-args="${_args('notes', '$value')}">${_esc(t.notes)}</textarea></div>
+          <div class="form-group"><label>Note to the brand (optional)</label><textarea class="pv-field" rows="2" maxlength="2000" placeholder="Anything that affects the dates: holidays, product shipping, usage approvals…" data-input="tlField" data-input-args="${_args('notes', '$value')}">${_esc(t.notes)}</textarea></div>
         </div>
         <div class="card">
           <div class="tl-ed-total"><strong>${_tlPlural(sched.bizDays, 'business day')}</strong> · ${sched.steps.length ? _esc(tlRange(sched.start, sched.end)) : 'no active steps'}</div>
@@ -520,7 +524,7 @@ function renderTimelineEditor() {
       </div>
       <div class="tl-editor-preview">
         <p class="tl-preview-label">What the brand sees</p>
-        <div id="tlPreview">${renderTimelineCard(t)}</div>
+        <div id="tlPreview">${renderTimelineCard(t, { masked: isPrivate() })}</div>
       </div>
     </div>`;
 }
@@ -528,7 +532,7 @@ function renderTimelineEditor() {
 // Typing updates the draft and the preview, never the inputs (focus stays put)
 function _tlRefreshPreview() {
   const el = document.getElementById('tlPreview');
-  if (el && state._tl) el.innerHTML = renderTimelineCard(state._tl);
+  if (el && state._tl) el.innerHTML = renderTimelineCard(state._tl, { masked: isPrivate() });
 }
 function tlField(key, val) {
   if (!state._tl) return;

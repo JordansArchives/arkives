@@ -5,6 +5,7 @@ import { _args, act } from '../lib/actions.js';
 import { _esc, _escHtml } from '../lib/esc.js';
 import { SKETCHY_ICONS } from '../lib/icons.js';
 import { _shareLinkRowsHtml } from '../lib/share.js';
+import { pv } from '../lib/privacy.js';
 import { _showSaveError } from '../lib/toast.js';
 
 
@@ -92,7 +93,7 @@ async function renderBoards() {
       const date = new Date(b.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       html += '<div class="board-card" data-action="go" data-args="' + _args('board/' + b.id) + '">';
       html += '<div class="board-card-canvas"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4.2 5.1h6.1v5.2H4.2z"/><path d="M13.6 7.2h6.2"/><path d="M13.7 10.1h4.9"/><path d="M5.1 14.3c3.2 2.6 8.9-1.8 13.7 1.9"/></svg></div>';
-      html += '<div class="board-card-title">' + _escHtml(b.title) + '</div>';
+      html += '<div class="board-card-title">' + pv(_escHtml(b.title)) + '</div>';
       const shareLabel = b.share_mode === 'view' ? 'View link' : (b.share_mode === 'edit' ? 'Edit link' : 'Private');
       const shareDot = (b.share_mode === 'view' || b.share_mode === 'edit') ? 'var(--teal)' : 'var(--text-secondary)';
       html += '<div class="board-card-meta"><span>' + date + '</span>';

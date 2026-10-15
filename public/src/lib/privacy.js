@@ -3,7 +3,10 @@
 // renders a same-shape placeholder (digits -> 8, letters -> x) under a
 // blur, so neither zooming a recording nor opening the inspector can
 // reveal them. Remembered per device; toggled from the dashboard eye
-// button or Option+B anywhere in the app.
+// button, the eye in the sidebar, or Option+B anywhere in the app.
+// Every view re-renders on the 'arkives:privacy' event (router.js).
+// Editable fields can't hold a stand-in, so views mark them .pv-field
+// and CSS blurs them instead (style.css, privacy mode).
 import { state } from '../state.js';
 import { showToast } from './toast.js';
 import { act } from './actions.js';
@@ -20,11 +23,46 @@ function pv(html) {
   return `<span class="pv-mask" aria-label="Hidden">${mask || 'xxxx'}</span>`;
 }
 
+// Plain-text stand-in for places that can't hold markup (<option> labels,
+// native menus): same shape, no blur. text: already-escaped.
+function pvText(text) {
+  if (!state._privacy) return text;
+  return String(text).replace(/&[#a-z0-9]+;/gi, 'x').replace(/[0-9]/g, '8').replace(/[A-Za-zÀ-ɏ]/g, 'x');
+}
+
+// A rendered document preview (e.g. the invoice editor's live preview):
+// every text node becomes its same-shape stand-in, so the layout stays and
+// no real text is in the page. Callers keep the preview blurred (.pv-field).
+// Never use on HTML that is printed, exported or read back.
+function pvDoc(html) {
+  if (!state._privacy) return html;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  const walker = document.createTreeWalker(tpl.content, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    if (n.parentNode && /^(STYLE|SCRIPT)$/.test(n.parentNode.nodeName)) continue;
+    n.nodeValue = n.nodeValue.replace(/[0-9]/g, '8').replace(/[A-Za-zÀ-ɏ]/g, 'x');
+  }
+  tpl.content.querySelectorAll('img[alt]').forEach((img) => img.setAttribute('alt', ''));
+  const box = document.createElement('div');
+  box.appendChild(tpl.content);
+  return box.innerHTML;
+}
+
 function setPrivacy(on) {
   state._privacy = !!on;
   try { localStorage.setItem(KEY, state._privacy ? '1' : '0'); } catch (e) { /* private window: session only */ }
-  document.body.classList.toggle('privacy-on', state._privacy);
+  _syncToggles();
   window.dispatchEvent(new CustomEvent('arkives:privacy', { detail: state._privacy }));
+}
+
+// The shell's eye buttons (sidebar footer, mobile header) mirror the mode
+function _syncToggles() {
+  document.body.classList.toggle('privacy-on', state._privacy);
+  document.querySelectorAll('.privacy-toggle').forEach((b) => {
+    b.classList.toggle('is-on', state._privacy);
+    b.setAttribute('aria-pressed', String(state._privacy));
+  });
 }
 
 function togglePrivacy() {
@@ -45,7 +83,7 @@ function __init() {
   let saved = false;
   try { saved = localStorage.getItem(KEY) === '1'; } catch (e) { saved = false; }
   state._privacy = saved;
-  document.body.classList.toggle('privacy-on', saved);
+  _syncToggles();
   document.addEventListener('keydown', (e) => {
     if (e.altKey && !e.metaKey && !e.ctrlKey && e.code === 'KeyB') { e.preventDefault(); togglePrivacy(); }
   });
@@ -53,4 +91,4 @@ function __init() {
 
 act({ togglePrivacy });
 
-export { __init, isPrivate, privacyButtonHtml, pv, setPrivacy, togglePrivacy };
+export { __init, isPrivate, privacyButtonHtml, pv, pvDoc, pvText, setPrivacy, togglePrivacy };

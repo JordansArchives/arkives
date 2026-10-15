@@ -3,6 +3,7 @@ import { state } from '../state.js';
 import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
 import { _showSaveError, _showSaveSuccess } from '../lib/toast.js';
+import { isPrivate, pv } from '../lib/privacy.js';
 import { _shortDay, _shortMonth, _slug } from './dashboard.js';
 import { _localISODate } from './tasks.js';
 import { db } from '../lib/sb.js';
@@ -145,13 +146,13 @@ function renderCalendar() {
                 `<div class="calendar-cell ${cell.isToday ? 'is-today' : ''}" data-action="openAddEventModal" data-args="${_args(cell.iso)}">
                   <div class="calendar-day-num">${cell.day}</div>
                   ${cell.events.slice(0, 3).map(e => `
-                    <div class="calendar-event status-${_slug(e.status || 'draft')}" title="${_esc(e.brand)} — ${_esc(e.type)}">
-                      ${_esc(e.brand || 'Event')}
+                    <div class="calendar-event status-${_slug(e.status || 'draft')}" title="${isPrivate() ? _esc(e.type) : _esc(e.brand) + ' — ' + _esc(e.type)}">
+                      ${pv(_esc(e.brand || 'Event'))}
                     </div>
                   `).join('')}
                   ${cell.gevents.slice(0, Math.max(0, 3 - cell.events.length)).map(e => `
-                    <div class="calendar-event gcal" data-action="openGoogleEvent" data-args="${_args(e.link)}" title="${_esc(e.title)}">
-                      ${_gcalTime(e) ? `<span class="gcal-time">${_esc(_gcalTime(e))}</span> ` : ''}${_esc(e.title)}
+                    <div class="calendar-event gcal" data-action="openGoogleEvent" data-args="${_args(e.link)}" title="${isPrivate() ? '' : _esc(e.title)}">
+                      ${_gcalTime(e) ? `<span class="gcal-time">${_esc(_gcalTime(e))}</span> ` : ''}${pv(_esc(e.title))}
                     </div>
                   `).join('')}
                   ${cell.events.length + cell.gevents.length > 3 ? `<div class="calendar-more">+${cell.events.length + cell.gevents.length - 3} more</div>` : ''}
@@ -175,7 +176,7 @@ function renderCalendar() {
               <span class="upcoming-day">${_shortDay(e.date)}</span>
             </div>
             <div class="upcoming-body">
-              <div class="upcoming-brand">${_esc(e.google.title)}</div>
+              <div class="upcoming-brand">${pv(_esc(e.google.title))}</div>
               <div class="upcoming-meta">Google Calendar${_gcalTime(e.google) ? ' · ' + _esc(_gcalTime(e.google)) : ''}</div>
             </div>
             <div class="upcoming-actions">
@@ -190,7 +191,7 @@ function renderCalendar() {
               <span class="upcoming-day">${_shortDay(e.date)}</span>
             </div>
             <div class="upcoming-body">
-              <div class="upcoming-brand">${_esc(e.brand || 'Event')}</div>
+              <div class="upcoming-brand">${pv(_esc(e.brand || 'Event'))}</div>
               <div class="upcoming-meta">${_esc(e.type || '')}${e.platform ? ' · ' + _esc(e.platform) : ''}</div>
             </div>
             <div class="upcoming-actions">

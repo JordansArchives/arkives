@@ -6095,6 +6095,17 @@ body.share-quote .main { padding-bottom: 32px; }
    values are not in the DOM, the blur only makes the placeholder read as hidden */
 .pv-mask { filter: blur(5px); user-select: none; pointer-events: none; display: inline-block; }
 body.privacy-on .dash-chart canvas { filter: blur(6px); pointer-events: none; }
+/* Editable fields keep their real value (they can't hold a stand-in), so
+   privacy mode blurs them hard and shows a placeholder-free surface */
+body.privacy-on .pv-field { filter: blur(7px); }
+body.privacy-on .pv-field:focus { filter: blur(7px); }
+body.privacy-on canvas.pv-field, body.privacy-on .pv-chart canvas { filter: blur(6px); pointer-events: none; }
+.sidebar-toggles { display: flex; gap: 8px; }
+.privacy-toggle .icon-eye-off { display: none; }
+.privacy-toggle.is-on .icon-eye { display: none; }
+.privacy-toggle.is-on .icon-eye-off { display: block; }
+.privacy-toggle.is-on { background: var(--text-primary); color: var(--bg-1); border-color: var(--text-primary); }
+.mobile-header .privacy-toggle { margin-left: auto; }
 .dash-scan { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; max-width: 420px; }
 .dash-scan-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
 .dash-scan-last { font-size: 12.5px; color: var(--text-muted); }

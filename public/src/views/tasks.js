@@ -5,6 +5,7 @@ import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
 import { fmtDate } from '../lib/format.js';
 import { _showSaveError, _showUndoToast } from '../lib/toast.js';
+import { pv } from '../lib/privacy.js';
 
 
 // Local-calendar date, unlike todayISO() which is UTC — due dates come
@@ -39,8 +40,8 @@ function _taskRowHTML(t) {
     <div class="task-item ${t.completed ? 'completed' : ''}" data-id="${t._sbId}">
       <button class="task-check" data-action="toggleTaskComplete" data-args="${_args(t._sbId)}" title="${t.completed ? 'Mark incomplete' : 'Mark complete'}" aria-label="${t.completed ? 'Mark incomplete' : 'Mark complete'}">${checkSvg}</button>
       <div class="task-body" role="button" tabindex="0" data-action="openEditTaskModal" data-args="${_args(t._sbId)}" data-keydown="taskRowKey" data-keydown-args="${_args('$event', t._sbId)}">
-        <div class="task-title">${_esc(t.title)}</div>
-        ${t.details ? `<div class="task-details">${_esc(t.details)}</div>` : ''}
+        <div class="task-title">${pv(_esc(t.title))}</div>
+        ${t.details ? `<div class="task-details">${pv(_esc(t.details))}</div>` : ''}
         ${dueLabel ? `<span class="task-due ${overdue ? 'overdue' : ''}">${dueSvg} ${dueLabel}</span>` : ''}
       </div>
       <div class="task-item-actions">
@@ -192,11 +193,11 @@ function _ensureTaskModal() {
         <h3>Edit Task</h3>
         <div class="form-group">
           <label for="etTitle">Task</label>
-          <input type="text" id="etTitle" maxlength="500" data-keydown="taskEditKey" data-keydown-args="[&quot;$event&quot;]">
+          <input type="text" id="etTitle" class="pv-field" maxlength="500" data-keydown="taskEditKey" data-keydown-args="[&quot;$event&quot;]">
         </div>
         <div class="form-group">
           <label for="etDetails">Details</label>
-          <textarea id="etDetails" rows="3" maxlength="2000" placeholder="Any extra context"></textarea>
+          <textarea id="etDetails" class="pv-field" rows="3" maxlength="2000" placeholder="Any extra context"></textarea>
         </div>
         <div class="form-group">
           <label for="etDue">Due date</label>

@@ -314,9 +314,6 @@ function _slug(s) {
 }
 
 export function __init() {
-  window.addEventListener('arkives:privacy', () => {
-    if ((location.hash || '#dashboard').slice(1) === 'dashboard') renderDashboard();
-  });
   onSocialUpdate(() => {
     if ((location.hash || '#dashboard').slice(1) !== 'dashboard') return;
     _repaintPart('dashAudience', _audienceHtml);

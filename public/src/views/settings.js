@@ -1,17 +1,37 @@
 // Arkives — Settings view (profile, platforms, rate card, contract defaults, audience, account).
 import { state } from '../state.js';
-import { loadConnections, renderConnectionsSettings } from './connections.js';
+import { loadConnections, renderConnectionsSettings, repaintConnections } from './connections.js';
 import { loadAll } from '../stores/index.js';
 import { _args, act } from '../lib/actions.js';
 import { _esc } from '../lib/esc.js';
+import { isPrivate, pv } from '../lib/privacy.js';
 import { _showSaveError, _showSaveSuccess } from '../lib/toast.js';
 import { updateSidebarUser } from './auth.js';
 import { renderInvoicingSettings } from './invoices.js';
 
 
+/* Privacy mode (lib/privacy.js): Settings is all form fields, so the
+   sensitive ones (money, emails, legal entity, address, bank details) get
+   .pv-field and CSS blurs them; handles and audience stay readable. A
+   privacy toggle repaints only the read-only emails, keeping the open tab
+   and anything typed but not saved. */
+const SETTINGS_PRIVATE_FIELDS = '#setProfileEntity, #setProfileEmail, #setMkContact, .rate-value, #setRateMin, #setRatePricingRule, #settings-panel-contract input, #settings-panel-invoicing input:not(#setInvPrefix), #settings-panel-invoicing textarea';
+let _settingsPaintedPrivacy = null;
+function _markSettingsPrivateFields(container) {
+  container.querySelectorAll(SETTINGS_PRIVATE_FIELDS).forEach(el => el.classList.add('pv-field'));
+}
+
 /* ---- SETTINGS (Interactive, all-editable) ---- */
 function renderSettings() {
   const container = document.getElementById("view-settings");
+  if (container.querySelector('.settings-tabs') && _settingsPaintedPrivacy !== null && _settingsPaintedPrivacy !== isPrivate()) {
+    _settingsPaintedPrivacy = isPrivate();
+    const acct = document.getElementById('setAccountEmail');
+    if (acct) acct.innerHTML = pv(_esc(state._authUser?.email || '—'));
+    repaintConnections();
+    return;
+  }
+  _settingsPaintedPrivacy = isPrivate();
 
   container.innerHTML = `
     <div class="view-header">
@@ -57,6 +77,7 @@ function renderSettings() {
       ${renderDangerZone()}
     </div>
   `;
+  _markSettingsPrivateFields(container);
   // Another view (Calendar, the Google return) asked for a specific tab
   if (state._settingsTabNext) { const t = state._settingsTabNext; state._settingsTabNext = null; switchSettingsTab(t); }
 }
@@ -462,7 +483,7 @@ function renderDangerZone() {
   return `
     <div class="settings-card">
       <h3>Account</h3>
-      <p class="settings-help">Signed in as <strong>${_esc(state._authUser?.email || '—')}</strong></p>
+      <p class="settings-help">Signed in as <strong id="setAccountEmail">${pv(_esc(state._authUser?.email || '—'))}</strong></p>
       <div class="settings-actions">
         <button class="btn btn-secondary" data-action="exportAllData">Export All Data (JSON)</button>
         <button class="btn btn-danger" data-action="handleLogout">Sign Out</button>

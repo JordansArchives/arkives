@@ -307,6 +307,105 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     Object.assign(st, { INVOICE_DATA: keep.inv, QUOTES: keep.q, CALENDAR_EVENTS: keep.cal }); __arkives.setPrivacy(keep.priv);
   }
 
+  // Privacy mode on Quotes and Timelines: list + editor preview masked; the
+  // client's document (PDF / #q/ / #t/) is never masked
+  {
+    const st = __arkives.state;
+    const keep = { q: st.QUOTES, tl: st.TIMELINES, priv: st._privacy, qe: st._qEditorOpen, te: st._tlEditorOpen };
+    const q = { _sbId: 'pq2', title: 'Secret Launch', quoteNumber: 'Q-9', clientCompany: 'Zentrix Media', clientEmail: 'z@zentrix.io', status: 'sent', lineItems: [{ desc: 'Hero film', unit: 'flat', qty: 1, rate: 8517 }], depositPct: 50, revisionRounds: 2 };
+    const t = { _sbId: 'pt2', title: 'Hush Campaign', clientName: 'Hushbrand', notes: 'Embargo note', kickoffDate: '2026-11-02', status: 'shared', steps: __arkives.tlDefaultSteps() };
+    st.QUOTES = [q]; st.TIMELINES = [t]; st._qEditorOpen = false; st._tlEditorOpen = false;
+    const SECRET = /8,517|Secret Launch|Zentrix|z@zentrix|Hush Campaign|Hushbrand|Embargo/;
+    __arkives.setPrivacy(true);
+    __arkives.renderQuotes(); __arkives.renderTimelines();
+    const lists = document.getElementById('view-quotes').innerHTML + document.getElementById('view-timelines').innerHTML;
+    const docs = __arkives.renderQuoteDoc(q, '', true) + __arkives.renderTimelineCard(t, { masked: true });
+    const client = __arkives.renderQuoteDoc(q) + __arkives.renderTimelineCard(t, { live: true });
+    __arkives.setPrivacy(false); __arkives.renderQuotes(); __arkives.renderTimelines();
+    const off = document.getElementById('view-quotes').innerHTML + document.getElementById('view-timelines').innerHTML;
+    T('privacy: quotes and timelines lists and editor previews hide amounts, titles, clients', !SECRET.test(lists) && !SECRET.test(docs) && /pv-mask/.test(lists), (lists + docs).match(new RegExp(SECRET, 'g')));
+    T('privacy: the client quote and timeline stay real, and lists come back when off', /8,517/.test(client) && /Zentrix/.test(client) && /Hushbrand/.test(client) && /Secret Launch/.test(off) && /Hushbrand/.test(off) && !/pv-mask/.test(off));
+    Object.assign(st, { QUOTES: keep.q, TIMELINES: keep.tl, _qEditorOpen: keep.qe, _tlEditorOpen: keep.te }); __arkives.setPrivacy(keep.priv);
+  }
+
+  // Privacy mode, media kit: rates, campaign revenue and contact email masked; audience stays
+  {
+    const st = __arkives.state;
+    const keep = { rc: st.RATE_CARD, camp: st.CAMPAIGN_RESULTS, mail: st.CREATOR.mkContactEmail, priv: st._privacy };
+    st.RATE_CARD = { ...st.RATE_CARD, organic: [{ name: 'Reel', rate: 7777 }], ugc: [], bundles: [] };
+    st.CAMPAIGN_RESULTS = [{ brand: 'Proofco', views: 120000, revenue: 4321 }];
+    st.CREATOR.mkContactEmail = 'deals@hush.test';
+    __arkives.setPrivacy(true); __arkives.renderMediaKit();
+    const on = document.getElementById('view-mediakit').innerHTML;
+    __arkives.setPrivacy(false); __arkives.renderMediaKit();
+    const off = document.getElementById('view-mediakit').innerHTML;
+    T('privacy: media kit hides rates, campaign revenue and contact email', !/7,777|4,321|deals@hush/.test(on) && /pv-mask/.test(on) && /Proofco/.test(on), on.match(/7,777|4,321|deals@hush/g));
+    T('privacy: media kit shows them again when off', /7,777/.test(off) && /4,321/.test(off) && /deals@hush/.test(off));
+    Object.assign(st, { RATE_CARD: keep.rc, CAMPAIGN_RESULTS: keep.camp }); st.CREATOR.mkContactEmail = keep.mail; __arkives.setPrivacy(keep.priv);
+  }
+
+  // Privacy mode, Revenue + Invoices: totals, client names and addresses masked; invoice numbers stay
+  {
+    const st = __arkives.state;
+    const keep = { inv: st.INVOICE_DATA, cl: st.CLIENTS, ed: st._invEditorOpen, priv: st._privacy };
+    const d = new Date().toISOString().slice(0, 10);
+    st.INVOICE_DATA = [{ _sbId: 'pr', invoiceNumber: 'PV-7', billToName: 'Quietco', brand: 'Quietco', date: d, status: 'sent', lineItems: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 6543 }], amount: 6543, amountPaid: 0, tax: 0 }];
+    st.CLIENTS = [{ _sbId: 'pcl', name: 'Mara Hidden', company: 'Quietco', billingAddress: '9 Secret Lane' }];
+    st._invEditorOpen = false;
+    const grab = () => { __arkives.renderRevenue(); __arkives.renderInvoices(); return document.getElementById('view-revenue').innerHTML + document.getElementById('view-invoices').innerHTML; };
+    __arkives.setPrivacy(true); const on = grab();
+    __arkives.setPrivacy(false); const off = grab();
+    T('privacy: revenue and invoices hide amounts, clients, addresses and client-prefixed invoice numbers', !/6,543|Quietco|Mara Hidden|Secret Lane/.test(on) && /pv-mask/.test(on) && !/PV-7/.test(on), on.match(/6,543|Quietco|Mara Hidden|Secret Lane|PV-7/g));
+    T('privacy: revenue and invoices show them again when off', /6,543/.test(off) && /Quietco/.test(off) && /Mara Hidden/.test(off) && /Secret Lane/.test(off) && !/pv-mask/.test(off));
+    Object.assign(st, { INVOICE_DATA: keep.inv, CLIENTS: keep.cl, _invEditorOpen: keep.ed }); __arkives.setPrivacy(keep.priv);
+  }
+
+  // Privacy mode, inbox / tasks / calendar / outreach: names, senders, money gone
+  {
+    const st = __arkives.state;
+    const keep = { ib: st.INBOX_ITEMS, sel: st._inboxSelected, f: st._inboxFilter, tk: st.TASKS, cal: st.CALENDAR_EVENTS, ot: st.OUTREACH_TARGETS, ol: st.OUTREACH_LISTS, priv: st._privacy };
+    st.INBOX_ITEMS = [{ id: 'pib', status: 'new', brand: 'Quietco', fromName: 'Pat Hush', fromEmail: 'pat@quiet.test', subject: 'Secret collab', preview: 'Budget 9,876', receivedAt: new Date().toISOString() }];
+    st._inboxSelected = 'pib'; st._inboxFilter = 'open';
+    st.TASKS = [{ _sbId: 'ptk', title: 'Email Quietco', details: 'about Secret collab', completed: false, starred: false, dueDate: '' }];
+    st.CALENDAR_EVENTS = [{ _sbId: 'pce', date: new Date().toISOString().slice(0, 10), brand: 'Hushbrand', type: 'Shoot' }];
+    st.OUTREACH_TARGETS = [{ _sbId: 'pot', name: 'Zentrix', type: 'brand', status: 'in_talks', website: 'zentrix.test', pitch: '', notes: '', initiatedBy: 'us', projects: [{ name: 'Launch', rate: 6543 }], listIds: ['pol'], updatedAt: '2026-10-01' }];
+    st.OUTREACH_LISTS = [{ _sbId: 'pol', name: 'Hushlist', sortOrder: 0 }];
+    const grab = () => {
+      __arkives.renderInbox(); __arkives.renderTasks(); __arkives.renderCalendar(); __arkives.renderOutreach();
+      return ['inbox', 'tasks', 'calendar', 'outreach'].map((v) => document.getElementById('view-' + v).innerHTML).join('\n');
+    };
+    const SECRET = /Quietco|Pat Hush|pat@quiet|Secret collab|9,876|Hushbrand|Zentrix|6,543|Hushlist/g;
+    __arkives.setPrivacy(true); const on = grab();
+    __arkives.setPrivacy(false); const off = grab();
+    T('privacy: inbox, tasks, calendar and outreach hide names, senders and money', !SECRET.test(on) && /pv-mask/.test(on), on.match(SECRET));
+    T('privacy: inbox, tasks, calendar and outreach show them again when off', ['Quietco', 'pat@quiet', 'Secret collab', 'Hushbrand', 'Zentrix', '6,543', 'Hushlist'].every((x) => off.includes(x)));
+    Object.assign(st, { INBOX_ITEMS: keep.ib, _inboxSelected: keep.sel, _inboxFilter: keep.f, TASKS: keep.tk, CALENDAR_EVENTS: keep.cal, OUTREACH_TARGETS: keep.ot, OUTREACH_LISTS: keep.ol });
+    __arkives.setPrivacy(keep.priv);
+  }
+
+  // Privacy mode, settings + contracts: emails masked, money/legal fields blurred, typed work survives a toggle
+  {
+    const st = __arkives.state;
+    const keep = { user: st._authUser, inbox: st.INBOX_ADDRESS, google: st.GOOGLE, priv: st._privacy };
+    st._authUser = { ...(st._authUser || {}), email: 'owner@hush.test' };
+    st.INBOX_ADDRESS = 'zz9secret'; st.GOOGLE = { status: 'active', email: 'cal@hush.test' };
+    __arkives.setPrivacy(true); __arkives.renderSettings();
+    const sv = document.getElementById('view-settings');
+    const on = sv.innerHTML;
+    const blurred = ['setProfileEmail', 'setRateMin', 'cdPaidFloor'].every((id) => { const el = sv.querySelector('#' + id); return !el || el.classList.contains('pv-field'); });
+    __arkives.setPrivacy(false); __arkives.renderSettings();
+    const off = sv.innerHTML;
+    T('privacy: settings masks account, Google and inbox emails and blurs money fields', !/owner@hush|cal@hush|zz9secret/.test(on) && /pv-mask/.test(on) && blurred, on.match(/owner@hush|cal@hush|zz9secret/g));
+    T('privacy: settings shows the emails again when off', /owner@hush/.test(off) && /cal@hush/.test(off) && /zz9secret/.test(off));
+    __arkives.renderContracts();
+    const cv = document.getElementById('view-contracts');
+    const brand = cv.querySelector('#cBrandName'); brand.value = 'Typed Brand';
+    __arkives.setPrivacy(true); __arkives.renderContracts();
+    T('privacy: contracts keeps typed fields on toggle and blurs fields + preview', cv.querySelector('#cBrandName').value === 'Typed Brand' && cv.querySelector('#cBrandName').classList.contains('pv-field') && cv.querySelector('#contractPreviewContent').classList.contains('pv-field') && !cv.querySelector('#cAgreementType').classList.contains('pv-field'));
+    __arkives.setPrivacy(false); __arkives.renderContracts(); __arkives.renderContracts();
+    Object.assign(st, { _authUser: keep.user, INBOX_ADDRESS: keep.inbox, GOOGLE: keep.google }); __arkives.setPrivacy(keep.priv);
+  }
+
   // Scripts undo/redo: typing bursts, blocks, deleted scenes come back
   {
     const st = __arkives.state;
