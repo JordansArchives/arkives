@@ -195,10 +195,6 @@ S("script-src has no 'unsafe-inline' or 'unsafe-eval'", (() => { const d = (hdr[
   S('google: 503 when secrets are missing', r.status === 503);
   r = await G.handleGoogle(req('/api/google/events?from=2026-10-01&to=2026-11-01'), ENV, gfake());
   S('google: signed-out calls are refused', r.status === 401);
-  r = await G.handleGoogle(req('/api/google/connect', { method: 'POST', headers: authH }), { ...ENV, GOOGLE_ALLOWED_EMAILS: 'someone@else.com' }, gfake());
-  S('google: GOOGLE_ALLOWED_EMAILS blocks every other login', r.status === 403 && (await r.json()).error === 'forbidden');
-  r = await G.handleGoogle(req('/api/google/connect', { method: 'POST', headers: authH }), { ...ENV, GOOGLE_ALLOWED_EMAILS: 'Me@X.com, other@y.com' }, gfake());
-  S('google: an allowlisted login (any case) can connect', r.status === 200);
   r = await G.handleGoogle(req('/api/google/connect', { method: 'POST', headers: authH }), ENV, gfake());
   const cj = await r.json(); const setC = r.headers.get('Set-Cookie') || '';
   const authUrl = new URL(cj.url);

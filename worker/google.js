@@ -30,10 +30,8 @@
 //
 // Secrets (Cloudflare dashboard): GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
 // ARKIVES_MASTER_KEY, ARKIVES_DB_KEY. Missing any -> 503 not_configured.
-// Optional GOOGLE_ALLOWED_EMAILS: comma-separated Arkives logins allowed to
-// connect Google; when set, every other account gets 403 forbidden.
 
-import { SUPABASE_URL, SUPABASE_ANON, parseAllowList } from './scan.js';
+import { SUPABASE_URL, SUPABASE_ANON } from './scan.js';
 import { seal, open, sign, verify, randomToken, readCookie, cookie, b64url, unb64url } from './crypto.js';
 
 export const GOOGLE_SCOPES = [
@@ -156,8 +154,6 @@ export async function handleGoogle(req, env, fetchImpl = fetch) {
   if (!userRes.ok) return _json({ ok: false, error: 'signin' }, 401);
   const user = await userRes.json();
   if (!user || typeof user.id !== 'string') return _json({ ok: false, error: 'signin' }, 401);
-  const allow = parseAllowList(env.GOOGLE_ALLOWED_EMAILS);
-  if (allow.length && !allow.includes(String(user.email || '').trim().toLowerCase())) return _json({ ok: false, error: 'forbidden' }, 403);
   const rpc = async (fn, args) => {
     const r = await fetchImpl(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, { method: 'POST', headers: sbHeaders, body: JSON.stringify({ p_key: env.ARKIVES_DB_KEY, ...args }) });
     return { ok: r.ok, data: r.ok ? await r.json().catch(() => null) : null };

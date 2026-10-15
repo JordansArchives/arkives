@@ -343,7 +343,7 @@ Every account connects its own Google account and gets its own inbox address fro
 **One-time setup**
 1. Run `migrations/029_google_and_inbox.sql`, then register the SHA-256 of the DB key (snippet at the top of that file; the raw key never goes into SQL).
 2. Google Cloud console: create a project, enable the **Google Calendar API**, configure the OAuth consent screen (External; app name Arkives; scopes above; publishing status **In production**), create an **OAuth client (Web application)** with redirect URI `https://arkives.xyz/api/google/callback`.
-3. Cloudflare → Workers → arkives → Variables and Secrets (all secrets): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ARKIVES_MASTER_KEY` (`openssl rand -base64 32`), `ARKIVES_DB_KEY` (`openssl rand -hex 32`, same value as step 1). Optional `GOOGLE_ALLOWED_EMAILS` (plain text, comma-separated Arkives logins): only those accounts can connect Google.
+3. Cloudflare → Workers → arkives → Variables and Secrets (all secrets): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ARKIVES_MASTER_KEY` (`openssl rand -base64 32`), `ARKIVES_DB_KEY` (`openssl rand -hex 32`, same value as step 1).
 4. Cloudflare → arkives.xyz → Email → Email Routing: enable (adds MX/SPF records), then Routing rules → **Catch-all → Send to a Worker → arkives**.
 5. Before opening Connections to other users: submit the app for Google verification (needs a public homepage + privacy policy on arkives.xyz). Unverified, up to 100 Google accounts can connect after an "unverified app" warning.
 
