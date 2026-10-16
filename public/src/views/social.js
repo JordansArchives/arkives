@@ -38,7 +38,9 @@ export async function loadSocialStats() {
 }
 
 // Snapshots (old flat rows and unified per-date rows) -> per-platform
-// history sorted by date: { instagram: [{date, followers}], ... }
+// history sorted by date: { instagram: [{date, followers, engagement_rate}], ... }
+// Unified rows store IG engagement as "3.2%"; the charts read the flat-row
+// keys (engagement_rate, and subscribers for YouTube), so map them here.
 export function socialHistory(snapshots) {
   const history = Object.fromEntries(HISTORY_KEYS.map((k) => [k, []]));
   (snapshots || []).forEach((snap) => {
@@ -46,7 +48,13 @@ export function socialHistory(snapshots) {
       if (history[snap.platform]) history[snap.platform].push(snap);
     } else if (snap.platforms && snap.date) {
       Object.entries(snap.platforms).forEach(([plat, d]) => {
-        if (history[plat]) history[plat].push({ date: snap.date, followers: d.followers || d.subscribers || d.connections || 0 });
+        if (!history[plat] || !d) return;
+        const followers = d.followers || d.subscribers || d.connections || 0;
+        const pt = { date: snap.date, followers };
+        if (plat === 'youtube') pt.subscribers = followers;
+        const er = parseFloat(d.engagement_rate ?? d.engagement);
+        if (Number.isFinite(er)) pt.engagement_rate = er;
+        history[plat].push(pt);
       });
     }
   });

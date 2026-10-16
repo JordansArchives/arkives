@@ -880,6 +880,8 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     const A = __arkives, st = A.state;
     const h = A.socialHistory([{ platform: 'instagram', date: '2026-09-01', followers: 100 }, { date: '2026-10-11', platforms: { instagram: { followers: 160 }, youtube: { subscribers: 7 } } }, { date: '2026-09-20', platforms: { instagram: { followers: 130 } } }]);
     T('social: history merges flat + unified snapshots, sorted', h.instagram.map((x) => x.followers).join(',') === '100,130,160' && h.youtube[0].followers === 7);
+    const he = A.socialHistory([{ platform: 'instagram', date: '2026-09-01', followers: 100, engagement_rate: 11.7 }, { date: '2026-10-11', platforms: { instagram: { followers: 160, engagement: '3.2%' }, youtube: { subscribers: 7 } } }, { date: '2026-10-12', platforms: { instagram: { followers: 161 } } }]);
+    T('social: each scan adds an engagement point (and YouTube subscribers)', he.instagram.filter((x) => x.engagement_rate != null).map((x) => x.engagement_rate).join(',') === '11.7,3.2' && he.youtube[0].subscribers === 7, JSON.stringify(he));
     const tr = A.followerTrend(h.instagram, 30);
     T('social: 30-day trend uses the newest point at least 30 days back', tr && tr.delta === 60 && tr.since === '2026-09-01' && A.followerTrend(h.youtube, 30) === null, JSON.stringify(tr));
     const ig0 = { ...st.CREATOR.platforms.instagram };
