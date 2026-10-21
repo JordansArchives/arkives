@@ -607,6 +607,7 @@ function _applyContractPrefill() {
   setVal('cSvcDeposit', p.deposit);
   setVal('cSvcBalance', p.balance);
   if (p.revisions > 0) setVal('cRevisions', p.revisions);
+  if (p.revDayRate > 0) { setVal('cSvcRevRate', p.revDayRate); setVal('cSvcRevUnit', 'day'); }
   generateContract();
   showToast(p.dayRate > 0
     ? 'Services agreement filled from quote ' + p.number + '. Review it before sending.'

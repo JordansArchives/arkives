@@ -486,9 +486,23 @@ async function sbDeleteInvoice(sbId) {
 
 /* ---- SUPABASE CRUD: QUOTES ---- */
 // user_id is stamped by the DB default (current_profile_id), like invoices
+// Until 030 runs, quotes has no revision_day_rate column: retry without it
+// (PGRST204 = column not in the schema cache) so saving never breaks
+function _quoteWrite(payload, run) {
+  return run(payload).then((res) => {
+    if (res.error && res.error.code === 'PGRST204' && 'revision_day_rate' in payload) {
+      const rest = { ...payload };
+      delete rest.revision_day_rate;
+      console.warn('quotes.revision_day_rate missing: run migration 030');
+      return run(rest);
+    }
+    return res;
+  });
+}
+
 async function sbAddQuote(payload) {
   if (!state._sb || !state.CREATOR._sbId) return null;
-  const { data: row, error } = await state._sb.from('quotes').insert(payload).select().single();
+  const { data: row, error } = await _quoteWrite(payload, (p) => state._sb.from('quotes').insert(p).select().single());
   if (error) { _showSaveError('Failed to save quote'); console.error(error); return null; }
   _showSaveSuccess();
   return row;
@@ -496,7 +510,7 @@ async function sbAddQuote(payload) {
 
 async function sbUpdateQuote(sbId, updates, silent) {
   if (!state._sb || !sbId) return false;
-  const { error } = await state._sb.from('quotes').update(updates).eq('id', sbId);
+  const { error } = await _quoteWrite(updates, (p) => state._sb.from('quotes').update(p).eq('id', sbId));
   if (error) { _showSaveError('Failed to update quote'); console.error(error); return false; }
   if (!silent) _showSaveSuccess();
   return true;
@@ -745,6 +759,7 @@ function _mapQuoteRow(r) {
     depositPct: r.deposit_pct == null ? 50 : Number(r.deposit_pct),
     balanceTerms: r.balance_terms || 'delivery',
     revisionRounds: r.revision_rounds == null ? 2 : Number(r.revision_rounds),
+    revisionDayRate: Number(r.revision_day_rate) || 0,
     usageRights: r.usage_rights || '',
     notes: r.notes || '',
     issueDate: r.issue_date || '',

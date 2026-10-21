@@ -742,6 +742,19 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('quote payload drops blank lines, coerces numbers, normalizes units, totals', pl.line_items.length === 2 && pl.line_items[0].qty === 4 && pl.line_items[0].rate === 250 && pl.line_items[0].detail === 'd' && pl.line_items[1].unit === 'flat' && pl.line_items[1].qty === 1 && pl.total === 1010 && pl.balance_terms === 'NET15');
     const docEl = document.createElement('div');
     docEl.innerHTML = A.renderQuoteDoc(mk({ title: '<img src=x onerror="window.__x=1">', scope: 'a\n\nb <i>c</i>' }), '');
+    const revDoc = (over) => { const el = document.createElement('div'); el.innerHTML = A.renderQuoteDoc(mk(over), ''); return el.textContent.replace(/\s+/g, ' '); };
+    const withRate = revDoc({ revisionDayRate: 2000 });
+    T('extra revisions: a day rate prints as billed work days with a worked example', /3 rounds of revisions/.test(withRate) && /Each working day of revisions beyond the included rounds is an added work day, billed at \$2,000\.00 per day/.test(withRate) && /a fourth round that takes two days adds \$4,000\.00/.test(withRate), withRate.match(/REVISIONS.{0,400}/)?.[0]);
+    T('extra revisions: no day rate keeps "quoted separately"; zero rounds still bills by the day', /Further rounds are quoted separately/.test(revDoc({ revisionDayRate: 0 })) && !/per day/.test(revDoc({ revisionDayRate: 0 })) && /No revision rounds are included\. Each working day of revisions beyond delivery/.test(revDoc({ revisionRounds: 0, revisionDayRate: 900 })));
+    T('extra revisions: payload carries a clean day rate', A._qPayload(mk({ revisionDayRate: '1750' })).revision_day_rate === 1750 && A._qPayload(mk({ revisionDayRate: '' })).revision_day_rate === 0);
+    {
+      const sent = [];
+      const realSb = st._sb;
+      st._sb = { from: () => ({ update: (p) => ({ eq: async () => { sent.push(p); return { error: sent.length === 1 ? { code: 'PGRST204' } : null }; } }) }) };
+      const ok = await __arkives.db.sbUpdateQuote('q1', { title: 'x', revision_day_rate: 500 }, true);
+      st._sb = realSb;
+      T('extra revisions: before migration 030 a save retries without the new column', ok === true && sent.length === 2 && 'revision_day_rate' in sent[0] && !('revision_day_rate' in sent[1]) && sent[1].title === 'x', JSON.stringify(sent));
+    }
     T('quote document escapes client-supplied text', !docEl.querySelector('img') && !docEl.querySelector('i') && docEl.querySelectorAll('.contract-section-body p').length >= 2 && /Q-0007/.test(docEl.textContent) && /\$44,500\.00/.test(docEl.textContent));
 
     // Accepted quote -> draft deposit invoice, linked back to the quote
@@ -761,12 +774,12 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     T('no deposit: the invoice carries the quote lines at the full total', invAdds[0]?.amount === 44500 && invAdds[0].line_items.length === 2 && invAdds[0].line_items[1].type === 'day' && invAdds[0].line_items[1].qty === 3);
 
     // Accepted quote -> Production Services Agreement, prefilled once
-    st.QUOTES = [mk({ title: 'Spring hero film' })];
+    st.QUOTES = [mk({ title: 'Spring hero film', revisionDayRate: 1800 })];
     A.qToContract('q1');
     A.renderContracts();
     const cv = document.getElementById('view-contracts');
     const cval = (id) => cv.querySelector('#' + id).value;
-    T('quote -> contract: services agreement filled from the quote', cval('cAgreementType') === 'services' && cval('cBrandName') === 'Acme Inc.' && cval('cContact') === 'Jane' && cval('cBrandCity') === 'San Francisco' && cval('cCampaign') === 'Spring hero film' && cval('cSvcDayRate') === '1500' && cval('cSvcDaysLow') === '3' && cval('cSvcNte') === '44500' && cval('cSvcBalance') === 'NET15' && cval('cRevisions') === '3' && cval('cSvcCount') === '', JSON.stringify({ t: cval('cAgreementType'), r: cval('cSvcDayRate'), d: cval('cSvcDaysLow') }));
+    T('quote -> contract: services agreement filled from the quote', cval('cAgreementType') === 'services' && cval('cBrandName') === 'Acme Inc.' && cval('cContact') === 'Jane' && cval('cBrandCity') === 'San Francisco' && cval('cCampaign') === 'Spring hero film' && cval('cSvcDayRate') === '1500' && cval('cSvcDaysLow') === '3' && cval('cSvcNte') === '44500' && cval('cSvcBalance') === 'NET15' && cval('cRevisions') === '3' && cval('cSvcRevRate') === '1800' && cval('cSvcRevUnit') === 'day' && cval('cSvcCount') === '', JSON.stringify({ t: cval('cAgreementType'), r: cval('cSvcDayRate'), d: cval('cSvcDaysLow') }));
     const prev = cv.querySelector('#contractPreviewContent');
     T('the generated agreement lists the quoted work without a stray count', /PRODUCTION SERVICES AGREEMENT/.test(prev.textContent) && /Deliverables: Hero film; Editing \(3 days\)/.test(prev.textContent) && /"Spring hero film"/.test(prev.textContent));
     T('the prefill is consumed once', st._contractPrefill === null);
@@ -779,14 +792,14 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     let shared = mk({ status: 'sent', viewedAt: '' });
     st._sb = Object.create(realSb, { rpc: { value: async (name, args) => {
       calls.push({ name, args });
-      if (name === 'get_shared_quote') return { data: args.p_token === 'tok' ? { quote_number: shared.quoteNumber, title: shared.title, client_name: 'Jane', client_company: 'Acme Inc.', from_name: 'Me LLC', line_items: shared.lineItems, deposit_pct: 50, balance_terms: 'NET15', revision_rounds: 3, issue_date: '2026-10-01', valid_until: '2099-01-01', status: shared.status, accepted_name: shared.acceptedName, responded_at: shared.status === 'accepted' ? '2026-10-09T00:00:00Z' : null, expired: false } : null, error: null };
+      if (name === 'get_shared_quote') return { data: args.p_token === 'tok' ? { quote_number: shared.quoteNumber, title: shared.title, client_name: 'Jane', client_company: 'Acme Inc.', from_name: 'Me LLC', line_items: shared.lineItems, deposit_pct: 50, balance_terms: 'NET15', revision_rounds: 3, revision_day_rate: 2000, issue_date: '2026-10-01', valid_until: '2099-01-01', status: shared.status, accepted_name: shared.acceptedName, responded_at: shared.status === 'accepted' ? '2026-10-09T00:00:00Z' : null, expired: false } : null, error: null };
       if (name === 'respond_to_quote') { shared = mk({ status: 'accepted', acceptedName: args.p_name }); return { data: { ok: true, status: 'accepted' }, error: null }; }
       return { data: null, error: null };
     } } });
     await A.navigate('q/tok');
     await new Promise((r) => setTimeout(r, 30));
     const pv = document.getElementById('view-quote-public');
-    T('quote link renders the document with no app chrome', pv.classList.contains('active') && /Project Quote/.test(pv.textContent) && /\$44,500\.00/.test(pv.textContent) && document.body.classList.contains('share-quote') && getComputedStyle(document.getElementById('sidebar')).display === 'none' && !pv.querySelector('b') && /Q-0007/.test(document.title));
+    T('quote link renders the document with no app chrome', pv.classList.contains('active') && /Project Quote/.test(pv.textContent) && /\$44,500\.00/.test(pv.textContent) && /billed at \$2,000\.00 per day/.test(pv.textContent) && document.body.classList.contains('share-quote') && getComputedStyle(document.getElementById('sidebar')).display === 'none' && !pv.querySelector('b') && /Q-0007/.test(document.title));
     A.qPublicAccept();
     await new Promise((r) => setTimeout(r, 10));
     T('accepting without a name asks for one and calls nothing', /Type your full name/.test(pv.textContent) && !calls.some((c) => c.name === 'respond_to_quote'));

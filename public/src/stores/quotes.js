@@ -89,7 +89,7 @@ const COLS = {
   client_name: 'clientName', client_company: 'clientCompany', client_email: 'clientEmail', client_address: 'clientAddress',
   from_name: 'fromName', from_email: 'fromEmail', from_address: 'fromAddress',
   scope: 'scope', timeline: 'timeline', exclusions: 'exclusions', line_items: 'lineItems', total: 'total',
-  deposit_pct: 'depositPct', balance_terms: 'balanceTerms', revision_rounds: 'revisionRounds', usage_rights: 'usageRights',
+  deposit_pct: 'depositPct', balance_terms: 'balanceTerms', revision_rounds: 'revisionRounds', revision_day_rate: 'revisionDayRate', usage_rights: 'usageRights',
   notes: 'notes', issue_date: 'issueDate', valid_until: 'validUntil', status: 'status', sent_at: 'sentAt',
   viewed_at: 'viewedAt', responded_at: 'respondedAt', accepted_name: 'acceptedName', decline_reason: 'declineReason',
   response_seen: 'responseSeen',

@@ -109,7 +109,7 @@ function renderQuoteDoc(q, closing, masked) {
     ? `<p><strong>Deposit:</strong> ${pct}% (${m(fmtMoney(dep))}) is due on acceptance and books the project dates.${pct < 100 ? ` <strong>Balance:</strong> ${m(fmtMoney(total - dep))} is due ${Q_BALANCE[q.balanceTerms] || Q_BALANCE.delivery}.` : ''}</p>`
     : `<p>The full amount (${m(fmtMoney(total))}) is due ${Q_BALANCE[q.balanceTerms] || Q_BALANCE.delivery}.</p>`) : '';
   const rounds = Number(q.revisionRounds) || 0;
-  const revisions = `<p>${rounds ? `Includes <strong>${rounds} round${rounds === 1 ? '' : 's'} of revisions</strong> per deliverable. A round is one consolidated set of notes on a cut. Further rounds are quoted separately.` : 'No revision rounds are included; any revisions are quoted separately.'}</p>` +
+  const revisions = `<p>${_qRevisionTerms(rounds, Number(q.revisionDayRate) || 0, m)}</p>` +
     (q.usageRights ? `<p><strong>Usage:</strong> ${m(_esc(q.usageRights).replace(/\n/g, '<br>'))}</p>` : '');
 
   return `
@@ -140,6 +140,18 @@ function renderQuoteDoc(q, closing, masked) {
     ${section('NOTES', q.notes ? m(_qText(q.notes)) : '')}
     ${closing || ''}
   </div>`;
+}
+
+// Extra rounds bill by the day when the quote carries a day rate:
+// every working day spent past the included rounds is one more day rate
+const Q_ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth'];
+function _qRevisionTerms(rounds, dayRate, m) {
+  const included = rounds
+    ? `Includes <strong>${rounds} round${rounds === 1 ? '' : 's'} of revisions</strong> per deliverable. A round is one consolidated set of notes on a cut.`
+    : 'No revision rounds are included.';
+  if (!(dayRate > 0)) return included + (rounds ? ' Further rounds are quoted separately.' : ' Any revisions are quoted separately.');
+  const next = Q_ORDINALS[rounds] ? `a ${Q_ORDINALS[rounds]} round` : 'an extra round';
+  return `${included} <strong>Each working day of revisions beyond ${rounds ? 'the included rounds' : 'delivery'} is an added work day, billed at ${m(fmtMoney(dayRate))} per day.</strong> For example, ${next} that takes two days adds ${m(fmtMoney(dayRate * 2))}.`;
 }
 
 // The closing block as it prints / previews (the live page swaps in the form)
@@ -264,7 +276,7 @@ function _qBlank() {
     clientName: '', clientCompany: '', clientEmail: '', clientAddress: '',
     scope: '', timeline: '', exclusions: '',
     lineItems: [{ desc: '', detail: '', unit: 'flat', qty: 1, rate: 0 }],
-    depositPct: 50, balanceTerms: 'delivery', revisionRounds: 2, usageRights: '', notes: '',
+    depositPct: 50, balanceTerms: 'delivery', revisionRounds: 2, revisionDayRate: Number(state.CONTRACT_DEFAULTS.dayRate) || 0, usageRights: '', notes: '',
     issueDate: today, validUntil: _qAddDays(today, Q_VALID_DAYS),
     status: 'draft', shareToken: '', viewedAt: '', respondedAt: '', acceptedName: '', declineReason: '', responseSeen: true
   };
@@ -620,7 +632,10 @@ function renderQuoteEditor() {
             </select>
           </div>
         </div>
-        <div class="form-group" style="max-width:160px"><label>Revision Rounds</label><input type="number" min="0" max="20" value="${q.revisionRounds}" data-input="qField" data-input-args="[&quot;revisionRounds&quot;,&quot;$value&quot;]"></div>
+        <div class="form-row">
+          <div class="form-group"><label>Revision Rounds</label><input type="number" min="0" max="20" value="${q.revisionRounds}" data-input="qField" data-input-args="[&quot;revisionRounds&quot;,&quot;$value&quot;]"></div>
+          <div class="form-group"><label>Extra Revision Day Rate ($)</label><input type="number" class="pv-field" min="0" step="50" value="${q.revisionDayRate || ''}" placeholder="0 = quote separately" data-input="qField" data-input-args="[&quot;revisionDayRate&quot;,&quot;$value&quot;]"></div>
+        </div>
         <div class="form-group"><label>Usage Rights</label><textarea class="pv-field" rows="2" placeholder="e.g. Client owns the final deliverables on full payment; 6 months paid usage included" data-input="qField" data-input-args="[&quot;usageRights&quot;,&quot;$value&quot;]">${_esc(q.usageRights)}</textarea></div>
 
         <div class="inv-section-label">Notes</div>
@@ -674,6 +689,7 @@ function qField(key, val) {
   if (!state._q || _qLocked(state._q)) return;
   if (key === 'depositPct') val = Math.min(100, Math.max(0, parseInt(val, 10) || 0));
   if (key === 'revisionRounds') val = Math.min(20, Math.max(0, parseInt(val, 10) || 0));
+  if (key === 'revisionDayRate') val = Math.min(1000000, Math.max(0, parseFloat(val) || 0));
   state._q[key] = val;
   _qUpdatePreview();
 }
@@ -778,6 +794,7 @@ function _qPayload(q) {
     deposit_pct: Number(q.depositPct) || 0,
     balance_terms: Q_BALANCE[q.balanceTerms] ? q.balanceTerms : 'delivery',
     revision_rounds: Number(q.revisionRounds) || 0,
+    revision_day_rate: Number(q.revisionDayRate) || 0,
     usage_rights: q.usageRights || '',
     notes: q.notes || '',
     issue_date: q.issueDate || _localISODate(),
@@ -916,7 +933,8 @@ function qToContract(id) {
     nte: qTotal(q),
     deposit: Number(q.depositPct) || 0,
     balance: q.balanceTerms,
-    revisions: Number(q.revisionRounds) || 0
+    revisions: Number(q.revisionRounds) || 0,
+    revDayRate: Number(q.revisionDayRate) || 0
   };
   location.hash = 'contracts';
 }
