@@ -6178,6 +6178,7 @@ body.privacy-on canvas.pv-field, body.privacy-on .pv-chart canvas { filter: blur
 .rc-row-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .rc-empty { padding: 12px 20px; color: var(--text-muted); font-size: 13px; }
 .rc-adds { flex-wrap: wrap; padding: 8px 20px 4px; }
+.rc-del:hover, .rc-del-armed { color: var(--red); border-color: var(--red); }
 .rc-muted { color: var(--text-muted); font-size: 12px; }
 .rc-export { margin: 8px 20px 12px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2, transparent); }
 .rc-export .inv-section-label { padding: 0; margin-top: 0; }

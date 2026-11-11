@@ -361,6 +361,13 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     const combined = __arkives.renderRateDoc(__arkives.rcFreelanceModel([roleA, roleB], { content: { headline: 'Rates', terms: [{ label: 'Overtime', text: '1.5x after 10 hours' }], profile: [{ label: 'Software', text: 'Premiere' }] } }), false);
     T('rate card: freelance export combines roles and terms into one document', /Editing/.test(combined) && /Motion design/.test(combined) && /\$1,200/.test(combined) && /per day/.test(combined) && /1\.5x after 10 hours/.test(combined) && /Premiere/.test(combined));
     T('rate card: freelance card shows no follower metrics', !/rcr-stat/.test(combined));
+    st._rcOpenId = null; st._rc = null; st._rcConfirmDelete = null; st.RATE_CARDS = [brand];
+    __arkives.renderRateCards();
+    const delBtn = () => document.querySelector('#view-ratecards [data-action="rcRowDelete"]');
+    T('rate card: every preset row has a Delete button', !!delBtn() && delBtn().textContent.trim() === 'Delete');
+    delBtn().click();
+    T('rate card: first Delete click only arms it (asks to confirm, nothing removed)', delBtn().textContent.trim() === 'Confirm delete' && st.RATE_CARDS.length === 1);
+    st._rcConfirmDelete = null;
     Object.assign(st, { RATE_CARDS: keep.rcs, _rcOpenId: keep.open, _rc: keep.rc }); st.CREATOR.mkContactEmail = keep.mail; __arkives.setPrivacy(keep.priv);
   }
 

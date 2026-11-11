@@ -134,7 +134,7 @@ state._rcOpenId = null; // _sbId of the preset open in the editor; null = list
 state._rc = null; // working copy while the editor is open
 state._rcDirty = false;
 state._rcExport = null; // freelance export picker: { roles: {id: true}, termsId }
-state._rcConfirmDelete = false;
+state._rcConfirmDelete = null; // _sbId whose Delete was clicked once (the next click deletes)
 state._rcSaving = false;
 
 // ---- from quotes.js ----

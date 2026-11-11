@@ -389,6 +389,7 @@ function renderRateCards(sub) {
       <div class="gap-row">
         ${rc.kind !== 'terms' ? `<button class="btn btn-sm" data-action="rcRowPDF" data-args="${_args(rc._sbId)}">PDF</button>` : ''}
         <button class="btn btn-sm" data-action="rcDuplicate" data-args="${_args(rc._sbId)}">Duplicate</button>
+        <button class="btn btn-sm rc-del${state._rcConfirmDelete === rc._sbId ? ' rc-del-armed' : ''}" data-action="rcRowDelete" data-args="${_args(rc._sbId)}">${state._rcConfirmDelete === rc._sbId ? 'Confirm delete' : 'Delete'}</button>
       </div>
     </div>`;
   const lines = (rc) => {
@@ -455,7 +456,7 @@ function _rcApplyRoute(sub) {
   state._rcOpenId = rc ? rc._sbId : null;
   state._rc = rc ? { name: rc.name, kind: rc.kind, role: rc.role, content: _clone(rc.content) } : null;
   state._rcDirty = false;
-  state._rcConfirmDelete = false;
+  state._rcConfirmDelete = null;
 }
 // Unsaved edits save quietly when the editor closes
 function _rcFlush() {
@@ -641,7 +642,7 @@ function renderRateCardEditor() {
         </div>
         <div id="rcUnpriced" class="rc-warn" ${unpriced ? '' : 'hidden'}>${_unpricedText(unpriced)}</div>
         ${form}
-        <button class="btn inv-delete-btn" data-action="rcDelete">${state._rcConfirmDelete ? 'Click again to delete' : 'Delete preset'}</button>
+        <button class="btn inv-delete-btn" data-action="rcDelete">${state._rcConfirmDelete === state._rcOpenId ? 'Click again to delete' : 'Delete preset'}</button>
       </div>
       <div class="inv-preview-pane">
         <div id="rcDocPreview">${_previewHtml()}</div>
@@ -712,14 +713,23 @@ function rcDownload() {
   if (!d) return;
   rcPrint(d.kind === 'brand' ? rcBrandModel(d.content) : rcFreelanceModel([{ role: d.role, content: d.content }], _defaultTerms()), _fileTitle(d.kind === 'brand' ? 'brand' : 'freelance'));
 }
+// Delete asks twice: the first click arms the button, the second deletes
 async function rcDelete() {
-  if (!state._rcConfirmDelete) { state._rcConfirmDelete = true; renderRateCardEditor(); return; }
   const id = state._rcOpenId;
+  if (state._rcConfirmDelete !== id) { state._rcConfirmDelete = id; renderRateCardEditor(); return; }
   state._rcDirty = false;
+  state._rcConfirmDelete = null;
   const ok = await ratecards.remove(id);
   if (ok) { state._rcOpenId = null; state._rc = null; location.hash = 'ratecards'; renderRateCards(); }
 }
+async function rcRowDelete(id) {
+  if (state._rcConfirmDelete !== id) { state._rcConfirmDelete = id; renderRateCards(); return; }
+  state._rcConfirmDelete = null;
+  if (state._rcExport) delete state._rcExport.roles[id];
+  if (state._rcExport && state._rcExport.termsId === id) state._rcExport.termsId = '';
+  if (await ratecards.remove(id)) showToast('Preset deleted');
+}
 
-act({ rcAddItem, rcAddRow, rcAddSection, rcBack, rcCheck, rcDelete, rcDownload, rcDuplicate, rcExportAll, rcExportClose, rcExportGo, rcExportOpen, rcExportRole, rcExportTerms, rcField, rcNew, rcOpen, rcRemove, rcRowPDF, rcSave, rcSelect });
+act({ rcAddItem, rcAddRow, rcAddSection, rcBack, rcCheck, rcDelete, rcDownload, rcDuplicate, rcExportAll, rcExportClose, rcExportGo, rcExportOpen, rcExportRole, rcExportTerms, rcField, rcNew, rcOpen, rcRemove, rcRowDelete, rcRowPDF, rcSave, rcSelect });
 
 export { RC_UNITS, _brandTemplate, _termsTemplate, ROLE_TEMPLATES, _prints, rcBrandModel, rcFreelanceModel, rcPrice, renderRateCardEditor, renderRateCards, renderRateDoc, unmountRateCards };
