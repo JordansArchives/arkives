@@ -85,6 +85,7 @@ function _brandTemplate() {
     headline: 'Rates',
     intro: '',
     validUntil: _addDays(90),
+    displayName: '',
     tagline: '',
     show: { platforms: true, engagement: true, demographics: true, fit: false, about: true },
     engagementRate: '',
@@ -151,6 +152,7 @@ function _aboutTemplate() {
 function _termsTemplate() {
   return {
     headline: 'Rates',
+    displayName: '',
     tagline: '',
     showAbout: true,
     intro: '',
@@ -235,11 +237,14 @@ function _aboutRows() {
   return a ? _filled(a.content.rows) : [];
 }
 // The line under the name: this card's own, else the profile niche
+// The name at the top: this card's own, else the profile brand/name
+function _displayName(own) { return String(own || '').trim() || _identity().name; }
 function _tagline(own) { return String(own || '').trim() || _identity().niche; }
 function rcBrandModel(content) {
   return {
     kind: 'brand',
     headline: content.headline || 'Rates',
+    displayName: _displayName(content.displayName),
     tagline: _tagline(content.tagline),
     intro: content.intro || '',
     validUntil: content.validUntil || '',
@@ -256,6 +261,7 @@ function rcFreelanceModel(roles, terms) {
   return {
     kind: 'freelance',
     headline: tc.headline || 'Rates',
+    displayName: _displayName(tc.displayName),
     tagline: _tagline(tc.tagline),
     intro: tc.intro || '',
     validUntil: tc.validUntil || '',
@@ -334,7 +340,7 @@ function renderRateDoc(m, masked) {
     <header class="rcr-head">
       <div class="rcr-title">[ ${_esc(String(m.headline || 'Rates').toUpperCase())} ]</div>
       <div class="rcr-id">
-        <div class="rcr-name">${_esc(id.name)}</div>
+        <div class="rcr-name">${_esc(m.displayName === undefined ? id.name : m.displayName)}</div>
         ${idLine ? `<div>${idLine}</div>` : ''}
         ${id.email && m.kind === 'brand' ? `<div>${mk(_esc(id.email))}</div>` : ''}
         ${valid ? `<div>Rates valid through ${_esc(valid)}</div>` : ''}
@@ -616,6 +622,7 @@ function renderRateCardEditor() {
         <div class="form-group"><label>Title</label>${_in('content.headline', c.headline, 'Rates')}</div>
         <div class="form-group"><label>Valid through</label><input type="date" value="${_esc(c.validUntil || '')}" data-change="rcSelect" data-change-args="${_args('content.validUntil', '$value')}"></div>
       </div>
+      <div class="form-group"><label>Name at the top</label>${_in('content.displayName', c.displayName, (state.CREATOR.brand || state.CREATOR.name || 'Your name') + ' (from your profile)')}</div>
       <div class="form-group"><label>Line under your name</label>${_in('content.tagline', c.tagline, (state.CREATOR.niche || 'e.g. Visual creator · Editing education') + (state.CREATOR.niche ? ' (from your profile)' : ''))}</div>
       <div class="form-group"><label>Intro line (optional)</label>${_ta('content.intro', c.intro, 'One line on what you make and who it works for', 2)}</div>
 
@@ -656,6 +663,7 @@ function renderRateCardEditor() {
         <div class="form-group"><label>Title</label>${_in('content.headline', c.headline, 'Rates')}</div>
         <div class="form-group"><label>Valid through</label><input type="date" value="${_esc(c.validUntil || '')}" data-change="rcSelect" data-change-args="${_args('content.validUntil', '$value')}"></div>
       </div>
+      <div class="form-group"><label>Name at the top</label>${_in('content.displayName', c.displayName, (state.CREATOR.brand || state.CREATOR.name || 'Your name') + ' (from your profile)')}</div>
       <div class="form-group"><label>Line under your name</label>${_in('content.tagline', c.tagline, (state.CREATOR.niche || 'e.g. Director · Editor · Motion design') + (state.CREATOR.niche ? ' (from your profile)' : ''))}</div>
       <div class="form-group"><label>Intro line (optional)</label>${_ta('content.intro', c.intro, 'e.g. Director and editor for social-first brand films.', 2)}</div>
       <label class="rc-check"><input type="checkbox" ${c.showAbout !== false ? 'checked' : ''} data-change="rcCheck" data-change-args="${_args('content.showAbout', '$checked')}"> Show the About section (shared, edit it from the Rate Cards list)</label>

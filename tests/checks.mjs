@@ -377,6 +377,11 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
       const own = __arkives.renderRateDoc(__arkives.rcBrandModel({ ...brand.content, tagline: 'Director · Editor' }), false);
       const fallback = __arkives.renderRateDoc(__arkives.rcBrandModel({ ...brand.content, tagline: '' }), false);
       T('rate card: the line under the name is editable per card, else the profile niche', /Director · Editor/.test(own) && !/Profile niche line/.test(own) && /Profile niche line/.test(fallback));
+      const keepBrand = st.CREATOR.brand; st.CREATOR.brand = 'Profile Brand Name';
+      const named = __arkives.renderRateDoc(__arkives.rcFreelanceModel([roleA], { content: { displayName: 'Jordan Watkins Studio', terms: [] } }), false);
+      const unnamed = __arkives.renderRateDoc(__arkives.rcBrandModel({ ...brand.content, displayName: '' }), false);
+      T('rate card: the name at the top is editable per card, else the profile name', /Jordan Watkins Studio/.test(named) && !/Profile Brand Name/.test(named) && /Profile Brand Name/.test(unnamed));
+      st.CREATOR.brand = keepBrand;
       st.CREATOR.niche = keepNiche;
     }
     st._rcOpenId = null; st._rc = null; st._rcConfirmDelete = null; st.RATE_CARDS = [brand];
