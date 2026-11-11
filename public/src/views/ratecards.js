@@ -35,7 +35,7 @@ const RC_ROLES = {
   motion: 'Motion design',
   custom: 'Custom role',
 };
-const RC_KIND_LABEL = { brand: 'Brand card', role: 'Freelance role', terms: 'Freelance terms' };
+const RC_KIND_LABEL = { brand: 'Brand card', role: 'Freelance role', terms: 'Freelance terms', about: 'About (shared)' };
 
 const _clone = (o) => JSON.parse(JSON.stringify(o || {}));
 const I = (name, detail, unit, display, price) => ({ name, detail: detail || '', price: price == null ? null : price, unit: unit || 'none', display: display || 'fixed' });
@@ -85,7 +85,8 @@ function _brandTemplate() {
     headline: 'Rates',
     intro: '',
     validUntil: _addDays(90),
-    show: { platforms: true, engagement: true, demographics: true, fit: false },
+    tagline: '',
+    show: { platforms: true, engagement: true, demographics: true, fit: false, about: true },
     engagementRate: '',
     sections: [
       { title: 'Deliverables', items: deliverables },
@@ -130,14 +131,13 @@ const ROLE_TEMPLATES = {
   custom: () => ({ title: '', summary: '', items: [I('', '', 'day')] }),
 };
 
-function _termsTemplate() {
+// The About section is one shared preset (kind 'about') that every card
+// prints, so it is edited once
+function _aboutTemplate() {
   const c = state.CREATOR || {};
   return {
-    headline: 'Rates',
-    intro: '',
-    validUntil: _addDays(90),
-    profile: [
-      T('Reel', 'Link to your reel', ''),
+    rows: [
+      T('Reel', 'Link to your reel or portfolio'),
       T('Based in', 'City, time zone. Available to travel?'),
       T('Software', 'e.g. Premiere Pro, After Effects, DaVinci Resolve'),
       T('Specialties', 'e.g. Social-first cuts, hand-drawn motion, hero films'),
@@ -145,6 +145,16 @@ function _termsTemplate() {
       T('Availability', 'e.g. Booking 2-3 weeks out'),
       T('Contact', '', c.mkContactEmail || c.email || ''),
     ],
+  };
+}
+
+function _termsTemplate() {
+  return {
+    headline: 'Rates',
+    tagline: '',
+    showAbout: true,
+    intro: '',
+    validUntil: _addDays(90),
     terms: [
       T('Working day', 'e.g. 10 hours including a 1-hour break. Half day is 5 hours.'),
       T('Overtime', 'e.g. 1.5x after 10 hours, 2x after 12, billed in half-hour blocks.'),
@@ -216,16 +226,27 @@ function _brandMetrics(content) {
   if (show.fit && ((c.mkAlignYes || []).length || (c.mkAlignNo || []).length)) out.fit = { yes: c.mkAlignYes || [], no: c.mkAlignNo || [] };
   return out;
 }
+const _filled = (list) => (list || []).filter((t) => String(t.label || '').trim() && String(t.text || '').trim());
+function _aboutPreset() { return ratecards.ofKind('about')[0] || null; }
+// The open About draft wins, so its preview (and every other preview) shows edits before Save
+function _aboutRows() {
+  if (state._rc && state._rc.kind === 'about') return _filled(state._rc.content.rows);
+  const a = _aboutPreset();
+  return a ? _filled(a.content.rows) : [];
+}
+// The line under the name: this card's own, else the profile niche
+function _tagline(own) { return String(own || '').trim() || _identity().niche; }
 function rcBrandModel(content) {
   return {
     kind: 'brand',
     headline: content.headline || 'Rates',
+    tagline: _tagline(content.tagline),
     intro: content.intro || '',
     validUntil: content.validUntil || '',
     id: _identity(),
     metrics: _brandMetrics(content),
     blocks: (content.sections || []).map((s) => ({ title: s.title || '', summary: '', items: (s.items || []).filter(_prints) })).filter((b) => b.items.length),
-    profile: [],
+    profile: (content.show || {}).about === false ? [] : _aboutRows(),
     terms: (content.terms || []).filter((t) => String(t.label || '').trim() && String(t.text || '').trim()),
   };
 }
@@ -235,12 +256,14 @@ function rcFreelanceModel(roles, terms) {
   return {
     kind: 'freelance',
     headline: tc.headline || 'Rates',
+    tagline: _tagline(tc.tagline),
     intro: tc.intro || '',
     validUntil: tc.validUntil || '',
     id: _identity(),
     metrics: null,
     blocks: roles.map((r) => ({ title: r.content.title || RC_ROLES[r.role] || '', summary: r.content.summary || '', items: (r.content.items || []).filter(_prints) })).filter((b) => b.items.length),
-    profile: rows(tc.profile),
+    // Shared About; a terms preset from before About was shared keeps its own rows
+    profile: tc.showAbout === false ? [] : (_aboutPreset() ? _aboutRows() : rows(tc.profile)),
     terms: rows(tc.terms),
   };
 }
@@ -257,7 +280,7 @@ function _fmtValid(iso) {
 function renderRateDoc(m, masked) {
   const mk = masked ? pv : (h) => h;
   const id = m.id;
-  const idLine = [id.handle, id.niche].filter(Boolean).map(_esc).join('  |  ');
+  const idLine = [id.handle, m.tagline === undefined ? id.niche : m.tagline].filter(Boolean).map(_esc).join('  |  ');
   const valid = _fmtValid(m.validUntil);
 
   let metrics = '';
@@ -357,6 +380,7 @@ function _defaultTerms() { return ratecards.ofKind('terms')[0] || null; }
 function _modelFor(rc) {
   if (rc.kind === 'brand') return rcBrandModel(rc.content);
   if (rc.kind === 'role') return rcFreelanceModel([rc], _defaultTerms());
+  if (rc.kind === 'about') return rcFreelanceModel(ratecards.ofKind('role'), _defaultTerms());
   return rcFreelanceModel(ratecards.ofKind('role'), rc);
 }
 
@@ -378,6 +402,7 @@ function renderRateCards(sub) {
   }
 
   const brand = ratecards.ofKind('brand');
+  const about = _aboutPreset();
   const roles = ratecards.ofKind('role');
   const terms = ratecards.ofKind('terms');
   const row = (rc, sub2) => `
@@ -425,6 +450,17 @@ function renderRateCards(sub) {
       </div>
     </div>
 
+    <div class="card rc-about">
+      <div>
+        <h3>About</h3>
+        <p class="inv-help">Shared by every card: reel, location, software, clients, availability, contact. Edit it once; each card can hide it.</p>
+        ${about ? `<p class="rc-about-sum">${_esc(_filled(about.content.rows).map((t) => t.label).join(' · ') || 'Nothing filled in yet')}</p>` : ''}
+      </div>
+      ${about
+        ? `<button class="btn btn-primary btn-sm" data-action="rcOpen" data-args="${_args(about._sbId)}">Edit About</button>`
+        : `<button class="btn btn-primary btn-sm" data-action="rcNew" data-args="${_args('about')}">Set up About</button>`}
+    </div>
+
     <div class="rc-groups">
       <div class="card rc-group">
         <div class="card-header"><h3>Brand cards</h3><button class="btn btn-primary btn-sm" data-action="rcNew" data-args="${_args('brand')}">+ Brand card</button></div>
@@ -442,7 +478,7 @@ function renderRateCards(sub) {
           ${Object.keys(RC_ROLES).map((k) => `<button class="btn btn-sm" data-action="rcNew" data-args="${_args('role', k)}">+ ${_esc(RC_ROLES[k])}</button>`).join('')}
         </div>
         <div class="inv-section-label">Terms</div>
-        ${terms.length ? terms.map((rc) => row(rc, 'Working day, overtime, deposit, cancellation, about you')).join('') : '<div class="rc-empty">No terms yet.</div>'}
+        ${terms.length ? terms.map((rc) => row(rc, 'Working day, overtime, deposit, cancellation')).join('') : '<div class="rc-empty">No terms yet.</div>'}
         <div class="gap-row rc-adds"><button class="btn btn-sm" data-action="rcNew" data-args="${_args('terms')}">+ Terms</button></div>
       </div>
     </div>`;
@@ -480,6 +516,10 @@ async function rcNew(kind, role) {
     content = (ROLE_TEMPLATES[role] || ROLE_TEMPLATES.custom)();
     name = RC_ROLES[role] || 'Role';
     if (ratecards.ofKind('role').some((r) => r.name === name)) name += ' ' + (ratecards.ofKind('role').filter((r) => r.role === role).length + 1);
+  } else if (kind === 'about') {
+    if (_aboutPreset()) { location.hash = 'ratecards/' + _aboutPreset()._sbId; return; }
+    content = _aboutTemplate();
+    name = 'About';
   } else {
     content = _termsTemplate();
     name = 'Freelance terms' + (ratecards.ofKind('terms').length ? ' ' + (ratecards.ofKind('terms').length + 1) : '');
@@ -576,6 +616,7 @@ function renderRateCardEditor() {
         <div class="form-group"><label>Title</label>${_in('content.headline', c.headline, 'Rates')}</div>
         <div class="form-group"><label>Valid through</label><input type="date" value="${_esc(c.validUntil || '')}" data-change="rcSelect" data-change-args="${_args('content.validUntil', '$value')}"></div>
       </div>
+      <div class="form-group"><label>Line under your name</label>${_in('content.tagline', c.tagline, (state.CREATOR.niche || 'e.g. Visual creator · Editing education') + (state.CREATOR.niche ? ' (from your profile)' : ''))}</div>
       <div class="form-group"><label>Intro line (optional)</label>${_ta('content.intro', c.intro, 'One line on what you make and who it works for', 2)}</div>
 
       <div class="inv-section-label">Metrics</div>
@@ -584,6 +625,7 @@ function renderRateCardEditor() {
         ${chk('engagement', 'Engagement rate')}
         ${chk('demographics', 'Audience demographics')}
         ${chk('fit', 'Brand fit (from Settings)')}
+        <label class="rc-check"><input type="checkbox" ${show.about !== false ? 'checked' : ''} data-change="rcCheck" data-change-args="${_args('content.show.about', '$checked')}"> About section (shared)</label>
       </div>
       <div class="form-group"><label>Engagement rate</label>${_in('content.engagementRate', c.engagementRate, igEng ? 'Blank uses Instagram: ' + igEng : 'e.g. 23.7%')}</div>
       <p class="inv-help">Followers come from Settings → Platforms, demographics from your audience data.</p>
@@ -607,17 +649,23 @@ function renderRateCardEditor() {
       <div class="inv-section-label">Rates</div>
       ${_itemsEditor(c.items || [], 'content.items')}
       <p class="inv-help">The preview pairs this role with your first terms preset. Combine roles from the list with Export combined PDF.</p>`;
-  } else {
+  } else if (d.kind === 'terms') {
     form = `
       <div class="inv-section-label">On the page</div>
       <div class="form-row">
         <div class="form-group"><label>Title</label>${_in('content.headline', c.headline, 'Rates')}</div>
         <div class="form-group"><label>Valid through</label><input type="date" value="${_esc(c.validUntil || '')}" data-change="rcSelect" data-change-args="${_args('content.validUntil', '$value')}"></div>
       </div>
+      <div class="form-group"><label>Line under your name</label>${_in('content.tagline', c.tagline, (state.CREATOR.niche || 'e.g. Director · Editor · Motion design') + (state.CREATOR.niche ? ' (from your profile)' : ''))}</div>
       <div class="form-group"><label>Intro line (optional)</label>${_ta('content.intro', c.intro, 'e.g. Director and editor for social-first brand films.', 2)}</div>
-      ${_rowsEditor(c.profile || [], 'content.profile', 'About you')}
+      <label class="rc-check"><input type="checkbox" ${c.showAbout !== false ? 'checked' : ''} data-change="rcCheck" data-change-args="${_args('content.showAbout', '$checked')}"> Show the About section (shared, edit it from the Rate Cards list)</label>
+      ${(c.profile || []).length && !_aboutPreset() ? _rowsEditor(c.profile, 'content.profile', 'About you (this preset only)') : ''}
       ${_rowsEditor(c.terms || [], 'content.terms', 'Terms')}
       <p class="inv-help">The preview shows every role preset with these terms.</p>`;
+  } else if (d.kind === 'about') {
+    form = `
+      <p class="inv-help">One About section for every rate card, brand and freelance. Rows left blank stay off the PDF; each card can hide the whole section.</p>
+      ${_rowsEditor(c.rows || [], 'content.rows', 'About')}`;
   }
 
   const unpriced = _unpricedCount(c);
@@ -628,18 +676,18 @@ function renderRateCardEditor() {
         <h1 class="view-title">${_esc(d.name || RC_KIND_LABEL[d.kind])} <span class="rc-kind">${_esc(d.kind === 'role' ? (RC_ROLES[d.role] || 'Role') : RC_KIND_LABEL[d.kind])}</span></h1>
       </div>
       <div class="gap-row">
-        ${d.kind !== 'terms' ? '<button class="btn" data-action="rcDownload">Download PDF</button>' : ''}
-        <button class="btn" data-action="rcDuplicate">Duplicate</button>
+        ${d.kind === 'brand' || d.kind === 'role' ? '<button class="btn" data-action="rcDownload">Download PDF</button>' : ''}
+        ${d.kind !== 'about' ? '<button class="btn" data-action="rcDuplicate">Duplicate</button>' : ''}
         <button class="btn btn-primary" data-action="rcSave">Save</button>
       </div>
     </div>
 
     <div class="inv-editor">
       <div class="inv-form-panel">
-        <div class="form-group">
+        ${d.kind === 'about' ? '' : `<div class="form-group">
           <label>Preset name (private, never printed)</label>
           ${_in('name', d.name, 'e.g. Brand: AI tools')}
-        </div>
+        </div>`}
         <div id="rcUnpriced" class="rc-warn" ${unpriced ? '' : 'hidden'}>${_unpricedText(unpriced)}</div>
         ${form}
         <button class="btn inv-delete-btn" data-action="rcDelete">${state._rcConfirmDelete === state._rcOpenId ? 'Click again to delete' : 'Delete preset'}</button>
@@ -657,6 +705,7 @@ function _previewHtml() {
   let model;
   if (d.kind === 'brand') model = rcBrandModel(d.content);
   else if (d.kind === 'role') model = rcFreelanceModel([rc], _defaultTerms());
+  else if (d.kind === 'about') model = (ratecards.ofKind('brand')[0] && !ratecards.ofKind('role').length) ? rcBrandModel(ratecards.ofKind('brand')[0].content) : rcFreelanceModel(ratecards.ofKind('role'), _defaultTerms());
   else model = rcFreelanceModel(ratecards.ofKind('role'), rc);
   return renderRateDoc(model, isPrivate());
 }
@@ -732,4 +781,4 @@ async function rcRowDelete(id) {
 
 act({ rcAddItem, rcAddRow, rcAddSection, rcBack, rcCheck, rcDelete, rcDownload, rcDuplicate, rcExportAll, rcExportClose, rcExportGo, rcExportOpen, rcExportRole, rcExportTerms, rcField, rcNew, rcOpen, rcRemove, rcRowDelete, rcRowPDF, rcSave, rcSelect });
 
-export { RC_UNITS, _brandTemplate, _termsTemplate, ROLE_TEMPLATES, _prints, rcBrandModel, rcFreelanceModel, rcPrice, renderRateCardEditor, renderRateCards, renderRateDoc, unmountRateCards };
+export { RC_UNITS, _aboutTemplate, _brandTemplate, _termsTemplate, ROLE_TEMPLATES, _prints, rcBrandModel, rcFreelanceModel, rcPrice, renderRateCardEditor, renderRateCards, renderRateDoc, unmountRateCards };

@@ -10,9 +10,11 @@
 --                   director + editor, motion, or custom): its
 --                   rate lines. Several roles combine into one
 --                   freelance PDF at export.
---   kind = 'terms'  The freelance terms and profile that close a
---                   freelance PDF (working day, overtime, deposit,
---                   cancellation, reel link, software...).
+--   kind = 'terms'  The freelance terms that close a freelance PDF
+--                   (working day, overtime, deposit, cancellation...).
+--   kind = 'about'  ONE shared About section (reel, location,
+--                   software, clients, availability, contact) that
+--                   every card prints unless it hides it.
 --
 -- `name` is the INTERNAL label ("Brand: AI tools"). It never
 -- prints. Every printed heading lives inside `content`.
@@ -32,7 +34,7 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS rate_card_presets (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK (kind IN ('brand','role','terms')),
+  kind TEXT NOT NULL,
   name TEXT NOT NULL CHECK (char_length(name) BETWEEN 1 AND 120),
   role TEXT CHECK (role IS NULL OR role IN ('editor','director','director_editor','motion','custom')),
   content JSONB NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(content) = 'object' AND pg_column_size(content) <= 200000),
@@ -40,6 +42,12 @@ CREATE TABLE IF NOT EXISTS rate_card_presets (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- The kind list lives in a named constraint so re-running this file
+-- updates it on a table created by an earlier version ('about' added)
+ALTER TABLE rate_card_presets DROP CONSTRAINT IF EXISTS rate_card_presets_kind_check;
+ALTER TABLE rate_card_presets ADD CONSTRAINT rate_card_presets_kind_check
+  CHECK (kind IN ('brand','role','terms','about'));
 
 CREATE INDEX IF NOT EXISTS idx_rate_card_presets_user ON rate_card_presets(user_id, kind);
 

@@ -361,6 +361,24 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     const combined = __arkives.renderRateDoc(__arkives.rcFreelanceModel([roleA, roleB], { content: { headline: 'Rates', terms: [{ label: 'Overtime', text: '1.5x after 10 hours' }], profile: [{ label: 'Software', text: 'Premiere' }] } }), false);
     T('rate card: freelance export combines roles and terms into one document', /Editing/.test(combined) && /Motion design/.test(combined) && /\$1,200/.test(combined) && /per day/.test(combined) && /1\.5x after 10 hours/.test(combined) && /Premiere/.test(combined));
     T('rate card: freelance card shows no follower metrics', !/rcr-stat/.test(combined));
+    {
+      const about = { _sbId: 'rca', kind: 'about', name: 'About', role: null, sortOrder: 9, content: { rows: [{ label: 'Reel', text: 'site.test/reel' }, { label: 'Based in', text: '' }] } };
+      st.RATE_CARDS = [brand, about]; st._rc = null;
+      const b1 = __arkives.renderRateDoc(__arkives.rcBrandModel(brand.content), false);
+      const f1 = __arkives.renderRateDoc(__arkives.rcFreelanceModel([roleA], { content: { headline: 'Rates', terms: [], profile: [{ label: 'Old', text: 'per-preset row' }] } }), false);
+      T('rate card: one shared About prints on brand and freelance cards (blank rows skipped)', /site\.test\/reel/.test(b1) && /site\.test\/reel/.test(f1) && !/Based in/.test(b1) && !/per-preset row/.test(f1));
+      const hidden = __arkives.renderRateDoc(__arkives.rcBrandModel({ ...brand.content, show: { ...brand.content.show, about: false } }), false);
+      const fHidden = __arkives.renderRateDoc(__arkives.rcFreelanceModel([roleA], { content: { showAbout: false, terms: [] } }), false);
+      T('rate card: each card can hide the shared About', !/site\.test\/reel/.test(hidden) && !/site\.test\/reel/.test(fHidden));
+      st._rc = { kind: 'about', content: { rows: [{ label: 'Reel', text: 'draft.test/reel' }] } };
+      T('rate card: an open About draft shows in previews before Save', /draft\.test\/reel/.test(__arkives.renderRateDoc(__arkives.rcBrandModel(brand.content), false)));
+      st._rc = null;
+      const keepNiche = st.CREATOR.niche; st.CREATOR.niche = 'Profile niche line';
+      const own = __arkives.renderRateDoc(__arkives.rcBrandModel({ ...brand.content, tagline: 'Director · Editor' }), false);
+      const fallback = __arkives.renderRateDoc(__arkives.rcBrandModel({ ...brand.content, tagline: '' }), false);
+      T('rate card: the line under the name is editable per card, else the profile niche', /Director · Editor/.test(own) && !/Profile niche line/.test(own) && /Profile niche line/.test(fallback));
+      st.CREATOR.niche = keepNiche;
+    }
     st._rcOpenId = null; st._rc = null; st._rcConfirmDelete = null; st.RATE_CARDS = [brand];
     __arkives.renderRateCards();
     const delBtn = () => document.querySelector('#view-ratecards [data-action="rcRowDelete"]');
