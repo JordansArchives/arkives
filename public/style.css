@@ -6157,3 +6157,122 @@ body.privacy-on canvas.pv-field, body.privacy-on .pv-chart canvas { filter: blur
   .dash-soc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .dash-soc-num { font-size: 28px; }
 }
+
+/* ============================================================
+   RATE CARDS (replaced Media Kit, 2026-11)
+   List + editor reuse the invoice editor shell (.inv-editor). The
+   document is the red paper family (.invr): Trip Sans, #B7011D on the
+   paper texture, Letter width in pt. It grows past one page; the
+   texture repeats per page height.
+   ============================================================ */
+.rc-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; align-items: start; }
+.rc-group { padding-bottom: 16px; }
+.rc-group .card-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.rc-group-help { padding: 0 20px; margin: 8px 0 4px; }
+.rc-group .inv-section-label { padding: 0 20px; }
+.rc-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--border); }
+.rc-row-open { all: unset; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.rc-row-open strong { color: var(--text-primary); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-row-open span { color: var(--text-muted); font-size: 12px; }
+.rc-row-open:hover strong { color: var(--accent); }
+.rc-row-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.rc-empty { padding: 12px 20px; color: var(--text-muted); font-size: 13px; }
+.rc-adds { flex-wrap: wrap; padding: 8px 20px 4px; }
+.rc-muted { color: var(--text-muted); font-size: 12px; }
+.rc-export { margin: 8px 20px 12px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2, transparent); }
+.rc-export .inv-section-label { padding: 0; margin-top: 0; }
+.rc-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); padding: 4px 0; cursor: pointer; }
+.rc-checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 16px; margin-bottom: 12px; }
+.rc-kind { font-family: var(--font-body, inherit); font-style: normal; letter-spacing: 0.04em; text-transform: uppercase; font-size: 11px; font-weight: 600; color: var(--text-muted); vertical-align: middle; margin-left: 6px; }
+.rc-warn { font-size: 12px; color: var(--text-secondary); background: var(--accent-dim, rgba(183,1,29,0.08)); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.rc-section { margin-top: 20px; }
+.rc-section-head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.rc-section-title { font-weight: 600; flex: 1; }
+.rc-items { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+.rc-item { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.rc-item-main { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.rc-item-price { display: grid; grid-template-columns: 96px 1fr 1fr auto; gap: 6px; align-items: center; }
+.rc-item input, .rc-item select, .rc-terms input, .rc-terms textarea, .rc-section-head input {
+  width: 100%; min-width: 0;
+  padding: 7px 10px;
+  border: 2px solid var(--border);
+  background: var(--bg-0);
+  color: var(--text-primary);
+  font: inherit; font-size: 13px;
+  transition: box-shadow 0.15s var(--ease);
+}
+.rc-item input:focus, .rc-item select:focus, .rc-terms input:focus, .rc-terms textarea:focus, .rc-section-head input:focus { outline: none; box-shadow: var(--shadow-sm); }
+.rc-terms textarea { resize: vertical; min-height: 38px; }
+.rc-section-head input { font-size: 14px; }
+.rc-x { padding: 4px 10px; line-height: 1; }
+.rc-terms { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.rc-term-row { display: grid; grid-template-columns: 130px 1fr auto; gap: 6px; align-items: start; }
+@media (max-width: 640px) {
+  .rc-groups { grid-template-columns: 1fr; }
+  .rc-item-main { grid-template-columns: 1fr; }
+  .rc-item-price { grid-template-columns: 1fr 1fr; }
+  .rc-term-row { grid-template-columns: 1fr auto; }
+  .rc-term-row textarea { grid-column: 1 / -1; }
+  .rc-checks { grid-template-columns: 1fr; }
+}
+
+/* ---- The document ---- */
+.rcr {
+  display: block;
+  width: 612pt; min-height: 792pt;
+  padding: 26pt 34pt 22pt;
+  background: #fbfaf8 url('invoice-red-paper.jpg') top center / 612pt 792pt repeat-y;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  color: #B7011D;
+  font-family: 'Trip Sans', sans-serif;
+  font-weight: 500;
+  font-size: 10.5pt;
+  line-height: 1.35;
+  box-sizing: border-box;
+  text-align: left;
+}
+.rcr *, .rcr *::before, .rcr *::after { box-sizing: border-box; }
+#rcDocPreview { overflow-x: auto; }
+#rcDocPreview .rcr { box-shadow: var(--shadow-md); margin: 0 auto; }
+.rcr-head { break-inside: avoid; display: flex; justify-content: space-between; align-items: flex-end; gap: 18pt; padding-bottom: 12pt; border-bottom: 1pt solid #B7011D; }
+.rcr-title { font-weight: 700; font-size: 44pt; line-height: 0.95; letter-spacing: -0.01em; white-space: nowrap; }
+.rcr-id { text-align: right; font-size: 9.5pt; line-height: 1.45; }
+.rcr-name { font-weight: 700; font-size: 13pt; }
+.rcr-intro { margin: 12pt 0 0; font-size: 11pt; max-width: 430pt; }
+.rcr-stats { break-inside: avoid; display: grid; grid-template-columns: repeat(auto-fit, minmax(92pt, 1fr)); margin-top: 14pt; border: 1pt solid #B7011D; }
+.rcr-stat { display: flex; flex-direction: column; padding: 8pt 10pt; border-right: 1pt solid #B7011D; }
+.rcr-stat:last-child { border-right: 0; }
+.rcr-stat strong { font-weight: 700; font-size: 18pt; line-height: 1.1; }
+.rcr-stat span { font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; }
+.rcr-demos { margin-top: 8pt; }
+.rcr-demo, .rcr-term { display: grid; grid-template-columns: 104pt 1fr; gap: 10pt; padding: 4pt 0; border-bottom: 1pt solid rgba(183,1,29,0.35); }
+.rcr-label { font-weight: 700; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; padding-top: 1.5pt; }
+.rcr-block { margin-top: 14pt; }
+.rcr-bar { position: relative; display: flex; align-items: center; height: 18.7pt; padding-left: 54pt; background: #B7011D; color: #fff; font-size: 9.8pt; text-transform: uppercase; letter-spacing: 0.03em; break-inside: avoid; break-after: avoid; }
+.rcr-bar-icons { position: absolute; left: 2.23pt; top: 3.11pt; width: 44.9pt; height: 13pt; }
+.rcr-summary { margin: 6pt 0 0; font-size: 9.5pt; break-after: avoid; }
+.rcr-row { display: grid; grid-template-columns: 1fr auto; gap: 16pt; align-items: baseline; padding: 4.5pt 0; border-bottom: 1pt solid rgba(183,1,29,0.35); break-inside: avoid; }
+.rcr-row-name small { display: block; font-size: 8.5pt; opacity: 0.85; }
+.rcr-row-price small { font-size: 8.5pt; opacity: 0.85; margin-left: 4pt; }
+.rcr-row-price { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rcr-row-price small { font-weight: 500; }
+.rcr-term { break-inside: avoid; }
+.rcr-empty { margin-top: 18pt; font-size: 10pt; opacity: 0.8; }
+.rcr-footer { padding-top: 18pt; break-inside: avoid; }
+.rcr-mark { display: block; width: 150pt; height: auto; }
+
+#rcPrintHost { display: none; }
+/* A named page: the global @page margin never applies to a rate card.
+   The page carries the margins and the paper color, so a card that runs
+   long breaks onto a second page with the same top space. (Chrome paints
+   an @page background color, not an image: the texture rides on .rcr.) */
+@page ratecard { size: letter; margin: 26pt 0 22pt; background-color: #fbfaf8; }
+.rcr { page: ratecard; }
+@media print {
+  body.printing-ratecard > *:not(#rcPrintHost) { display: none !important; }
+  html:has(body.printing-ratecard), body.printing-ratecard { background: #fbfaf8 !important; }
+  body.printing-ratecard #rcPrintHost { display: block !important; }
+  /* Flat paper in print: the page margins can only carry a color, so the
+     sheet matches them instead of showing where the texture stops */
+  body.printing-ratecard #rcPrintHost .rcr { box-shadow: none; margin: 0; min-height: 0; padding-top: 0; padding-bottom: 0; background: transparent; }
+}

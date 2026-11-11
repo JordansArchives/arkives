@@ -143,10 +143,6 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23.1 6.2l-9.6 9.3-4.8-5.1L1.1 17.8"/><path d="M17.2 6h5.8v5.9"/></svg>
         <span>Revenue</span>
       </a>
-      <a href="#mediakit" class="nav-item" data-view="mediakit">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.1 2.2H6.2c-1.2 0-2.1.9-2.1 2v15.8c0 1.1.9 2 2.1 2h11.6c1.2 0 2.1-.9 2.1-2V8.1z"/><path d="M14 2.2v5.9h5.9"/><path d="M15.8 13.1H8.2"/><path d="M15.8 17H8.2"/><path d="M10.1 9.2H8.2"/></svg>
-        <span>Media Kit</span>
-      </a>
       <a href="#analytics" class="nav-item" data-view="analytics">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.1 20.2V10.1"/><path d="M12 20V4.1"/><path d="M6.1 20.1v-5.9"/></svg>
         <span>Analytics</span>
@@ -172,6 +168,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.1 2.2H6.2c-1.2 0-2.1.9-2.1 2v15.8c0 1.1.9 2 2.1 2h11.6c1.2 0 2.1-.9 2.1-2V8.1z"/><path d="M14 2.2v5.9h5.9"/><path d="M12 11.1v6.8"/><path d="M14.2 12.4c-.4-.6-1.2-.9-2.2-.9-1.3 0-2.1.6-2.1 1.5 0 2 4.4 1 4.4 3 0 .9-.9 1.5-2.2 1.5-1 0-1.9-.4-2.3-1"/></svg>
         <span>Quotes</span>
         <span class="nav-badge" id="quoteNavBadge" hidden></span>
+      </a>
+      <a href="#ratecards" class="nav-item" data-view="ratecards">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L2.2 12.2V2.2h10l8.4 8.4a2 2 0 0 1 0 2.8z"/><path d="M7.1 7.1h.01"/></svg>
+        <span>Rate Cards</span>
       </a>
       <a href="#timelines" class="nav-item" data-view="timelines">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.1 5.9h7.8"/><path d="M7.9 11.9h8.3"/><path d="M13.1 18.1h7.8"/><path d="M3 2.9v18.3"/></svg>
@@ -240,8 +240,8 @@
 
     <!-- Revenue View -->
     <section class="view" id="view-revenue" style="display:none"></section>
-    <!-- Media Kit View -->
-    <section class="view" id="view-mediakit" style="display:none"></section>
+    <!-- Rate Cards View (replaced Media Kit) -->
+    <section class="view" id="view-ratecards" style="display:none"></section>
     <!-- Analytics View -->
     <section class="view" id="view-analytics" style="display:none"></section>
     <!-- Outreach View -->
@@ -333,7 +333,8 @@
 <link rel="modulepreload" href="src/router.js">
 <link rel="modulepreload" href="src/views/dashboard.js">
 <link rel="modulepreload" href="src/views/revenue.js">
-<link rel="modulepreload" href="src/views/mediakit.js">
+<link rel="modulepreload" href="src/views/ratecards.js">
+<link rel="modulepreload" href="src/stores/ratecards.js">
 <link rel="modulepreload" href="src/views/analytics.js">
 <link rel="modulepreload" href="src/views/inbox.js">
 <link rel="modulepreload" href="src/views/calendar.js">

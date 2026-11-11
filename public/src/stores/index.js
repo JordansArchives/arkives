@@ -10,6 +10,7 @@ import { tasks } from './tasks.js';
 import { ideas } from './ideas.js';
 import { clients, invoices } from './invoices.js';
 import { quotes } from './quotes.js';
+import { ratecards } from './ratecards.js';
 import { timelines } from './timelines.js';
 
 const simple = (name, keys, fetch) => defineStore(name, { keys, deps: [profile], fetch });
@@ -20,16 +21,15 @@ export const revenue = simple('revenue', ['MONTHLY_REVENUE'], () => db.sbFetchMo
 export const audience = simple('audience', ['AUDIENCE_DATA'], () => db.sbFetchAudienceData());
 export const inbox = simple('inbox', ['INBOX_ITEMS'], () => db.sbFetchInboxItems());
 export const outreach = simple('outreach', ['OUTREACH_LISTS', 'OUTREACH_TARGETS', '_outreachMigrationMissing'], () => db.sbFetchOutreach());
-export { profile, tasks, ideas, clients, invoices, quotes, timelines };
+export { profile, tasks, ideas, clients, invoices, quotes, ratecards, timelines };
 
-export const ALL_STORES = [profile, deals, campaigns, calendar, revenue, audience, inbox, tasks, ideas, clients, invoices, quotes, timelines, outreach];
+export const ALL_STORES = [profile, deals, campaigns, calendar, revenue, audience, inbox, tasks, ideas, clients, invoices, quotes, ratecards, timelines, outreach];
 
 // profile is implied for every view (boot loads it before the first paint).
 // Boards and Scripts fetch their own rows when they open.
 export const VIEW_STORES = {
   dashboard: [calendar, invoices, quotes, tasks],
   revenue: [invoices, quotes],
-  mediakit: [audience, campaigns],
   analytics: [],
   inbox: [inbox],
   calendar: [calendar],
@@ -41,6 +41,7 @@ export const VIEW_STORES = {
   contracts: [deals, clients],
   invoices: [invoices, clients],
   quotes: [quotes, clients, invoices],
+  ratecards: [ratecards, audience],
   timelines: [timelines],
   outreach: [outreach],
 };

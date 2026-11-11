@@ -278,7 +278,7 @@ await page.goto(`http://localhost:${PORT}/#dashboard`, { waitUntil: 'load' });
 await page.waitForTimeout(1200);
 
 // Which store-owned state keys each view module reads (for the VIEW_STORES guard)
-const STORE_KEY_RE = /state\.(CREATOR|RATE_CARD|DEALS|CAMPAIGN_RESULTS|CALENDAR_EVENTS|MONTHLY_REVENUE|AUDIENCE_DATA|INBOX_ITEMS|TASKS|_tasksTableMissing|IDEAS|_ideasTableMissing|CLIENTS|_invoicingMigrationMissing|INVOICE_DATA|OUTREACH_LISTS|OUTREACH_TARGETS|_outreachMigrationMissing|QUOTES|QUOTE_SERVICES|_quotesMigrationMissing|TIMELINES|_timelinesMigrationMissing)\b/g;
+const STORE_KEY_RE = /state\.(CREATOR|RATE_CARD|DEALS|CAMPAIGN_RESULTS|CALENDAR_EVENTS|MONTHLY_REVENUE|AUDIENCE_DATA|INBOX_ITEMS|TASKS|_tasksTableMissing|IDEAS|_ideasTableMissing|CLIENTS|_invoicingMigrationMissing|INVOICE_DATA|OUTREACH_LISTS|OUTREACH_TARGETS|_outreachMigrationMissing|QUOTES|QUOTE_SERVICES|_quotesMigrationMissing|TIMELINES|_timelinesMigrationMissing|RATE_CARDS|_rateCardsMigrationMissing)\b/g;
 const VIEW_KEYS = {};
 for (const f of SRC.filter((x) => x.startsWith('src/views/'))) {
   const view = f.replace('src/views/', '').replace('.js', '');
@@ -328,20 +328,40 @@ const results = await page.evaluate(async ({ ACTION_NAMES, VIEW_KEYS }) => {
     Object.assign(st, { QUOTES: keep.q, TIMELINES: keep.tl, _qEditorOpen: keep.qe, _tlEditorOpen: keep.te }); __arkives.setPrivacy(keep.priv);
   }
 
-  // Privacy mode, media kit: rates, campaign revenue and contact email masked; audience stays
+  // Rate cards: privacy, the internal name never prints, unpriced lines stay off, units format
   {
     const st = __arkives.state;
-    const keep = { rc: st.RATE_CARD, camp: st.CAMPAIGN_RESULTS, mail: st.CREATOR.mkContactEmail, priv: st._privacy };
-    st.RATE_CARD = { ...st.RATE_CARD, organic: [{ name: 'Reel', rate: 7777 }], ugc: [], bundles: [] };
-    st.CAMPAIGN_RESULTS = [{ brand: 'Proofco', views: 120000, revenue: 4321 }];
+    const keep = { rcs: st.RATE_CARDS, open: st._rcOpenId, rc: st._rc, priv: st._privacy, mail: st.CREATOR.mkContactEmail };
+    const brand = { _sbId: 'rcp', kind: 'brand', name: 'SECRET-TIER-NAME', role: null, sortOrder: 1, content: { headline: 'Rates', validUntil: '2027-01-31', show: { platforms: false, engagement: true, demographics: false, fit: false }, engagementRate: '23.7%',
+      sections: [{ title: 'Deliverables', items: [
+        { name: 'Reel', detail: '', price: 7777, unit: 'post', display: 'fixed' },
+        { name: 'Ghost line', detail: '', price: null, unit: 'post', display: 'fixed' },
+        { name: 'Paid usage', detail: '', price: 30, unit: 'pct30d', display: 'fixed' },
+        { name: 'Perpetual', detail: '', price: null, unit: 'none', display: 'request' },
+        { name: 'Package', detail: '', price: 25000, unit: 'none', display: 'from' }] }],
+      terms: [{ label: 'Payment', text: '50% on signing' }, { label: 'Empty', text: '' }] } };
+    st.RATE_CARDS = [brand];
     st.CREATOR.mkContactEmail = 'deals@hush.test';
-    __arkives.setPrivacy(true); __arkives.renderMediaKit();
-    const on = document.getElementById('view-mediakit').innerHTML;
-    __arkives.setPrivacy(false); __arkives.renderMediaKit();
-    const off = document.getElementById('view-mediakit').innerHTML;
-    T('privacy: media kit hides rates, campaign revenue and contact email', !/7,777|4,321|deals@hush/.test(on) && /pv-mask/.test(on) && /Proofco/.test(on), on.match(/7,777|4,321|deals@hush/g));
-    T('privacy: media kit shows them again when off', /7,777/.test(off) && /4,321/.test(off) && /deals@hush/.test(off));
-    Object.assign(st, { RATE_CARD: keep.rc, CAMPAIGN_RESULTS: keep.camp }); st.CREATOR.mkContactEmail = keep.mail; __arkives.setPrivacy(keep.priv);
+    const html = __arkives.renderRateDoc(__arkives.rcBrandModel(brand.content), false);
+    T('rate card: internal preset name never reaches the document', !/SECRET-TIER-NAME/.test(html));
+    T('rate card: unpriced line and blank term stay off the PDF', !/Ghost line/.test(html) && !/>Empty</.test(html) && /50% on signing/.test(html));
+    T('rate card: fixed, percent, on request and from prices format', /\$7,777/.test(html) && /\+30%/.test(html) && /of base fee, per 30 days/.test(html) && /On request/.test(html) && /From \$25,000/.test(html), html.match(/rcr-row-price">[^<]*/g));
+    T('rate card: engagement rate override and valid-through date print', /23\.7%/.test(html) && /January 31, 2027/.test(html));
+    __arkives.setPrivacy(true);
+    st._rcOpenId = 'rcp'; st._rc = { name: brand.name, kind: 'brand', role: null, content: JSON.parse(JSON.stringify(brand.content)) };
+    __arkives.renderRateCards();
+    const on = document.getElementById('view-ratecards').innerHTML;
+    T('privacy: rate card preview masks prices and contact email', !/7,777|deals@hush/.test(on.split('rcDocPreview')[1] || '') && /pv-mask/.test(on));
+    __arkives.setPrivacy(false);
+    const tpl = __arkives._brandTemplate();
+    T('rate card: new brand card starts from Settings rates with blank add-on prices', tpl.sections[1].items.every((i) => i.price === null) && tpl.sections.length === 3);
+    T('rate card: role templates start unpriced', ['editor', 'director', 'director_editor', 'motion'].every((r) => __arkives.ROLE_TEMPLATES[r]().items.every((i) => i.price === null)));
+    const roleA = { kind: 'role', role: 'editor', content: { title: 'Editing', items: [{ name: 'Day rate', price: 1200, unit: 'day', display: 'fixed' }] } };
+    const roleB = { kind: 'role', role: 'motion', content: { title: 'Motion design', items: [{ name: 'Sting', price: 900, unit: 'each', display: 'from' }] } };
+    const combined = __arkives.renderRateDoc(__arkives.rcFreelanceModel([roleA, roleB], { content: { headline: 'Rates', terms: [{ label: 'Overtime', text: '1.5x after 10 hours' }], profile: [{ label: 'Software', text: 'Premiere' }] } }), false);
+    T('rate card: freelance export combines roles and terms into one document', /Editing/.test(combined) && /Motion design/.test(combined) && /\$1,200/.test(combined) && /per day/.test(combined) && /1\.5x after 10 hours/.test(combined) && /Premiere/.test(combined));
+    T('rate card: freelance card shows no follower metrics', !/rcr-stat/.test(combined));
+    Object.assign(st, { RATE_CARDS: keep.rcs, _rcOpenId: keep.open, _rc: keep.rc }); st.CREATOR.mkContactEmail = keep.mail; __arkives.setPrivacy(keep.priv);
   }
 
   // Privacy mode, Revenue + Invoices: totals, client names and addresses masked; invoice numbers stay

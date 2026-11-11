@@ -127,6 +127,16 @@ state._invSearch = ''; // matches invoice number / bill-to
 state._invPayingId = null; // invoice _sbId with the payment modal open
 state._invRowMenuId = null; // invoice _sbId with the row-actions sheet open (phone)
 
+// ---- from ratecards.js ----
+state.RATE_CARDS = []; // saved presets: kind brand | role | terms (migration 031)
+state._rateCardsMigrationMissing = false;
+state._rcOpenId = null; // _sbId of the preset open in the editor; null = list
+state._rc = null; // working copy while the editor is open
+state._rcDirty = false;
+state._rcExport = null; // freelance export picker: { roles: {id: true}, termsId }
+state._rcConfirmDelete = false;
+state._rcSaving = false;
+
 // ---- from quotes.js ----
 state.QUOTES = [];
 state.QUOTE_SERVICES = []; // the saved service menu

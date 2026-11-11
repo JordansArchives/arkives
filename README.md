@@ -34,7 +34,7 @@ A self-contained, Supabase-backed web application for managing brand deals, invo
 ### Why no framework?
 Jordan wants maximum portability and zero build overhead. The app is a single-page application using hash-based routing (`#dashboard`, `#pipeline`, etc.) with no dependencies beyond:
 - **Chart.js** (CDN) — charts and data viz
-- **jsPDF** (CDN) — PDF export for media kit
+- **jsPDF** (CDN) — PDF export for contracts
 - **Supabase JS v2** (CDN) — database + auth client
 
 ---
@@ -52,7 +52,7 @@ arkives/
 │   │   ├── router.js       # hash routing with a view registry: loads a view's stores, mounts/unmounts (flushes), subscribes views to stores
 │   │   ├── stores/         # one store per domain: load() memoized per session, subscribe()/notify(), domain writes (tasks, invoices, clients)
 │   │   ├── lib/            # actions (event delegation), sb (Supabase client + `db`), toast, esc, format, icons, storage, share
-│   │   └── views/          # one module per view: auth, dashboard, revenue, mediakit, analytics, inbox, calendar, tasks, settings, scripts, quotes, timelines, invoices, outreach, boards, contracts, social (scan + history)
+│   │   └── views/          # one module per view: auth, dashboard, revenue, ratecards, analytics, inbox, calendar, tasks, settings, scripts, quotes, timelines, invoices, outreach, boards, contracts, social (scan + history)
 │   ├── style.css           # full design system, all component styles
 │   ├── _headers            # Cloudflare response headers: enforced CSP (no inline scripts), frame and referrer policies
 │   └── (assets)            # manifest.webmanifest, favicon.svg, logo-*.svg/png, paper-tile*.webp, trip-sans-*.woff2, invoice-red-*

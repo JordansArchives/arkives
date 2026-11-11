@@ -25,7 +25,7 @@ import * as dashboard from './views/dashboard.js';
 import * as ideas from './views/ideas.js';
 import * as inbox from './views/inbox.js';
 import * as invoices from './views/invoices.js';
-import * as mediakit from './views/mediakit.js';
+import * as ratecards from './views/ratecards.js';
 import * as outreach from './views/outreach.js';
 import * as quotes from './views/quotes.js';
 import * as revenue from './views/revenue.js';
@@ -113,7 +113,7 @@ analytics.__init();
 // window.__arkives: every export of every module, plus state and db. The
 // tests drive the app through it; it is also handy in the console.
 const __arkives = { state, db, stores };
-for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, connections, contracts, dashboard, ideas, inbox, invoices, mediakit, outreach, quotes, revenue, scripts, settings, social, metrics, privacy, tasks, timelines]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
+for (const m of [actions, esc, format, icons, sb, share, storage, toast, router, analytics, auth, boards, calendar, connections, contracts, dashboard, ideas, inbox, invoices, outreach, quotes, ratecards, revenue, scripts, settings, social, metrics, privacy, tasks, timelines]) for (const k of Object.keys(m)) if (k !== '__init') __arkives[k] = m[k];
 window.__arkives = __arkives;
 
 boot();

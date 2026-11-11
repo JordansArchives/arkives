@@ -457,6 +457,53 @@ async function sbDeleteIdeas(sbIds) {
   return true;
 }
 
+/* ---- SUPABASE CRUD: RATE CARDS (migration 031) ---- */
+async function sbFetchRateCards() {
+  try {
+    const res = await _own('rate_card_presets').order('sort_order').order('created_at');
+    if (res.error) {
+      state._rateCardsMigrationMissing = _missingTable(res.error);
+      if (!state._rateCardsMigrationMissing) console.error('rate_card_presets fetch error:', res.error);
+      state.RATE_CARDS = [];
+    } else {
+      state._rateCardsMigrationMissing = false;
+      state.RATE_CARDS = (res.data || []).map(_mapRateCardRow);
+    }
+    return true;
+  } catch (err) { return _loadFailed('rate cards', err); }
+}
+function _mapRateCardRow(r) {
+  return {
+    _sbId: r.id, kind: r.kind, name: r.name || '', role: r.role || null,
+    content: (r.content && typeof r.content === 'object') ? r.content : {},
+    sortOrder: r.sort_order || 0, updatedAt: r.updated_at || r.created_at || ''
+  };
+}
+async function sbAddRateCard(data) {
+  if (!state._sb || !state.CREATOR._sbId) return null;
+  // user_id is stamped by the DB default (current_profile_id)
+  const { data: row, error } = await state._sb.from('rate_card_presets').insert({
+    kind: data.kind, name: data.name, role: data.role || null, content: data.content || {}, sort_order: data.sortOrder || 0
+  }).select().single();
+  if (error) { _showSaveError('Failed to save rate card'); console.error(error); return null; }
+  _showSaveSuccess();
+  return row;
+}
+async function sbUpdateRateCard(sbId, updates, silent) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('rate_card_presets').update(updates).eq('id', sbId);
+  if (error) { _showSaveError('Failed to save rate card'); console.error(error); return false; }
+  if (!silent) _showSaveSuccess();
+  return true;
+}
+async function sbDeleteRateCard(sbId) {
+  if (!state._sb || !sbId) return false;
+  const { error } = await state._sb.from('rate_card_presets').delete().eq('id', sbId);
+  if (error) { _showSaveError('Failed to delete rate card'); console.error(error); return false; }
+  _showSaveSuccess();
+  return true;
+}
+
 /* ---- SUPABASE CRUD: INVOICES ---- */
 // user_id is stamped by the DB default (current_profile_id) per the
 // multi-tenancy rules — inserts must not pass it manually
@@ -1115,6 +1162,10 @@ async function sbInboxAddress(rotate) {
 }
 
 export const db = {
+  sbAddRateCard,
+  sbDeleteRateCard,
+  sbFetchRateCards,
+  sbUpdateRateCard,
   sbDeleteInboxItem,
   sbGoogleConnect,
   sbGoogleDisconnect,

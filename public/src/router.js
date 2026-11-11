@@ -10,9 +10,9 @@ import { renderDashboard } from './views/dashboard.js';
 import { renderIdeas, unmountIdeas } from './views/ideas.js';
 import { renderInbox } from './views/inbox.js';
 import { renderInvoices, unmountInvoices } from './views/invoices.js';
-import { renderMediaKit } from './views/mediakit.js';
 import { renderOutreach } from './views/outreach.js';
 import { renderPublicQuote, renderQuotes, unmountQuotes } from './views/quotes.js';
+import { renderRateCards, unmountRateCards } from './views/ratecards.js';
 import { renderRevenue } from './views/revenue.js';
 import { _flushScriptSaves, renderScriptEditor, renderScripts, renderSharedScript } from './views/scripts.js';
 import { renderSettings } from './views/settings.js';
@@ -34,7 +34,6 @@ function getHash() {
 const VIEWS = {
   dashboard: { render: renderDashboard },
   revenue: { render: renderRevenue },
-  mediakit: { render: renderMediaKit },
   analytics: { render: renderAnalytics },
   outreach: { render: renderOutreach },
   inbox: { render: renderInbox },
@@ -45,6 +44,7 @@ const VIEWS = {
   contracts: { render: renderContracts },
   invoices: { render: renderInvoices, unmount: unmountInvoices }, // render(sub) applies the route; render() keeps the editor
   quotes: { render: renderQuotes, unmount: unmountQuotes }, // same sub-route contract as invoices
+  ratecards: { render: renderRateCards, unmount: unmountRateCards }, // same sub-route contract as quotes
   timelines: { render: renderTimelines, unmount: unmountTimelines }, // same sub-route contract as quotes
   tasks: { render: renderTasks, unmount: unmountTasks },
   ideas: { render: renderIdeas, unmount: unmountIdeas },
@@ -104,6 +104,7 @@ function currentRoute() { return _current ? { key: _current.key, sub: _current.s
 
 async function navigate(view) {
   const token = ++_navToken;
+  if (view === 'mediakit') view = 'ratecards'; // Media Kit became the brand rate card (2026-11)
   _setShareChrome(view);
   /* Handle sub-routes: board/UUID, script/UUID, shared/TOKEN, bshared/TOKEN */
   if (/^(bshared|board|script|shared|q|t)\//.test(view)) _leave(view);

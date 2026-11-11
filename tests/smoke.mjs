@@ -15,7 +15,7 @@ const PORT = 8741;
 const OUTDIR = fileURLToPath(new URL('./.shots/', import.meta.url));
 fs.mkdirSync(OUTDIR, { recursive: true });
 
-const VIEWS = ['dashboard', 'inbox', 'revenue', 'mediakit', 'analytics', 'outreach', 'boards', 'scripts', 'ideas', 'quotes', 'timelines', 'contracts', 'invoices', 'calendar', 'tasks', 'settings'];
+const VIEWS = ['dashboard', 'inbox', 'revenue', 'ratecards', 'analytics', 'outreach', 'boards', 'scripts', 'ideas', 'quotes', 'timelines', 'contracts', 'invoices', 'calendar', 'tasks', 'settings'];
 // Supabase calls fail under anon RLS in tests; that noise is expected.
 const NOISE = /supabase|Failed to fetch|net::ERR|fetch|NetworkError|Load failed|401|403|PGRST|JWT|favicon|ERR_INTERNET|ERR_NAME|fontshare/i;
 
@@ -32,6 +32,10 @@ const POPULATED = () => {
   __arkives.state.IDEAS = [{ _sbId: 'id1', title: 'Hook: <img src=x onerror="window.__xss=1">', notes: 'line one\nline two <b>x</b>', archived: false, archivedAt: '', createdAt: '2026-09-01T00:00:00Z' },
            { _sbId: 'id2', title: 'Used one', notes: '', archived: true, archivedAt: '2026-09-02T00:00:00Z', createdAt: '2026-08-01T00:00:00Z' }];
   __arkives.state._ideasArchivedOpen = true;
+  __arkives.state.RATE_CARDS = [
+    { _sbId: 'rcb', kind: 'brand', name: 'Brand: <b>AI</b>', role: null, sortOrder: 1, content: { headline: 'Rates', validUntil: '2027-02-01', show: { platforms: true, engagement: true, demographics: true, fit: false }, engagementRate: '23.7%', sections: [{ title: 'Deliverables', items: [{ name: 'Instagram Reel', detail: '<i>x</i>', price: 20000, unit: 'post', display: 'fixed' }, { name: 'Unpriced', detail: '', price: null, unit: 'post', display: 'fixed' }] }], terms: [{ label: 'Payment', text: '50/50' }] } },
+    { _sbId: 'rce', kind: 'role', name: 'Editor', role: 'editor', sortOrder: 2, content: { title: 'Editing', summary: '', items: [{ name: 'Day rate', detail: '10-hour day', price: 1200, unit: 'day', display: 'fixed' }] } },
+    { _sbId: 'rct', kind: 'terms', name: 'Freelance terms', role: null, sortOrder: 3, content: { headline: 'Rates', terms: [{ label: 'Overtime', text: '1.5x after 10' }], profile: [] } }];
   __arkives.state.INVOICE_DATA = [{ _sbId: 'i1', invoiceNumber: 'ACME-0001', brand: 'Acme', billToName: 'Acme Media', billToAddress: '2 St', date: '2026-08-01', dueDate: '2026-08-31', status: 'sent', lineItems: [{ type: 'flat', desc: 'Reel', qty: 1, rate: 0, fee: 12000 }], amount: 12000, amountPaid: 0, tax: 0, notes: '', includePaymentInfo: true, paymentTerms: 'net30', clientId: 'c1', description: 'Reel' },
                   { _sbId: 'i2', invoiceNumber: 'ACME-0002', brand: 'Acme', billToName: 'Acme Media', billToAddress: '', date: '2026-09-01', dueDate: '', status: 'draft', lineItems: [{ type: 'hourly', desc: 'Edit', qty: 3, rate: 100, fee: 0 }], amount: 300, amountPaid: 0, tax: 0, notes: 'n', includePaymentInfo: false, paymentTerms: 'none', clientId: null, description: 'Edit' }];
   __arkives.state.CLIENTS = [{ _sbId: 'c1', name: 'Jane', company: 'Acme Media', email: 'j@acme.com', billingAddress: '2 St', invoicePrefix: 'ACME' }];
