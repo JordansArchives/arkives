@@ -5270,6 +5270,7 @@ button.sc-tag { appearance: none; }
 /* An empty sticky is a backing card to a viewer, not a prompt to type */
 .bd-ro .bd-text-content:empty::before { content: none; }
 .bd-ro .bd-item { cursor: default; }
+.bd-ro .bd-link-card, .bd-ro .bd-video-thumb { cursor: pointer; }
 .bd-ro .bd-text-content, .bd-ro .bd-caption { cursor: default; }
 
 .bd-tag-short { display: none; }

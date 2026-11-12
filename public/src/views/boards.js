@@ -1957,6 +1957,9 @@ function _bdBindShared() {
   }, { passive: false });
 
   vp.addEventListener('pointerdown', function(e) {
+    // Remember what was pressed: pointer capture retargets the click to
+    // the viewport, so the click handler can't read it from e.target
+    state._bdDownTarget = e.target;
     state._bdPtr = { mode: 'pan', sx: e.clientX, sy: e.clientY, vx: state._bdView.x, vy: state._bdView.y, moved: false };
     _bdCapture(vp, e);
   });
@@ -1974,10 +1977,13 @@ function _bdBindShared() {
   vp.addEventListener('pointerup', endPan);
   vp.addEventListener('pointercancel', endPan);
 
-  // Videos stay playable in the shared view
+  // Videos stay playable and links stay clickable in the shared view
   vp.addEventListener('click', function(e) {
+    const target = state._bdDownTarget && vp.contains(state._bdDownTarget) ? state._bdDownTarget : e.target;
+    state._bdDownTarget = null;
     if (state._bdSuppressClick) { state._bdSuppressClick = false; return; }
-    const thumb = e.target.closest('.bd-video-thumb');
+    if (!target || !target.closest) return;
+    const thumb = target.closest('.bd-video-thumb');
     if (thumb) {
       const it = state._bdItems.find(i => i.id === thumb.dataset.item);
       if (!it) return;
@@ -1986,7 +1992,7 @@ function _bdBindShared() {
       thumb.outerHTML = '<iframe src="' + _esc(src) + '" frameborder="0" allow="autoplay; fullscreen" allowfullscreen style="width:100%;height:100%;display:block"></iframe>';
       return;
     }
-    const linkCard = e.target.closest('.bd-link-card');
+    const linkCard = target.closest('.bd-link-card');
     if (linkCard) {
       const itemEl = linkCard.closest('.bd-item');
       const it = itemEl && state._bdItems.find(i => i.id === itemEl.dataset.id);

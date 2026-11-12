@@ -151,6 +151,7 @@ for (const state of ['populated', 'empty']) {
           { id: 'i1', board_id: 'SB1', kind: 'note', x: -400, y: 200, w: 300, h: 200, z: 1, content: { text: '', color: 'yellow' } },
           { id: 'i2', board_id: 'SB1', kind: 'text', x: 300, y: 300, w: 300, h: 40, z: 2, content: { text: 'Hero concept', size: 'body' } },
           { id: 'i3', board_id: 'SB1', kind: 'image', x: 700, y: 900, w: 300, h: 300, z: 3, content: { path: 'U1/SB1/missing.webp' } },
+          { id: 'i4', board_id: 'SB1', kind: 'video', x: -400, y: 700, w: 260, h: 64, z: 4, content: { url: 'https://example.com/ref', provider: 'link', vid: null, caption: '' } },
         ];
         // Only the two calls a shared board makes are stubbed; everything
         // else (a fetch another view still has in flight) reaches the real client
@@ -182,7 +183,7 @@ for (const state of ['populated', 'empty']) {
       });
       if (sh.w < sh.vw - 2) flagged.push(`shared board is ${sh.w}px wide in a ${sh.vw}px window`);
       if (sh.bottom < sh.vh - 2) flagged.push(`shared board stops at ${sh.bottom}px in a ${sh.vh}px window`);
-      if (sh.items !== 3 || sh.inside !== 3) flagged.push(`shared board opens with ${sh.inside}/${sh.items} items in view`);
+      if (sh.items !== 4 || sh.inside !== 4) flagged.push(`shared board opens with ${sh.inside}/${sh.items} items in view`);
       if (sh.topbarClipped) flagged.push('shared board top bar runs off the screen');
       if (sh.chrome.length) flagged.push(`shared board shows app chrome: ${sh.chrome.join(', ')}`);
       if (sh.title !== 'Campaign <b>board</b> · Arkives') flagged.push(`shared board tab title is "${sh.title}"`);
@@ -190,6 +191,13 @@ for (const state of ['populated', 'empty']) {
       if (sh.missing !== 1) flagged.push('an image that failed to load is not marked unavailable');
       if (!/none|normal/.test(sh.placeholder)) flagged.push(`empty sticky shows a placeholder to viewers (${sh.placeholder})`);
       if (sh.scrollX) flagged.push('shared board: horizontal page overflow');
+      // A real click on a link card opens it (pointer capture for panning
+      // retargets the click to the viewport; the press target must win)
+      await page.evaluate(() => { window.__opened = []; window.__realOpen = window.open; window.open = (u) => { window.__opened.push(u); return null; }; });
+      const lc = await page.evaluate(() => { const r = document.querySelector('.bd-link-card').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      await page.mouse.click(lc.x, lc.y);
+      const opened = await page.evaluate(() => { const o = window.__opened; window.open = window.__realOpen; return o; });
+      if (opened.length !== 1 || opened[0] !== 'https://example.com/ref') flagged.push(`shared board link card click opened ${JSON.stringify(opened)}`);
       await page.screenshot({ path: path.join(OUTDIR, `${state}-${vp.name}-shared-board.png`), animations: 'disabled' });
       const back = await page.evaluate(() => {
         __arkives.state._sb = window.__realSb;
